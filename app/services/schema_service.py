@@ -11,7 +11,7 @@ from app.models.enums import DataType
 from app.models.record import Record
 from app.schemas.attribute import AttributeCreate, AttributeUpdate
 from app.schemas.entity import EntityCreate, EntityUpdate
-from app.services.slugs import unique_slug
+from app.services.slugs import slugify, unique_slug
 from app.services.validation import ValidationError, coerce_value
 
 
@@ -134,6 +134,18 @@ def _next_sort_order(db: Session, entity_id: int) -> int:
     return current + 1
 
 
+def entity_has_records(db: Session, entity_id: int) -> bool:
+    """True when the entity has at least one non-deleted record."""
+    return (
+        db.execute(
+            select(Record.id)
+            .where(Record.entity_id == entity_id, Record.deleted_at.is_(None))
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribute:
     _validate_definition(data, db)
     attribute = Attribute(
@@ -142,6 +154,7 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         slug=unique_slug(db, Attribute, data.name.strip(), scope={"entity_id": entity.id}),
         data_type=data.data_type.value,
         is_required=data.is_required,
+        is_active=(True if data.is_required else data.is_active),
         default_value=coerce_value(data.data_type, data.default_value),
         hint=(data.hint.strip() if data.hint else None),
         config=_build_config(data),
@@ -159,20 +172,26 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     attribute.is_required = data.is_required
     attribute.default_value = coerce_value(data.data_type, data.default_value)
     attribute.hint = data.hint.strip() if data.hint else None
+    attribute.is_active = True if data.is_required else data.is_active
+    if data.slug:
+        new_slug = slugify(data.slug)
+        if new_slug != attribute.slug:
+            if entity_has_records(db, attribute.entity_id):
+                raise SchemaError("The slug can only be changed while the entity has no records.")
+            attribute.slug = unique_slug(
+                db,
+                Attribute,
+                new_slug,
+                scope={"entity_id": attribute.entity_id},
+                exclude_id=attribute.id,
+            )
     attribute.config = _build_config(data)
     db.commit()
     return attribute
 
 
 def delete_attribute(db: Session, attribute: Attribute) -> None:
-    entity_id = attribute.entity_id
-    slug = attribute.slug
+    if entity_has_records(db, attribute.entity_id):
+        raise SchemaError("Cannot delete an attribute while the entity has records.")
     db.delete(attribute)
-    # Remove this attribute's value from every record's JSON document.
-    records = db.execute(select(Record).where(Record.entity_id == entity_id)).scalars().all()
-    for record in records:
-        if slug in record.data:
-            data = dict(record.data)
-            data.pop(slug, None)
-            record.data = data
     db.commit()

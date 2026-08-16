@@ -10,6 +10,12 @@
     <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
   </label>
 
+  {% if attribute %}
+  <label>Slug{% if has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
+    <input type="text" name="slug" value="{{ fd.slug if fd else '' }}" {% if has_records %}disabled{% endif %}>
+  </label>
+  {% endif %}
+
   <label>Type
     <select name="data_type" id="data_type">
       {% for t in data_types %}
@@ -19,8 +25,15 @@
   </label>
 
   <label class="checkbox-label">
-    <input type="checkbox" name="is_required" {% if fd and fd.is_required %}checked{% endif %}>
+    <input type="checkbox" name="is_required" id="is_required" {% if fd and fd.is_required %}checked{% endif %}>
     Required
+  </label>
+
+  <label>Active
+    <select name="is_active" id="is_active">
+      <option value="true" {% if not fd or fd.is_active %}selected{% endif %}>Active</option>
+      <option value="false" {% if fd and not fd.is_active %}selected{% endif %}>Inactive</option>
+    </select>
   </label>
 
   <label>Default value
@@ -72,6 +85,18 @@
     }
     typeEl.addEventListener('change', toggle);
     toggle();
+
+    var reqEl = document.getElementById('is_required');
+    var activeEl = document.getElementById('is_active');
+    function syncActive() {
+      if (reqEl && reqEl.checked) {
+        activeEl.value = 'true';
+        activeEl.disabled = true;
+      } else if (activeEl) {
+        activeEl.disabled = false;
+      }
+    }
+    if (reqEl) { reqEl.addEventListener('change', syncActive); syncActive(); }
   })();
 </script>
 {% endblock %}

@@ -19,6 +19,10 @@
       <thead>
         <tr>
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
+          <th class="muted">Created at</th>
+          <th class="muted">Created by</th>
+          <th class="muted">Last modified at</th>
+          <th class="muted">Last modified by</th>
           {% if can_update %}<th></th>{% endif %}
         </tr>
       </thead>
@@ -28,6 +32,10 @@
           {% for attr in entity.attributes %}
           <td>{{ row.cells[attr.slug] }}</td>
           {% endfor %}
+          <td class="muted">{{ row.record.created_at | datetime_display }}</td>
+          <td class="muted">{{ user_names.get(row.record.created_by, "—") }}</td>
+          <td class="muted">{{ row.record.updated_at | datetime_display }}</td>
+          <td class="muted">{{ user_names.get(row.record.updated_by, "—") }}</td>
           {% if can_update %}
           <td class="row-actions">
             <a href="/records/{{ row.record.id }}/edit">Edit</a>

@@ -25,7 +25,7 @@
 {% if entity.attributes %}
 <table class="table">
   <thead>
-    <tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th></th></tr>
+    <tr><th>Name</th><th>Type</th><th>Required</th><th>Active</th><th>Default</th><th></th></tr>
   </thead>
   <tbody>
   {% for a in entity.attributes %}
@@ -33,10 +33,17 @@
       <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
       <td><code>{{ a.data_type }}</code></td>
       <td>{{ "Yes" if a.is_required else "—" }}</td>
+      <td>{{ "Yes" if a.is_active else "No" }}</td>
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
-      <td>
+      <td class="row-actions">
         {% if can_manage_schema %}
         <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body">Edit</a>
+        {% if record_counts.get(entity.id, 0) == 0 %}
+        <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
+              onsubmit="return confirm('Delete this attribute?');">
+          <button type="submit" class="link-danger">Delete</button>
+        </form>
+        {% endif %}
         {% endif %}
       </td>
     </tr>

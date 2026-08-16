@@ -5,7 +5,7 @@ import pytest
 from app.models.enums import DataType
 from app.schemas.attribute import AttributeCreate, AttributeUpdate
 from app.schemas.entity import EntityCreate, EntityUpdate
-from app.services.record_service import create_record, list_records
+from app.services.record_service import create_record
 from app.services.schema_service import (
     SchemaError,
     add_attribute,
@@ -82,17 +82,64 @@ def test_update_attribute_keeps_slug(db_session):
     assert attr.slug == "hostname"
 
 
-def test_delete_attribute_removes_value_from_records(db_session):
+def test_delete_attribute_blocked_when_entity_has_records(db_session):
     entity = create_entity(db_session, EntityCreate(name="Server"))
     add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
-    extra = add_attribute(
-        db_session, entity, AttributeCreate(name="Cores", data_type=DataType.INTEGER)
-    )
     entity = get_entity_with_attributes(db_session, entity.id)
-    create_record(db_session, entity, entity.attributes, {"name": "web01", "cores": "8"})
-    delete_attribute(db_session, extra)
-    records = list_records(db_session, entity.id)
-    assert "cores" not in records[0].data
+    create_record(db_session, entity, entity.attributes, {"name": "web01"})
+    with pytest.raises(SchemaError):
+        delete_attribute(db_session, entity.attributes[0])
+
+
+def test_delete_attribute_ok_when_no_records(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    delete_attribute(db_session, attr)
+    assert get_entity_with_attributes(db_session, entity.id).attributes == []
+
+
+def test_update_attribute_slug_when_no_records(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, slug="fqdn"),
+    )
+    assert attr.slug == "fqdn"
+
+
+def test_update_attribute_slug_blocked_when_records_exist(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"name": "web01"})
+    with pytest.raises(SchemaError):
+        update_attribute(
+            db_session,
+            entity.attributes[0],
+            AttributeUpdate(name="Name", data_type=DataType.TEXT, slug="changed"),
+        )
+
+
+def test_required_attribute_cannot_be_inactivated(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Name", data_type=DataType.TEXT, is_required=True, is_active=False),
+    )
+    assert attr.is_active is True
+
+
+def test_optional_attribute_can_be_inactivated(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Note", data_type=DataType.TEXT, is_active=False)
+    )
+    assert attr.is_active is False
 
 
 def test_add_attribute_stores_hint(db_session):

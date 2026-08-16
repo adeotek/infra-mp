@@ -119,3 +119,42 @@ def test_record_form_renders_attribute_hint(client, login):
     html = client.get("/entities/1/records/new").text
     assert "FQDN of the server." in html
     assert 'class="hint"' in html
+
+
+def test_record_list_shows_system_columns(client, login):
+    _seed_server(client, login)
+    client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
+    html = client.get("/entities/1/records").text
+    assert "Created at" in html
+    assert "Created by" in html
+    assert "Last modified at" in html
+    assert "Last modified by" in html
+
+
+def test_record_edit_form_shows_metadata(client, login):
+    _seed_server(client, login)
+    client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
+    html = client.get("/records/1/edit").text
+    assert "Record metadata" in html
+    assert "admin" in html  # created_by resolves to the admin username
+
+
+def test_inactive_attribute_hidden_from_record_form(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Cores", "data_type": "integer"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/attributes/2/edit",
+        data={"name": "Cores", "data_type": "integer", "is_active": "false"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records/new").text
+    assert "Name" in html
+    assert "Cores" not in html

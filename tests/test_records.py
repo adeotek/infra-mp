@@ -102,3 +102,27 @@ def test_reference_many_coerces_to_int_list(db_session):
     data, errors = validate_record_data(db_session, server.attributes, {"tags": ["1", "2"]})
     assert not errors
     assert data["tags"] == [1, 2]
+
+
+def test_create_record_excludes_inactive_attributes(db_session, server_entity):
+    for attr in server_entity.attributes:
+        if attr.slug == "cores":
+            attr.is_active = False
+    db_session.commit()
+    record = create_record(
+        db_session, server_entity, server_entity.attributes, {"hostname": "web01", "cores": "8"}
+    )
+    assert "cores" not in record.data
+
+
+def test_update_record_preserves_inactive_attribute_value(db_session, server_entity):
+    record = create_record(
+        db_session, server_entity, server_entity.attributes, {"hostname": "web01", "cores": "8"}
+    )
+    for attr in server_entity.attributes:
+        if attr.slug == "cores":
+            attr.is_active = False
+    db_session.commit()
+    update_record(db_session, record, server_entity.attributes, {"hostname": "web01-renamed"})
+    assert record.data["hostname"] == "web01-renamed"
+    assert record.data["cores"] == 8

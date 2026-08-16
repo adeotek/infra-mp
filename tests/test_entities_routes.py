@@ -174,3 +174,49 @@ def test_attribute_form_has_hint_field(client, login):
     client.post("/entities", data={"name": "Server"}, follow_redirects=False)
     html = client.get("/entities/1/attributes/new").text
     assert 'name="hint"' in html
+
+
+def test_update_attribute_slug_via_post(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text"},
+        follow_redirects=False,
+    )
+    resp = client.post(
+        "/attributes/1/edit",
+        data={"name": "Hostname", "data_type": "text", "slug": "fqdn"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "(fqdn)" in client.get("/entities/1").text
+
+
+def test_delete_attribute_blocked_when_records_exist(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
+    resp = client.post("/attributes/1/delete", follow_redirects=False)
+    assert resp.status_code == 303
+    # Attribute still exists (deletion rejected with a flash error).
+    assert "Name" in client.get("/entities/1").text
+
+
+def test_inactivate_optional_attribute(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Note", "data_type": "text"}, follow_redirects=False
+    )
+    # Submit "is_active=false" -> the attribute is inactivated.
+    client.post(
+        "/attributes/1/edit",
+        data={"name": "Note", "data_type": "text", "is_active": "false"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records/new").text
+    assert "Note" not in html

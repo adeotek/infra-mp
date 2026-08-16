@@ -9,7 +9,27 @@
 
 {% if entity.attributes %}
 <form method="post" action="{{ action_url }}">
-  {% for attr in entity.attributes %}
+  {% if record %}
+  <fieldset class="form-section">
+    <legend>Record metadata</legend>
+    <div class="grid-2">
+      <label>Created at
+        <input type="text" value="{{ record.created_at | datetime_display }}" disabled>
+      </label>
+      <label>Created by
+        <input type="text" value="{{ created_by_name }}" disabled>
+      </label>
+      <label>Last modified at
+        <input type="text" value="{{ record.updated_at | datetime_display }}" disabled>
+      </label>
+      <label>Last modified by
+        <input type="text" value="{{ updated_by_name }}" disabled>
+      </label>
+    </div>
+  </fieldset>
+  {% endif %}
+
+  {% for attr in entity.attributes if attr.is_active %}
   {% set val = current.get(attr.slug) if current else none %}
   <label>{{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
     {% if attr.data_type == 'textarea' %}

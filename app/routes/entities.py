@@ -13,7 +13,7 @@ from app.models.attribute import Attribute
 from app.models.entity import Entity
 from app.models.enums import DataType
 from app.models.user import User
-from app.schemas.attribute import AttributeCreate
+from app.schemas.attribute import AttributeCreate, AttributeUpdate
 from app.schemas.entity import EntityCreate, EntityUpdate
 from app.services.schema_service import (
     SchemaError,
@@ -21,6 +21,7 @@ from app.services.schema_service import (
     create_entity,
     delete_attribute,
     delete_entity,
+    entity_has_records,
     entity_record_counts,
     get_entity,
     get_entity_with_attributes,
@@ -42,10 +43,12 @@ def _attribute_from_form(
     reference_entity_id: str,
     cardinality: str,
     hint: str = "",
-) -> AttributeCreate:
+    slug: str = "",
+    is_active: bool = True,
+) -> AttributeUpdate:
     options_list = [o.strip() for o in options.splitlines() if o.strip()] or None
     ref_id = int(reference_entity_id) if reference_entity_id.strip() else None
-    return AttributeCreate(
+    return AttributeUpdate(
         name=name,
         data_type=data_type,
         is_required=is_required,
@@ -54,6 +57,8 @@ def _attribute_from_form(
         reference_entity_id=ref_id,
         cardinality="many" if cardinality == "many" else "one",
         hint=hint.strip() or None,
+        slug=slug.strip() or None,
+        is_active=is_active,
     )
 
 
@@ -217,6 +222,7 @@ def new_attribute_page(
             "entities": list_entities(db),
             "data_types": list(DataType),
             "action_url": f"/entities/{entity_id}/attributes",
+            "has_records": entity_has_records(db, entity_id),
         },
     )
 
@@ -235,6 +241,7 @@ def create_attribute_post(
     reference_entity_id: str = Form(""),
     cardinality: str = Form("one"),
     hint: str = Form(""),
+    is_active: bool = Form(True),
 ):
     entity = get_entity(db, entity_id)
     if entity is None:
@@ -249,6 +256,7 @@ def create_attribute_post(
         reference_entity_id,
         cardinality,
         hint,
+        is_active=is_active,
     )
     try:
         attribute = add_attribute(db, entity, data)
@@ -280,6 +288,7 @@ def edit_attribute_page(
             "entities": list_entities(db),
             "data_types": list(DataType),
             "action_url": f"/attributes/{attribute_id}/edit",
+            "has_records": entity_has_records(db, attribute.entity_id),
         },
     )
 
@@ -298,6 +307,8 @@ def update_attribute_post(
     reference_entity_id: str = Form(""),
     cardinality: str = Form("one"),
     hint: str = Form(""),
+    slug: str = Form(""),
+    is_active: bool = Form(True),
 ):
     attribute = db.get(Attribute, attribute_id)
     if attribute is None:
@@ -313,6 +324,8 @@ def update_attribute_post(
         reference_entity_id,
         cardinality,
         hint,
+        slug=slug,
+        is_active=is_active,
     )
     try:
         update_attribute(db, attribute, data)
@@ -336,8 +349,15 @@ def delete_attribute_post(
         raise HTTPException(status_code=404)
     entity_id = attribute.entity_id
     name = attribute.name
-    delete_attribute(db, attribute)
-    return redirect_with_flash(f"/entities/{entity_id}", f"Attribute '{name}' deleted.")
+    try:
+        delete_attribute(db, attribute)
+    except SchemaError as exc:
+        return redirect_with_flash(
+            f"/entities/{entity_id}", str(exc), category="error", request=request
+        )
+    return redirect_with_flash(
+        f"/entities/{entity_id}", f"Attribute '{name}' deleted.", request=request
+    )
 
 
 def _render_attribute_form_error(
@@ -363,6 +383,7 @@ def _render_attribute_form_error(
             ),
             "form_data": data,
             "error": error,
+            "has_records": entity_has_records(db, entity.id),
         },
         status_code=400,
     )
