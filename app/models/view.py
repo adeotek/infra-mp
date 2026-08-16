@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.entity import Entity
 
 
 class View(TimestampMixin, Base):
@@ -23,4 +28,4 @@ class View(TimestampMixin, Base):
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    entity: Mapped["Entity"] = relationship()
+    entity: Mapped[Entity] = relationship()

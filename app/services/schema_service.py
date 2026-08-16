@@ -23,12 +23,11 @@ class SchemaError(ValueError):
 # Entities
 # --------------------------------------------------------------------------- #
 
+
 def list_entities(db: Session) -> list[Entity]:
     return list(
         db.execute(
-            select(Entity)
-            .options(selectinload(Entity.attributes))
-            .order_by(Entity.name)
+            select(Entity).options(selectinload(Entity.attributes)).order_by(Entity.name)
         ).scalars()
     )
 
@@ -39,9 +38,7 @@ def get_entity(db: Session, entity_id: int) -> Entity | None:
 
 def get_entity_with_attributes(db: Session, entity_id: int) -> Entity | None:
     return db.execute(
-        select(Entity)
-        .options(selectinload(Entity.attributes))
-        .where(Entity.id == entity_id)
+        select(Entity).options(selectinload(Entity.attributes)).where(Entity.id == entity_id)
     ).scalar_one_or_none()
 
 
@@ -55,9 +52,12 @@ def entity_record_counts(db: Session) -> dict[int, int]:
 
 
 def create_entity(db: Session, data: EntityCreate, created_by: int | None = None) -> Entity:
+    name = data.name.strip()
+    if db.execute(select(Entity.id).where(Entity.name == name)).first() is not None:
+        raise SchemaError(f"An entity named '{name}' already exists.")
     entity = Entity(
-        name=data.name.strip(),
-        slug=unique_slug(db, Entity, data.name.strip()),
+        name=name,
+        slug=unique_slug(db, Entity, name),
         description=data.description.strip(),
         icon=data.icon.strip(),
         created_by=created_by,
@@ -70,7 +70,13 @@ def create_entity(db: Session, data: EntityCreate, created_by: int | None = None
 def update_entity(db: Session, entity: Entity, data: EntityUpdate) -> Entity:
     # The slug is an immutable identifier: it is generated once at creation and
     # intentionally not changed on rename so existing URLs stay valid.
-    entity.name = data.name.strip()
+    name = data.name.strip()
+    exists = db.execute(
+        select(Entity.id).where(Entity.name == name, Entity.id != entity.id)
+    ).first()
+    if exists is not None:
+        raise SchemaError(f"An entity named '{name}' already exists.")
+    entity.name = name
     entity.description = data.description.strip()
     entity.icon = data.icon.strip()
     db.commit()
@@ -86,6 +92,7 @@ def delete_entity(db: Session, entity: Entity) -> None:
 # --------------------------------------------------------------------------- #
 # Attributes
 # --------------------------------------------------------------------------- #
+
 
 def _build_config(data: AttributeCreate) -> dict:
     config: dict = {}

@@ -7,12 +7,16 @@ its entity's attribute schema at write time.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.entity import Entity
 
 
 class Record(TimestampMixin, Base):
@@ -27,4 +31,4 @@ class Record(TimestampMixin, Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    entity: Mapped["Entity"] = relationship(back_populates="records")
+    entity: Mapped[Entity] = relationship(back_populates="records")

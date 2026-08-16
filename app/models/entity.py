@@ -19,12 +19,14 @@ class Entity(TimestampMixin, Base):
     icon: Mapped[str] = mapped_column(String(64), default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    attributes: Mapped[list["Attribute"]] = relationship(
+    attributes: Mapped[list[Attribute]] = relationship(
         back_populates="entity",
         cascade="all, delete-orphan",
         order_by="Attribute.sort_order",
     )
-    records: Mapped[list["Record"]] = relationship(back_populates="entity", cascade="all, delete-orphan")
+    records: Mapped[list[Record]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan"
+    )
 
 
 from app.models.attribute import Attribute  # noqa: E402  (resolves forward reference)

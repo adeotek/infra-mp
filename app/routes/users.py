@@ -75,7 +75,11 @@ async def create_user_post(
                 "target_user": None,
                 "roles": list(Role),
                 "error": str(exc),
-                "form": {"username": username, "display_name": raw.get("display_name", ""), "role": raw.get("role", "viewer")},
+                "form": {
+                    "username": username,
+                    "display_name": raw.get("display_name", ""),
+                    "role": raw.get("role", "viewer"),
+                },
             },
             status_code=400,
         )

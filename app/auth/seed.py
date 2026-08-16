@@ -40,7 +40,4 @@ def seed_admin(db: Session, settings: Settings) -> None:
             f"[homelab-manager] Seeded admin user '{settings.admin_username}' "
             f"with password: {password}"
         )
-        print(
-            "[homelab-manager] Log in and change it, or set HOMELAB_ADMIN_PASSWORD "
-            "and restart."
-        )
+        print("[homelab-manager] Log in and change it, or set HOMELAB_ADMIN_PASSWORD and restart.")

@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.entity import Entity
+    from app.models.view import View
 
 
 class DashboardWidget(TimestampMixin, Base):
@@ -25,5 +31,5 @@ class DashboardWidget(TimestampMixin, Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
 
-    entity: Mapped["Entity | None"] = relationship()
-    view: Mapped["View | None"] = relationship()
+    entity: Mapped[Entity | None] = relationship()
+    view: Mapped[View | None] = relationship()

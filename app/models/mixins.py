@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime
 from sqlalchemy.orm import Mapped, mapped_column
@@ -14,7 +14,7 @@ def utcnow() -> datetime:
     SQLite has no native timezone support, so the app standardises on naive
     UTC everywhere to avoid aware/naive comparison bugs.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class TimestampMixin:

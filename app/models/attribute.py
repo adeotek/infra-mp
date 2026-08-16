@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -10,6 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 from app.models.enums import DataType
 from app.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.entity import Entity
 
 
 class Attribute(TimestampMixin, Base):
@@ -28,7 +31,7 @@ class Attribute(TimestampMixin, Base):
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
-    entity: Mapped["Entity"] = relationship(back_populates="attributes")
+    entity: Mapped[Entity] = relationship(back_populates="attributes")
 
     @property
     def data_type_enum(self) -> DataType:

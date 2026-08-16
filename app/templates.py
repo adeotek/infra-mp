@@ -29,6 +29,4 @@ def render(
     }
     if context:
         ctx.update(context)
-    return templates.TemplateResponse(
-        request, template_name, ctx, status_code=status_code
-    )
+    return templates.TemplateResponse(request, template_name, ctx, status_code=status_code)

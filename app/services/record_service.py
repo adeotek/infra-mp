@@ -23,6 +23,7 @@ class RecordError(ValueError):
 # CRUD
 # --------------------------------------------------------------------------- #
 
+
 def list_records(db: Session, entity_id: int) -> list[Record]:
     return list(
         db.execute(
@@ -77,6 +78,7 @@ def soft_delete_record(db: Session, record: Record) -> None:
 # --------------------------------------------------------------------------- #
 # Validation
 # --------------------------------------------------------------------------- #
+
 
 def validate_record_data(
     db: Session,
@@ -165,6 +167,7 @@ def _coerce_reference(attr: Attribute, raw_value: Any) -> Any:
 # Display
 # --------------------------------------------------------------------------- #
 
+
 def title_attribute(attributes: list[Attribute]) -> Attribute | None:
     """Return the first text attribute, used as a record's display title."""
     for attr in attributes:
@@ -249,7 +252,5 @@ def reference_options(db: Session, entity: Entity) -> dict[str, list[tuple[int, 
             target_id = attr.config.get("reference_entity_id")
             if target_id is not None:
                 titles = build_record_titles(db, target_id)
-                options[attr.slug] = sorted(
-                    titles.items(), key=lambda kv: str(kv[1]).lower()
-                )
+                options[attr.slug] = sorted(titles.items(), key=lambda kv: str(kv[1]).lower())
     return options

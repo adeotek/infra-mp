@@ -97,7 +97,7 @@ async def create_record_post(
         raise HTTPException(status_code=404)
     raw = await parse_form(request)
     try:
-        record = create_record(db, entity, entity.attributes, raw, user_id=user.id)
+        create_record(db, entity, entity.attributes, raw, user_id=user.id)
     except RecordError as exc:
         return _render_form_error(request, db, entity, None, raw, str(exc))
 
@@ -179,9 +179,7 @@ def _render_form_error(
             "current": best_effort_coerce(entity.attributes, raw),
             "ref_options": reference_options(db, entity),
             "action_url": (
-                f"/entities/{entity.id}/records"
-                if record is None
-                else f"/records/{record.id}/edit"
+                f"/entities/{entity.id}/records" if record is None else f"/records/{record.id}/edit"
             ),
             "error": error,
         },

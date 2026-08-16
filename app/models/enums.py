@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     """Access levels for users."""
 
     ADMIN = "admin"
@@ -13,7 +13,7 @@ class Role(str, Enum):
     VIEWER = "viewer"
 
 
-class DataType(str, Enum):
+class DataType(StrEnum):
     """Attribute data types supported by the schema engine."""
 
     TEXT = "text"

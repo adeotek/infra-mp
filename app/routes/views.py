@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
@@ -11,8 +11,8 @@ from app.db import get_session
 from app.flash import redirect_with_flash
 from app.form import parse_form, to_list
 from app.models.entity import Entity
-from app.models.view import View
 from app.models.user import User
+from app.models.view import View
 from app.services.record_service import build_rows, list_records, resolve_reference_titles
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (

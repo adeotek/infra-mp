@@ -13,7 +13,7 @@ from app.models.attribute import Attribute
 from app.models.entity import Entity
 from app.models.enums import DataType
 from app.models.user import User
-from app.schemas.attribute import AttributeCreate, AttributeUpdate
+from app.schemas.attribute import AttributeCreate
 from app.schemas.entity import EntityCreate, EntityUpdate
 from app.services.schema_service import (
     SchemaError,
@@ -59,6 +59,7 @@ def _attribute_from_form(
 # Entities
 # --------------------------------------------------------------------------- #
 
+
 @router.get("/entities")
 def entities_index(
     request: Request,
@@ -90,7 +91,21 @@ def create_entity_post(
     description: str = Form(""),
     icon: str = Form(""),
 ):
-    entity = create_entity(db, EntityCreate(name=name, description=description, icon=icon), created_by=user.id)
+    try:
+        entity = create_entity(
+            db, EntityCreate(name=name, description=description, icon=icon), created_by=user.id
+        )
+    except SchemaError as exc:
+        return render(
+            request,
+            "entities/form.html",
+            {
+                "entity": None,
+                "form_data": {"name": name, "description": description, "icon": icon},
+                "error": str(exc),
+            },
+            status_code=400,
+        )
     return redirect_with_flash(f"/entities/{entity.id}", f"Entity '{entity.name}' created.")
 
 
@@ -141,7 +156,19 @@ def update_entity_post(
     entity = get_entity(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
-    update_entity(db, entity, EntityUpdate(name=name, description=description, icon=icon))
+    try:
+        update_entity(db, entity, EntityUpdate(name=name, description=description, icon=icon))
+    except SchemaError as exc:
+        return render(
+            request,
+            "entities/form.html",
+            {
+                "entity": entity,
+                "form_data": {"name": name, "description": description, "icon": icon},
+                "error": str(exc),
+            },
+            status_code=400,
+        )
     return redirect_with_flash(f"/entities/{entity.id}", f"Entity '{entity.name}' updated.")
 
 
@@ -163,6 +190,7 @@ def delete_entity_post(
 # --------------------------------------------------------------------------- #
 # Attributes
 # --------------------------------------------------------------------------- #
+
 
 @router.get("/entities/{entity_id}/attributes/new")
 def new_attribute_page(

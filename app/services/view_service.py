@@ -37,11 +37,10 @@ def filter_op_label(op: str) -> str:
 # CRUD
 # --------------------------------------------------------------------------- #
 
+
 def list_views(db: Session) -> list[View]:
     return list(
-        db.execute(
-            select(View).options(selectinload(View.entity)).order_by(View.name)
-        ).scalars()
+        db.execute(select(View).options(selectinload(View.entity)).order_by(View.name)).scalars()
     )
 
 
@@ -84,6 +83,7 @@ def delete_view(db: Session, view: View) -> None:
 # Apply a view's config to a set of records
 # --------------------------------------------------------------------------- #
 
+
 def apply_config(
     entity: Entity,
     records: list[Record],
@@ -104,9 +104,7 @@ def _apply_filters(
 ) -> list[Record]:
     result: list[Record] = []
     for record in records:
-        if all(
-            _match(record, attrs_by_slug, f) for f in filters
-        ):
+        if all(_match(record, attrs_by_slug, f) for f in filters):
             result.append(record)
     return result
 
