@@ -23,7 +23,7 @@ dashboard and views, and start entering data.
 
 ## Stack
 
-Python 3.11+ · FastAPI · SQLAlchemy 2.0 · SQLite · Jinja2 · HTMX · Argon2id.
+Python 3.12+ · FastAPI · SQLAlchemy 2.0 · SQLite · Jinja2 · HTMX · Argon2id.
 
 ## Quick start
 

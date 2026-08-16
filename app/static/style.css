@@ -60,7 +60,11 @@ body {
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.icon { width: 20px; height: 20px; flex-shrink: 0; }
+/* Font Awesome icons: a fixed width keeps the nav labels vertically aligned */
+.sidebar-brand i { font-size: 20px; color: var(--primary); flex-shrink: 0; }
+.nav-item i { font-size: 18px; width: 20px; text-align: center; flex-shrink: 0; }
+.sidebar-toggle i { font-size: 18px; width: 20px; text-align: center; flex-shrink: 0; }
+.icon-btn i { font-size: 20px; }
 
 /* ------------------------------------------------------------------ Layout */
 .layout { display: flex; min-height: 100vh; }
@@ -90,7 +94,6 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
 }
 .sidebar-brand:hover { text-decoration: none; }
-.sidebar-brand .icon { width: 22px; height: 22px; color: var(--primary); }
 
 .side-nav { flex: 1; padding: 0.75rem 0.5rem; display: flex; flex-direction: column; gap: 0.15rem; }
 
@@ -106,7 +109,6 @@ a:hover { text-decoration: underline; }
 }
 .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
 .nav-item.active { background: var(--hover); color: var(--primary); font-weight: 600; }
-.nav-item .icon { transition: none; }
 
 .sidebar-toggle {
   display: flex;
@@ -187,7 +189,7 @@ a:hover { text-decoration: underline; }
   font-family: inherit;
 }
 .user-menu-btn:hover { background: var(--hover); }
-.user-menu-btn .chevron { width: 16px; height: 16px; color: var(--muted); }
+.user-menu-btn .chevron { font-size: 12px; color: var(--muted); transition: transform 0.15s ease; }
 
 .user-menu-dropdown {
   position: absolute;
@@ -206,7 +208,9 @@ a:hover { text-decoration: underline; }
 .user-menu.open .chevron { transform: rotate(180deg); }
 
 .dropdown-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.7rem;
@@ -218,6 +222,7 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
   font-family: inherit;
 }
+.dropdown-item i { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
 .dropdown-item:hover { background: var(--hover); text-decoration: none; }
 .user-menu-dropdown form { margin: 0; }
 

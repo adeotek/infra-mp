@@ -16,12 +16,21 @@
     });
   }
 
-  // Sidebar collapse toggle.
+  // Sidebar collapse toggle. The button's tooltip/aria-label reflect the action
+  // it will perform (collapse vs expand), synced with any persisted state.
   var sidebarToggle = document.getElementById('sidebar-toggle');
   if (sidebarToggle) {
+    var updateToggleLabel = function () {
+      var collapsed = document.documentElement.classList.contains('sidebar-collapsed');
+      var label = collapsed ? 'Expand menu' : 'Collapse menu';
+      sidebarToggle.setAttribute('title', label);
+      sidebarToggle.setAttribute('aria-label', label);
+    };
+    updateToggleLabel();
     sidebarToggle.addEventListener('click', function () {
       var collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
       try { localStorage.setItem(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded'); } catch (e) { /* ignore */ }
+      updateToggleLabel();
     });
   }
 

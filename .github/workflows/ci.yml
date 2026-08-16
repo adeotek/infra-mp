@@ -18,7 +18,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Install dependencies
         run: uv sync
@@ -40,4 +40,4 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Build image
-        run: docker build -t homelab-manager:ci .
+        run: docker build -t infra-mp:ci .
