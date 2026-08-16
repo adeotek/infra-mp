@@ -6,7 +6,7 @@
   <div class="actions">
     <a href="/entities/{{ entity.id }}/records" class="btn btn-primary">View records</a>
     {% if can_manage_schema %}
-    <a href="/entities/{{ entity.id }}/edit" class="btn">Edit</a>
+    <a href="/entities/{{ entity.id }}/edit" class="btn" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
     <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
           onsubmit="return confirm('Delete this entity and all its records? This cannot be undone.');">
       <button type="submit" class="btn btn-danger">Delete</button>
@@ -19,7 +19,7 @@
 
 <h2>Attributes</h2>
 {% if can_manage_schema %}
-<p><a href="/entities/{{ entity.id }}/attributes/new" class="btn">Add attribute</a></p>
+<p><a href="/entities/{{ entity.id }}/attributes/new" class="btn" hx-get="/entities/{{ entity.id }}/attributes/new" hx-target="#modal-body">Add attribute</a></p>
 {% endif %}
 
 {% if entity.attributes %}
@@ -36,7 +36,7 @@
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td>
         {% if can_manage_schema %}
-        <a href="/attributes/{{ a.id }}/edit">Edit</a>
+        <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body">Edit</a>
         {% endif %}
       </td>
     </tr>

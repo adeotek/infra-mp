@@ -4,7 +4,7 @@
 <div class="page-head">
   <h1>Entities</h1>
   {% if can_manage_schema %}
-  <a href="/entities/new" class="btn btn-primary">New entity</a>
+  <a href="/entities/new" class="btn btn-primary" hx-get="/entities/new" hx-target="#modal-body">New entity</a>
   {% endif %}
 </div>
 <p class="muted">Entities define the structure of your data. Add attributes to each entity to describe what you want to track.</p>

@@ -428,3 +428,33 @@ code {
   .sidebar-brand, .nav-item, .sidebar-toggle { justify-content: center; padding-left: 0; padding-right: 0; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
 }
+
+/* -------------------------------------------------------------------- Modal */
+.modal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  max-width: 520px;
+  width: calc(100vw - 2rem);
+  box-shadow: var(--shadow);
+}
+.modal::backdrop { background: rgba(0, 0, 0, 0.55); }
+.modal-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.4rem 0.5rem 0;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 0 1.25rem 1.25rem; }
+.modal-body h1 { font-size: 1.25rem; margin-top: 0; }

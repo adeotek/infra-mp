@@ -98,4 +98,4 @@ def change_password_post(
         change_password(db, user, current_password, new_password)
     except UserError as exc:
         return render(request, "change_password.html", {"error": str(exc)}, status_code=400)
-    return redirect_with_flash("/dashboard", "Password changed.")
+    return redirect_with_flash("/dashboard", "Password changed.", request=request)

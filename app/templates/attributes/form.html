@@ -1,11 +1,11 @@
-{% extends "base.html" %}
+{% extends base_template %}
 {% block title %}{{ "Edit attribute" if attribute else "New attribute" }} — {{ app_name }}{% endblock %}
 {% block content %}
 <h1>{{ "Edit attribute" if attribute else "New attribute" }} <span class="muted">for {{ entity.name }}</span></h1>
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 
 {% set fd = form_data or attribute %}
-<form method="post" action="{{ action_url }}">
+<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post hx-target="#modal-body"{% endif %}>
   <label>Name
     <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
   </label>
@@ -52,7 +52,7 @@
 
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">Save</button>
-    <a href="/entities/{{ entity.id }}" class="btn">Cancel</a>
+    <a href="/entities/{{ entity.id }}" class="btn" data-modal-close>Cancel</a>
   </div>
 </form>
 

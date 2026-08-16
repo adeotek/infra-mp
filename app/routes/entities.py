@@ -106,7 +106,9 @@ def create_entity_post(
             },
             status_code=400,
         )
-    return redirect_with_flash(f"/entities/{entity.id}", f"Entity '{entity.name}' created.")
+    return redirect_with_flash(
+        f"/entities/{entity.id}", f"Entity '{entity.name}' created.", request=request
+    )
 
 
 @router.get("/entities/{entity_id}")
@@ -169,7 +171,9 @@ def update_entity_post(
             },
             status_code=400,
         )
-    return redirect_with_flash(f"/entities/{entity.id}", f"Entity '{entity.name}' updated.")
+    return redirect_with_flash(
+        f"/entities/{entity.id}", f"Entity '{entity.name}' updated.", request=request
+    )
 
 
 @router.post("/entities/{entity_id}/delete")
@@ -241,7 +245,9 @@ def create_attribute_post(
     except SchemaError as exc:
         return _render_attribute_form_error(request, db, entity, None, data, str(exc))
 
-    return redirect_with_flash(f"/entities/{entity.id}", f"Attribute '{attribute.name}' added.")
+    return redirect_with_flash(
+        f"/entities/{entity.id}", f"Attribute '{attribute.name}' added.", request=request
+    )
 
 
 @router.get("/attributes/{attribute_id}/edit")
@@ -295,7 +301,9 @@ def update_attribute_post(
     except SchemaError as exc:
         return _render_attribute_form_error(request, db, entity, attribute, data, str(exc))
 
-    return redirect_with_flash(f"/entities/{entity.id}", f"Attribute '{attribute.name}' updated.")
+    return redirect_with_flash(
+        f"/entities/{entity.id}", f"Attribute '{attribute.name}' updated.", request=request
+    )
 
 
 @router.post("/attributes/{attribute_id}/delete")

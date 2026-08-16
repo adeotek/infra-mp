@@ -83,7 +83,7 @@ async def create_user_post(
             },
             status_code=400,
         )
-    return redirect_with_flash("/users", f"User '{username}' created.")
+    return redirect_with_flash("/users", f"User '{username}' created.", request=request)
 
 
 @router.get("/users/{user_id}/edit")
@@ -118,7 +118,7 @@ async def update_user_post(
         "is_active" in raw,
         str(raw.get("password", "")) or None,
     )
-    return redirect_with_flash("/users", f"User '{target.username}' updated.")
+    return redirect_with_flash("/users", f"User '{target.username}' updated.", request=request)
 
 
 @router.post("/users/{user_id}/delete")

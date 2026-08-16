@@ -1,4 +1,4 @@
-/* InfraMP UI behaviours: theme switching, sidebar collapse, user menu. */
+/* InfraMP UI behaviours: theme switching, sidebar collapse, user menu, modal. */
 (function () {
   'use strict';
 
@@ -44,9 +44,45 @@
     });
     document.addEventListener('click', function (e) {
       if (!userMenu.contains(e.target)) userMenu.classList.remove('open');
+      if (e.target.closest('.dropdown-item')) userMenu.classList.remove('open');
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') userMenu.classList.remove('open');
+    });
+  }
+
+  // Modal dialog: opens when HTMX swaps a form fragment into #modal-body.
+  var modal = document.getElementById('modal');
+  if (modal) {
+    var modalBody = document.getElementById('modal-body');
+
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+      if (e.detail.target && e.detail.target.id === 'modal-body' && !modal.open) {
+        modal.showModal();
+      }
+    });
+
+    var closeBtn = document.getElementById('modal-close');
+    if (closeBtn) closeBtn.addEventListener('click', function () { modal.close(); });
+
+    // Clicking the backdrop (outside the dialog box) closes it.
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modal.close();
+    });
+
+    // Any element marked data-modal-close (e.g. a Cancel link) closes the modal;
+    // on a full page with no open modal it behaves like a normal link/button.
+    document.body.addEventListener('click', function (e) {
+      var el = e.target.closest('[data-modal-close]');
+      if (el && modal.open) {
+        e.preventDefault();
+        modal.close();
+      }
+    });
+
+    // Clear the body on close so stale content doesn't flash on the next open.
+    modal.addEventListener('close', function () {
+      if (modalBody) modalBody.innerHTML = '';
     });
   }
 })();
