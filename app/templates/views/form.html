@@ -8,7 +8,7 @@
 <form method="post" action="{{ '/views/' ~ view.id ~ '/edit' if view else '/views' }}">
   {% if not view %}<input type="hidden" name="entity_id" value="{{ entity.id }}">{% endif %}
 
-  <label>Name
+  <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ view.name if view else '' }}" autofocus>
   </label>
 

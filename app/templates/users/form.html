@@ -1,15 +1,16 @@
 {% extends base_template %}
 {% block title %}{{ "Edit user" if target_user else "New user" }} — {{ app_name }}{% endblock %}
 {% block content %}
+{% set action_url = '/users/' ~ target_user.id ~ '/edit' if target_user else '/users' %}
 <h1>{{ "Edit user" if target_user else "New user" }}</h1>
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
-<form method="post" action="{{ '/users/' ~ target_user.id ~ '/edit' if target_user else '/users' }}" {% if is_fragment %}hx-post hx-target="#modal-body"{% endif %}>
+<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
   {% if target_user %}
   <label>Username
     <input type="text" value="{{ target_user.username }}" disabled>
   </label>
   {% else %}
-  <label>Username
+  <label>Username <span class="req">*</span>
     <input type="text" name="username" required value="{{ form.username if form else '' }}" autofocus>
   </label>
   {% endif %}
@@ -36,7 +37,7 @@
     Active
   </label>
   {% else %}
-  <label>Password
+  <label>Password <span class="req">*</span>
     <input type="password" name="password" required autocomplete="new-password" minlength="8">
   </label>
   {% endif %}

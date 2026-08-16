@@ -2,10 +2,11 @@
 {% block title %}{{ "Edit entity" if entity else "New entity" }} — {{ app_name }}{% endblock %}
 {% block content %}
 {% set f = form_data or entity %}
+{% set action_url = '/entities/' ~ entity.id ~ '/edit' if entity else '/entities' %}
 <h1>{{ "Edit entity" if entity else "New entity" }}</h1>
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
-<form method="post" action="{{ '/entities/' ~ entity.id ~ '/edit' if entity else '/entities' }}" {% if is_fragment %}hx-post hx-target="#modal-body"{% endif %}>
-  <label>Name
+<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
+  <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ f.name if f else '' }}" autofocus>
   </label>
   <label>Description
