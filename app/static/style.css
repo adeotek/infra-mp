@@ -185,6 +185,44 @@ form input:focus, form select:focus, form textarea:focus {
 .table-wrap { overflow-x: auto; }
 .muted code { color: var(--muted); }
 
+/* Fieldset sections + grids */
+.form-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  background: var(--surface);
+}
+.form-section legend {
+  font-weight: 600;
+  padding: 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; }
+.filter-row { margin-bottom: 0.5rem; }
+.filter-row select, .filter-row input { margin-top: 0; }
+#add-filter { margin-top: 0.5rem; }
+
+/* Dashboard widgets */
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+.widget {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+.widget h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+.stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
+
 code {
   background: #eef1f4;
   padding: 0.1rem 0.35rem;

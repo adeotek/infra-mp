@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}New view — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>New view</h1>
+<p class="muted">Choose which entity this view displays data from.</p>
+{% if entities %}
+<form method="get" action="/views/new">
+  <label>Entity
+    <select name="entity_id">
+      {% for e in entities %}
+      <option value="{{ e.id }}">{{ e.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Continue</button>
+    <a href="/views" class="btn">Cancel</a>
+  </div>
+</form>
+{% else %}
+<div class="empty-state"><p>Create an entity before creating views.</p></div>
+{% endif %}
+{% endblock %}

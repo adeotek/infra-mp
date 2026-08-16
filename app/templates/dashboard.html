@@ -1,7 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ app_name }}{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-<p>Welcome, {{ current_user.display_name or current_user.username }}.</p>
-<p class="muted">Dashboard configuration and widgets are coming next.</p>
+<div class="page-head">
+  <h1>Dashboard</h1>
+  {% if can_manage_dashboard %}<a href="/dashboard/config" class="btn">Configure</a>{% endif %}
+</div>
+
+{% if widgets %}
+<div class="widget-grid">
+  {% for w in widgets %}
+  <section class="widget">
+    <h2>{{ w.widget.title or (w.widget.view.name if w.widget.view else (w.widget.entity.name if w.widget.entity else 'Widget')) }}</h2>
+    {% if w.widget.widget_type == 'count' %}
+    <div class="stat-value">{{ w.data }}</div>
+    {% elif w.data %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr>{% for c in w.data.columns %}<th>{{ c.name }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% for row in w.data.rows %}
+          <tr>{% for c in w.data.columns %}<td>{{ row.cells[c.slug] }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="muted">No entity selected for this widget.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Your dashboard is empty.</p>
+  {% if can_manage_dashboard %}
+  <p><a href="/dashboard/config" class="btn btn-primary">Add a widget</a></p>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

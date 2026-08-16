@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Views — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Views</h1>
+  {% if can_manage_views %}
+  <a href="/views/new" class="btn btn-primary">New view</a>
+  {% endif %}
+</div>
+<p class="muted">Views are saved, filtered, sorted windows into a single entity's data.</p>
+
+{% if views %}
+<table class="table">
+  <thead><tr><th>Name</th><th>Entity</th><th>Filters</th><th></th></tr></thead>
+  <tbody>
+  {% for v in views %}
+    <tr>
+      <td><a href="/views/{{ v.id }}">{{ v.name }}</a></td>
+      <td>{{ v.entity.name if v.entity else "—" }}</td>
+      <td>{{ v.config.get('filters', [])|length }}</td>
+      <td class="row-actions">
+        {% if can_manage_views %}
+        <a href="/views/{{ v.id }}/edit">Edit</a>
+        <form method="post" action="/views/{{ v.id }}/delete" class="inline"
+              onsubmit="return confirm('Delete this view?');">
+          <button type="submit" class="link-danger">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state"><p>No views yet. Create a view to save a filtered look at your data.</p></div>
+{% endif %}
+{% endblock %}

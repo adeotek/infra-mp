@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Edit widget — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>Edit widget</h1>
+<form method="post" action="/dashboard/widgets/{{ widget.id }}/edit">
+  <div class="grid-2">
+    <label>Title
+      <input type="text" name="title" value="{{ widget.title }}">
+    </label>
+    <label>Type
+      <select name="widget_type">
+        <option value="table" {% if widget.widget_type == 'table' %}selected{% endif %}>Table</option>
+        <option value="count" {% if widget.widget_type == 'count' %}selected{% endif %}>Count</option>
+      </select>
+    </label>
+    <label>Entity
+      <select name="entity_id">
+        <option value="">— none —</option>
+        {% for e in entities %}
+        <option value="{{ e.id }}" {% if widget.entity_id == e.id %}selected{% endif %}>{{ e.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>View (optional filter)
+      <select name="view_id">
+        <option value="">— none —</option>
+        {% for v in views %}
+        <option value="{{ v.id }}" {% if widget.view_id == v.id %}selected{% endif %}>{{ v.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/dashboard/config" class="btn">Cancel</a>
+  </div>
+</form>
+{% endblock %}

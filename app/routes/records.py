@@ -16,6 +16,7 @@ from app.auth.permissions import (
 )
 from app.db import get_session
 from app.flash import redirect_with_flash
+from app.form import parse_form
 from app.models.record import Record
 from app.models.user import User
 from app.services.record_service import (
@@ -34,21 +35,6 @@ from app.services.schema_service import get_entity_with_attributes
 from app.templates import render
 
 router = APIRouter()
-
-
-async def _parse_form(request: Request) -> dict[str, Any]:
-    """Read form data into a dict, collapsing repeated keys into lists."""
-    form = await request.form()
-    raw: dict[str, Any] = {}
-    for key, value in form.multi_items():
-        if key in raw:
-            if isinstance(raw[key], list):
-                raw[key].append(value)
-            else:
-                raw[key] = [raw[key], value]
-        else:
-            raw[key] = value
-    return raw
 
 
 @router.get("/entities/{entity_id}/records")
@@ -109,7 +95,7 @@ async def create_record_post(
     entity = get_entity_with_attributes(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
-    raw = await _parse_form(request)
+    raw = await parse_form(request)
     try:
         record = create_record(db, entity, entity.attributes, raw, user_id=user.id)
     except RecordError as exc:
@@ -153,7 +139,7 @@ async def update_record_post(
     if record is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, record.entity_id)
-    raw = await _parse_form(request)
+    raw = await parse_form(request)
     try:
         update_record(db, record, entity.attributes, raw, user_id=user.id)
     except RecordError as exc:

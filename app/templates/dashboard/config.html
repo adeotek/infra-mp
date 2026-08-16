@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard configuration — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard configuration</h1>
+  <a href="/dashboard" class="btn">Back to dashboard</a>
+</div>
+<p class="muted">Add, edit, and remove widgets shown on the dashboard.</p>
+
+<h2>Add widget</h2>
+<form method="post" action="/dashboard/widgets" class="form-section">
+  <div class="grid-2">
+    <label>Title
+      <input type="text" name="title" placeholder="e.g. Active servers">
+    </label>
+    <label>Type
+      <select name="widget_type">
+        <option value="table">Table</option>
+        <option value="count">Count</option>
+      </select>
+    </label>
+    <label>Entity
+      <select name="entity_id">
+        <option value="">— none —</option>
+        {% for e in entities %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>View (optional filter)
+      <select name="view_id">
+        <option value="">— none —</option>
+        {% for v in views %}<option value="{{ v.id }}">{{ v.name }} ({{ v.entity.name if v.entity else '—' }})</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Add widget</button>
+  </div>
+</form>
+
+<h2>Widgets</h2>
+{% if widgets %}
+<table class="table">
+  <thead><tr><th>Title</th><th>Type</th><th>Entity</th><th></th></tr></thead>
+  <tbody>
+  {% for w in widgets %}
+    <tr>
+      <td>{{ w.title or '—' }}</td>
+      <td><code>{{ w.widget_type }}</code></td>
+      <td>{{ w.entity.name if w.entity else '—' }}</td>
+      <td class="row-actions">
+        <a href="/dashboard/widgets/{{ w.id }}/edit">Edit</a>
+        <form method="post" action="/dashboard/widgets/{{ w.id }}/delete" class="inline"
+              onsubmit="return confirm('Remove this widget?');">
+          <button type="submit" class="link-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No widgets yet.</p>
+{% endif %}
+{% endblock %}

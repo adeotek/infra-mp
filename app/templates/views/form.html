@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit view" if view else "New view" }} — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>{{ "Edit view" if view else "New view" }} <span class="muted">for {{ entity.name }}</span></h1>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+{% set cfg = current_config or {} %}
+<form method="post" action="{{ '/views/' ~ view.id ~ '/edit' if view else '/views' }}">
+  {% if not view %}<input type="hidden" name="entity_id" value="{{ entity.id }}">{% endif %}
+
+  <label>Name
+    <input type="text" name="name" required value="{{ view.name if view else '' }}" autofocus>
+  </label>
+
+  <fieldset class="form-section">
+    <legend>Columns</legend>
+    <p class="muted">Leave all unchecked to show every attribute.</p>
+    {% for a in entity.attributes %}
+    <label class="checkbox-label">
+      <input type="checkbox" name="columns" value="{{ a.slug }}"
+        {% if cfg.get('columns') and a.slug in cfg.get('columns') %}checked{% endif %}>
+      {{ a.name }}
+    </label>
+    {% endfor %}
+  </fieldset>
+
+  <fieldset class="form-section">
+    <legend>Sort</legend>
+    <div class="grid-2">
+      <label>Attribute
+        <select name="sort_slug">
+          <option value="">— none —</option>
+          {% for a in entity.attributes %}
+          <option value="{{ a.slug }}" {% if cfg.get('sort', {}).get('slug') == a.slug %}selected{% endif %}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Direction
+        <select name="sort_dir">
+          <option value="asc" {% if cfg.get('sort', {}).get('dir', 'asc') == 'asc' %}selected{% endif %}>Ascending</option>
+          <option value="desc" {% if cfg.get('sort', {}).get('dir') == 'desc' %}selected{% endif %}>Descending</option>
+        </select>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset class="form-section">
+    <legend>Filters</legend>
+    <div id="filters">
+      {% set existing_filters = cfg.get('filters', []) %}
+      {% for f in existing_filters %}
+      <div class="filter-row grid-3">
+        <select name="filter_slug">
+          <option value="">— attribute —</option>
+          {% for a in entity.attributes %}
+          <option value="{{ a.slug }}" {% if f.slug == a.slug %}selected{% endif %}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="filter_op">
+          {% for op in filter_ops %}
+          <option value="{{ op }}" {% if f.op == op %}selected{% endif %}>{{ filter_op_label(op) }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="filter_value" value="{{ f.value }}" placeholder="value">
+        <button type="button" class="btn btn-ghost remove-filter">Remove</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" id="add-filter" class="btn">Add filter</button>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/views" class="btn">Cancel</a>
+  </div>
+</form>
+
+<template id="filter-row-template">
+  <div class="filter-row grid-3">
+    <select name="filter_slug">
+      <option value="">— attribute —</option>
+      {% for a in entity.attributes %}
+      <option value="{{ a.slug }}">{{ a.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="filter_op">
+      {% for op in filter_ops %}
+      <option value="{{ op }}">{{ filter_op_label(op) }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="filter_value" placeholder="value">
+    <button type="button" class="btn btn-ghost remove-filter">Remove</button>
+  </div>
+</template>
+
+<script>
+  (function () {
+    var container = document.getElementById('filters');
+    var template = document.getElementById('filter-row-template');
+    document.getElementById('add-filter').addEventListener('click', function () {
+      container.appendChild(template.content.cloneNode(true));
+    });
+    container.addEventListener('click', function (e) {
+      if (e.target.classList.contains('remove-filter')) {
+        e.target.closest('.filter-row').remove();
+      }
+    });
+  })();
+</script>
+{% endblock %}
