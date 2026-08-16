@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="HOMELAB_", extra="ignore")
 
-    app_name: str = "HomeLab Manager"
+    app_name: str = "InfraMP"
     data_dir: Path = Path("data")
     secret_key: str = "change-me-in-production"
     session_cookie_name: str = "homelab_session"

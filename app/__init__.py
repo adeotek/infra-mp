@@ -1,3 +1,3 @@
-"""HomeLab Manager application package."""
+"""InfraMP application package."""
 
 __version__ = "0.1.0"

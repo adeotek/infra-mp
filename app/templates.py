@@ -23,6 +23,7 @@ def render(
     """Render a template with common context (current user, app name)."""
     ctx: dict = {
         "current_user": getattr(request.state, "current_user", None),
+        "current_path": request.url.path,
         "app_name": get_settings().app_name,
         "flash": request.query_params.get("flash"),
         "flash_type": request.query_params.get("flash_type", "success"),

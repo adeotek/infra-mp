@@ -38,3 +38,58 @@ def test_logout_invalidates_session(client, login):
 def test_admin_is_seeded_on_first_startup(client, login):
     login()
     assert client.get("/users").status_code == 200
+
+
+def test_change_password_flow(client, login, admin_password):
+    login()
+    assert client.get("/settings/password").status_code == 200
+
+    # Wrong current password is rejected.
+    resp = client.post(
+        "/settings/password",
+        data={
+            "current_password": "wrong-pw",
+            "new_password": "new-pass-123",
+            "confirm_password": "new-pass-123",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+    # Mismatched confirmation is rejected.
+    resp = client.post(
+        "/settings/password",
+        data={
+            "current_password": admin_password,
+            "new_password": "new-pass-123",
+            "confirm_password": "different",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+    # Successful change redirects.
+    resp = client.post(
+        "/settings/password",
+        data={
+            "current_password": admin_password,
+            "new_password": "new-pass-123",
+            "confirm_password": "new-pass-123",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    # Old password no longer works; the new one does.
+    assert (
+        client.post(
+            "/login", data={"username": "admin", "password": admin_password}, follow_redirects=False
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/login", data={"username": "admin", "password": "new-pass-123"}, follow_redirects=False
+        ).status_code
+        == 303
+    )

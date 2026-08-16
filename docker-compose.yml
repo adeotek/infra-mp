@@ -1,12 +1,12 @@
 services:
-  homelab-manager:
+  infra-mp:
     build: .
-    image: homelab-manager:latest
-    container_name: homelab-manager
+    image: infra-mp:latest
+    container_name: infra-mp
     ports:
       - "8000:8000"
     volumes:
-      - homelab-data:/data
+      - infra-mp-data:/data
     environment:
       HOMELAB_DATA_DIR: /data
       HOMELAB_SECRET_KEY: ${HOMELAB_SECRET_KEY:-change-me-to-a-long-random-string}
@@ -17,4 +17,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  homelab-data:
+  infra-mp-data:

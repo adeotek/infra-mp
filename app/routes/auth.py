@@ -7,11 +7,14 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_user
 from app.auth.password import verify_password
 from app.auth.sessions import create_session, delete_session
 from app.config import get_settings
 from app.db import get_session
+from app.flash import redirect_with_flash
 from app.models.user import User
+from app.services.user_service import UserError, change_password
 from app.templates import render
 
 router = APIRouter()
@@ -68,3 +71,31 @@ def logout(request: Request, db: Session = Depends(get_session)):
     response = RedirectResponse("/login", status_code=303)
     response.delete_cookie(get_settings().session_cookie_name)
     return response
+
+
+@router.get("/settings/password")
+def change_password_page(request: Request, user: User = Depends(get_current_user)):
+    return render(request, "change_password.html", {})
+
+
+@router.post("/settings/password")
+def change_password_post(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    if new_password != confirm_password:
+        return render(
+            request,
+            "change_password.html",
+            {"error": "New passwords do not match."},
+            status_code=400,
+        )
+    try:
+        change_password(db, user, current_password, new_password)
+    except UserError as exc:
+        return render(request, "change_password.html", {"error": str(exc)}, status_code=400)
+    return redirect_with_flash("/dashboard", "Password changed.")

@@ -1,4 +1,4 @@
-# HomeLab Manager — single-container deployment
+# InfraMP — single-container deployment
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

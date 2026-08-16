@@ -1,5 +1,5 @@
 [project]
-name = "homelab-manager"
+name = "infra-mp"
 version = "0.1.0"
 description = "Self-hosted infrastructure, hardware, and configuration manager for home labs and small data centers."
 readme = "README.md"

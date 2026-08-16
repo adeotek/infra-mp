@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.password import hash_password
+from app.auth.password import hash_password, verify_password
 from app.models.enums import Role
 from app.models.user import User
 
@@ -81,3 +81,16 @@ def delete_user(db: Session, user: User, current_user: User) -> None:
             raise UserError("Cannot delete the last active admin.")
     db.delete(user)
     db.commit()
+
+
+def change_password(db: Session, user: User, current_password: str, new_password: str) -> User:
+    """Update a user's own password, verifying the current one first."""
+    if not verify_password(current_password, user.password_hash):
+        raise UserError("Current password is incorrect.")
+    if len(new_password) < 8:
+        raise UserError("New password must be at least 8 characters.")
+    if new_password == current_password:
+        raise UserError("New password must be different from the current password.")
+    user.password_hash = hash_password(new_password)
+    db.commit()
+    return user

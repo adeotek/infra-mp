@@ -36,8 +36,5 @@ def seed_admin(db: Session, settings: Settings) -> None:
     db.commit()
 
     if not settings.admin_password:
-        print(
-            f"[homelab-manager] Seeded admin user '{settings.admin_username}' "
-            f"with password: {password}"
-        )
-        print("[homelab-manager] Log in and change it, or set HOMELAB_ADMIN_PASSWORD and restart.")
+        print(f"[infra-mp] Seeded admin user '{settings.admin_username}' with password: {password}")
+        print("[infra-mp] Log in and change it, or set HOMELAB_ADMIN_PASSWORD and restart.")

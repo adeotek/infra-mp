@@ -1,4 +1,4 @@
-# HomeLab Manager — common development commands.
+# InfraMP — common development commands.
 # Uses `uv` as the package manager. Run `make help` for a quick overview.
 
 .DEFAULT_GOAL := help
@@ -6,7 +6,7 @@
 .PHONY: help install dev migrate migration test lint format format-check check build up down logs clean
 
 help: ## Show available targets
-	@echo "HomeLab Manager — development commands"
+	@echo "InfraMP — development commands"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
@@ -38,7 +38,7 @@ check: lint format-check test ## Run all checks (lint + format + tests)
 	@echo "All checks passed"
 
 build: ## Build the Docker image
-	docker build -t homelab-manager:latest .
+	docker build -t infra-mp:latest .
 
 up: ## Start the app via docker compose (detached)
 	docker compose up -d

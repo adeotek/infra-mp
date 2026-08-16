@@ -1,4 +1,4 @@
-# HomeLab Manager
+# InfraMP
 
 A self-hosted web application for managing infrastructure, hardware, and
 configuration data for home labs and small private data centres.
@@ -19,6 +19,7 @@ dashboard and views, and start entering data.
 - **SQLite storage** — zero external services required. One container, one
   process, one database file.
 - **Server-rendered UI with HTMX** — no heavy frontend build step.
+- **Dark & light themes** — dark by default, switchable, persisted.
 
 ## Stack
 

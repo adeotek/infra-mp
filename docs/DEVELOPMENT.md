@@ -8,8 +8,8 @@
 ## Setup
 
 ```bash
-git clone <repo-url> homelab-manager
-cd homelab-manager
+git clone <repo-url> infra-mp
+cd infra-mp
 
 # Install dependencies and create the virtualenv
 uv sync

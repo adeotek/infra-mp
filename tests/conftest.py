@@ -53,6 +53,12 @@ def client(settings, engine):
 
 
 @pytest.fixture
+def admin_password():
+    """The seeded admin password (matches ``settings.admin_password``)."""
+    return ADMIN_PASSWORD
+
+
+@pytest.fixture
 def login(client):
     """Return a helper that logs in and stores the session cookie."""
 
