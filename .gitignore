@@ -1,0 +1,30 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build artifacts
+dist/
+build/
+
+# Local environment & secrets
+.env
+.env.local
+
+# Runtime data (SQLite DB lives here)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Coverage
+.coverage
+htmlcov/
+
+# Editors
+.idea/
+.vscode/

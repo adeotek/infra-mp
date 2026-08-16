@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p>Welcome, {{ current_user.display_name or current_user.username }}.</p>
+<p class="muted">Dashboard configuration and widgets are coming next.</p>
+{% endblock %}

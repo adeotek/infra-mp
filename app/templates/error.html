@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="error-card">
+  <h1>{{ code }}</h1>
+  <p>{{ message }}</p>
+  <a href="/" class="btn btn-primary">Back to home</a>
+</div>
+{% endblock %}
