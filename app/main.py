@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.auth.seed import seed_admin
 from app.config import Settings, get_settings
 from app.db import build_engine, build_session_factory
-from app.routes import auth, dashboard
+from app.routes import auth, dashboard, entities, records
 from app.templates import render
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -71,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(dashboard.router)
+    app.include_router(entities.router)
+    app.include_router(records.router)
 
     return app
 

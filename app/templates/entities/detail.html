@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ entity.name }} — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ entity.name }}</h1>
+  <div class="actions">
+    <a href="/entities/{{ entity.id }}/records" class="btn btn-primary">View records</a>
+    {% if can_manage_schema %}
+    <a href="/entities/{{ entity.id }}/edit" class="btn">Edit</a>
+    <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
+          onsubmit="return confirm('Delete this entity and all its records? This cannot be undone.');">
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% if entity.description %}<p class="muted">{{ entity.description }}</p>{% endif %}
+<p class="muted">Slug: <code>{{ entity.slug }}</code> · {{ record_counts.get(entity.id, 0) }} records</p>
+
+<h2>Attributes</h2>
+{% if can_manage_schema %}
+<p><a href="/entities/{{ entity.id }}/attributes/new" class="btn">Add attribute</a></p>
+{% endif %}
+
+{% if entity.attributes %}
+<table class="table">
+  <thead>
+    <tr><th>Name</th><th>Type</th><th>Required</th><th>Default</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for a in entity.attributes %}
+    <tr>
+      <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
+      <td><code>{{ a.data_type }}</code></td>
+      <td>{{ "Yes" if a.is_required else "—" }}</td>
+      <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
+      <td>
+        {% if can_manage_schema %}
+        <a href="/attributes/{{ a.id }}/edit">Edit</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state"><p>No attributes yet. Add attributes to define what this entity stores.</p></div>
+{% endif %}
+{% endblock %}

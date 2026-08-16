@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Entities — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Entities</h1>
+  {% if can_manage_schema %}
+  <a href="/entities/new" class="btn btn-primary">New entity</a>
+  {% endif %}
+</div>
+<p class="muted">Entities define the structure of your data. Add attributes to each entity to describe what you want to track.</p>
+
+{% if entities %}
+<table class="table">
+  <thead>
+    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for e in entities %}
+    <tr>
+      <td><a href="/entities/{{ e.id }}">{{ e.name }}</a></td>
+      <td class="muted">{{ e.slug }}</td>
+      <td>{{ e.attributes|length }}</td>
+      <td>{{ record_counts.get(e.id, 0) }}</td>
+      <td><a href="/entities/{{ e.id }}">Open</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+  <p>No entities yet. Create your first entity to start modelling your environment.</p>
+</div>
+{% endif %}
+{% endblock %}

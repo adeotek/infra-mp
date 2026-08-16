@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ entity.name }} records — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ entity.name }}</h1>
+  <div class="actions">
+    {% if can_create %}
+    <a href="/entities/{{ entity.id }}/records/new" class="btn btn-primary">Add record</a>
+    {% endif %}
+    <a href="/entities/{{ entity.id }}" class="btn">Back to entity</a>
+  </div>
+</div>
+<p class="muted">{{ rows|length }} record(s)</p>
+
+{% if entity.attributes %}
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
+          {% if can_update %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for attr in entity.attributes %}
+          <td>{{ row.cells[attr.slug] }}</td>
+          {% endfor %}
+          {% if can_update %}
+          <td class="row-actions">
+            <a href="/records/{{ row.record.id }}/edit">Edit</a>
+            {% if can_delete %}
+            <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
+                  onsubmit="return confirm('Delete this record?');">
+              <button type="submit" class="link-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><p>No records yet. Add your first record.</p></div>
+  {% endif %}
+{% else %}
+<div class="empty-state">
+  <p>This entity has no attributes yet. Add attributes before entering records.</p>
+</div>
+{% endif %}
+{% endblock %}

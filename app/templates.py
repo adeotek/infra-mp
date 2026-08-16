@@ -10,6 +10,8 @@ from fastapi.templating import Jinja2Templates
 from app.config import get_settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+# Format an ISO datetime ("YYYY-MM-DDTHH:MM:SS") for <input type="datetime-local">.
+templates.env.filters["datetime_local"] = lambda value: (value or "")[:16]
 
 
 def render(
@@ -22,6 +24,8 @@ def render(
     ctx: dict = {
         "current_user": getattr(request.state, "current_user", None),
         "app_name": get_settings().app_name,
+        "flash": request.query_params.get("flash"),
+        "flash_type": request.query_params.get("flash_type", "success"),
     }
     if context:
         ctx.update(context)

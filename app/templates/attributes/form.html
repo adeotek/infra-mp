@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit attribute" if attribute else "New attribute" }} — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>{{ "Edit attribute" if attribute else "New attribute" }} <span class="muted">for {{ entity.name }}</span></h1>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+{% set fd = form_data or attribute %}
+<form method="post" action="{{ action_url }}">
+  <label>Name
+    <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
+  </label>
+
+  <label>Type
+    <select name="data_type" id="data_type">
+      {% for t in data_types %}
+      <option value="{{ t.value }}" {% if fd and fd.data_type == t.value %}selected{% endif %}>{{ t.value }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label class="checkbox-label">
+    <input type="checkbox" name="is_required" {% if fd and fd.is_required %}checked{% endif %}>
+    Required
+  </label>
+
+  <label>Default value
+    <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
+  </label>
+
+  <div id="enum_fields" class="conditional">
+    <label>Options (one per line)
+      <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>
+    </label>
+  </div>
+
+  <div id="reference_fields" class="conditional">
+    <label>Target entity
+      <select name="reference_entity_id">
+        {% for e in entities %}
+        <option value="{{ e.id }}"
+          {% if fd and fd.reference_entity_id == e.id %}selected{% endif %}>{{ e.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Cardinality
+      <select name="cardinality">
+        <option value="one" {% if fd and fd.cardinality == 'one' %}selected{% endif %}>One</option>
+        <option value="many" {% if fd and fd.cardinality == 'many' %}selected{% endif %}>Many</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/entities/{{ entity.id }}" class="btn">Cancel</a>
+  </div>
+</form>
+
+<script>
+  (function () {
+    var typeEl = document.getElementById('data_type');
+    var enumFields = document.getElementById('enum_fields');
+    var refFields = document.getElementById('reference_fields');
+    function toggle() {
+      var t = typeEl.value;
+      enumFields.style.display = (t === 'enum') ? 'block' : 'none';
+      refFields.style.display = (t === 'reference') ? 'block' : 'none';
+    }
+    typeEl.addEventListener('change', toggle);
+    toggle();
+  })();
+</script>
+{% endblock %}

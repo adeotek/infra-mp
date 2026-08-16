@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit record" if record else "New record" }} — {{ entity.name }} — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ "Edit record" if record else "New record" }} <span class="muted">in {{ entity.name }}</span></h1>
+  <a href="/entities/{{ entity.id }}/records" class="btn">Back to records</a>
+</div>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+{% if entity.attributes %}
+<form method="post" action="{{ action_url }}">
+  {% for attr in entity.attributes %}
+  {% set val = current.get(attr.slug) if current else none %}
+  <label>{{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
+    {% if attr.data_type == 'textarea' %}
+    <textarea name="{{ attr.slug }}" rows="4">{{ val if val is not none else '' }}</textarea>
+    {% elif attr.data_type == 'boolean' %}
+    <input type="checkbox" name="{{ attr.slug }}" {% if val %}checked{% endif %}>
+    {% elif attr.data_type == 'integer' %}
+    <input type="number" step="1" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    {% elif attr.data_type == 'decimal' %}
+    <input type="number" step="any" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    {% elif attr.data_type == 'date' %}
+    <input type="date" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    {% elif attr.data_type == 'datetime' %}
+    <input type="datetime-local" name="{{ attr.slug }}" value="{{ val | datetime_local }}">
+    {% elif attr.data_type == 'enum' %}
+    <select name="{{ attr.slug }}">
+      <option value="">—</option>
+      {% for opt in attr.config.get('options', []) %}
+      <option value="{{ opt }}" {% if val == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+    {% elif attr.data_type == 'reference' %}
+      {% if attr.config.get('cardinality', 'one') == 'many' %}
+      <select name="{{ attr.slug }}" multiple size="5">
+        {% for rid, title in ref_options.get(attr.slug, []) %}
+        <option value="{{ rid }}" {% if val and rid in val %}selected{% endif %}>{{ title }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <select name="{{ attr.slug }}">
+        <option value="">—</option>
+        {% for rid, title in ref_options.get(attr.slug, []) %}
+        <option value="{{ rid }}" {% if val == rid %}selected{% endif %}>{{ title }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+    {% else %}
+    <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    {% endif %}
+  </label>
+  {% endfor %}
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a href="/entities/{{ entity.id }}/records" class="btn">Cancel</a>
+  </div>
+</form>
+{% else %}
+<div class="empty-state"><p>Add attributes to this entity before entering records.</p></div>
+{% endif %}
+{% endblock %}

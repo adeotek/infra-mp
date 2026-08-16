@@ -31,6 +31,9 @@
     </div>
   </header>
   <main class="content">
+    {% if flash %}
+    <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>
