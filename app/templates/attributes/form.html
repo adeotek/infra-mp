@@ -27,6 +27,10 @@
     <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
   </label>
 
+  <label>Hint text <span class="muted">(optional)</span>
+    <textarea name="hint" rows="2" placeholder="Shown under this field on record add/edit forms">{{ fd.hint if fd and fd.hint else '' }}</textarea>
+  </label>
+
   <div id="enum_fields" class="conditional">
     <label>Options (one per line)
       <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>

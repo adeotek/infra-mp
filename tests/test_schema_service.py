@@ -93,3 +93,26 @@ def test_delete_attribute_removes_value_from_records(db_session):
     delete_attribute(db_session, extra)
     records = list_records(db_session, entity.id)
     assert "cores" not in records[0].data
+
+
+def test_add_attribute_stores_hint(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Hostname", data_type=DataType.TEXT, hint="FQDN of the server."),
+    )
+    assert attr.hint == "FQDN of the server."
+
+
+def test_update_attribute_updates_hint(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, hint="Updated hint"),
+    )
+    assert attr.hint == "Updated hint"

@@ -368,6 +368,7 @@ form input:focus, form select:focus, form textarea:focus {
 .conditional { display: none; }
 
 .req { color: var(--danger); }
+.hint { display: block; margin-top: 0.3rem; font-size: 0.85em; font-weight: 400; color: var(--muted); }
 .link-danger { background: none; border: none; color: var(--danger); cursor: pointer; padding: 0; font-size: 0.9rem; }
 .link-danger:hover { text-decoration: underline; }
 .row-actions { display: flex; align-items: center; gap: 0.75rem; white-space: nowrap; }

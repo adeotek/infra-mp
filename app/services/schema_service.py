@@ -143,6 +143,7 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         data_type=data.data_type.value,
         is_required=data.is_required,
         default_value=coerce_value(data.data_type, data.default_value),
+        hint=(data.hint.strip() if data.hint else None),
         config=_build_config(data),
         sort_order=_next_sort_order(db, entity.id),
     )
@@ -157,6 +158,7 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     attribute.data_type = data.data_type.value
     attribute.is_required = data.is_required
     attribute.default_value = coerce_value(data.data_type, data.default_value)
+    attribute.hint = data.hint.strip() if data.hint else None
     attribute.config = _build_config(data)
     db.commit()
     return attribute

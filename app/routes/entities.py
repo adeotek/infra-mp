@@ -41,6 +41,7 @@ def _attribute_from_form(
     options: str,
     reference_entity_id: str,
     cardinality: str,
+    hint: str = "",
 ) -> AttributeCreate:
     options_list = [o.strip() for o in options.splitlines() if o.strip()] or None
     ref_id = int(reference_entity_id) if reference_entity_id.strip() else None
@@ -52,6 +53,7 @@ def _attribute_from_form(
         options=options_list,
         reference_entity_id=ref_id,
         cardinality="many" if cardinality == "many" else "one",
+        hint=hint.strip() or None,
     )
 
 
@@ -232,13 +234,21 @@ def create_attribute_post(
     options: str = Form(""),
     reference_entity_id: str = Form(""),
     cardinality: str = Form("one"),
+    hint: str = Form(""),
 ):
     entity = get_entity(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
 
     data = _attribute_from_form(
-        name, data_type, is_required, default_value, options, reference_entity_id, cardinality
+        name,
+        data_type,
+        is_required,
+        default_value,
+        options,
+        reference_entity_id,
+        cardinality,
+        hint,
     )
     try:
         attribute = add_attribute(db, entity, data)
@@ -287,6 +297,7 @@ def update_attribute_post(
     options: str = Form(""),
     reference_entity_id: str = Form(""),
     cardinality: str = Form("one"),
+    hint: str = Form(""),
 ):
     attribute = db.get(Attribute, attribute_id)
     if attribute is None:
@@ -294,7 +305,14 @@ def update_attribute_post(
     entity = get_entity(db, attribute.entity_id)
 
     data = _attribute_from_form(
-        name, data_type, is_required, default_value, options, reference_entity_id, cardinality
+        name,
+        data_type,
+        is_required,
+        default_value,
+        options,
+        reference_entity_id,
+        cardinality,
+        hint,
     )
     try:
         update_attribute(db, attribute, data)

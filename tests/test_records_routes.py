@@ -106,3 +106,16 @@ def test_delete_record(client, login):
 def test_delete_record_404(client, login):
     _seed_server(client, login)
     assert client.post("/records/9999/delete", follow_redirects=False).status_code == 404
+
+
+def test_record_form_renders_attribute_hint(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "hint": "FQDN of the server."},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records/new").text
+    assert "FQDN of the server." in html
+    assert 'class="hint"' in html

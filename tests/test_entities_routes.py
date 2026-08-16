@@ -154,3 +154,23 @@ def test_delete_attribute(client, login):
 def test_delete_attribute_404(client, login):
     login()
     assert client.post("/attributes/9999/delete", follow_redirects=False).status_code == 404
+
+
+def test_create_attribute_with_hint(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    resp = client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "hint": "FQDN of the server."},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    # Hint is persisted and shown on the edit form.
+    assert "FQDN of the server." in client.get("/attributes/1/edit").text
+
+
+def test_attribute_form_has_hint_field(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert 'name="hint"' in html

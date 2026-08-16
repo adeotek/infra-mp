@@ -14,6 +14,8 @@ class AttributeCreate(BaseModel):
     data_type: DataType
     is_required: bool = False
     default_value: Any | None = None
+    # Help text shown under the field on record add/edit forms.
+    hint: str | None = None
     # Enum-specific: the list of allowed values.
     options: list[str] | None = None
     # Reference-specific: the target entity and relationship cardinality.

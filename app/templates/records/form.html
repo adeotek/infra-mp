@@ -49,6 +49,7 @@
     {% else %}
     <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
     {% endif %}
+    {% if attr.hint %}<span class="hint">{{ attr.hint }}</span>{% endif %}
   </label>
   {% endfor %}
   <div class="form-actions">
