@@ -57,6 +57,25 @@ uv run ruff check .           # lint
 uv run ruff format .          # format
 ```
 
+## Make targets
+
+A `Makefile` wraps the common commands:
+
+```bash
+make help        # list all targets
+make dev         # run the dev server with hot reload
+make migrate     # apply migrations
+make check       # lint + format-check + tests
+make build       # build the Docker image
+make up / down   # docker compose up/down
+```
+
+## CI
+
+`.github/workflows/ci.yml` runs `ruff check`, `ruff format --check`, and
+`pytest` on every push to `main` and every pull request, plus a Docker build
+job that runs after tests pass.
+
 ## Project layout
 
 ```
