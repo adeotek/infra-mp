@@ -37,4 +37,4 @@ def seed_admin(db: Session, settings: Settings) -> None:
 
     if not settings.admin_password:
         print(f"[infra-mp] Seeded admin user '{settings.admin_username}' with password: {password}")
-        print("[infra-mp] Log in and change it, or set HOMELAB_ADMIN_PASSWORD and restart.")
+        print("[infra-mp] Log in and change it, or set INFRAMP_ADMIN_PASSWORD and restart.")

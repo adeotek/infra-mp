@@ -40,7 +40,7 @@ uv run uvicorn app.main:app --reload
 
 Open http://localhost:8000. On first start the admin user is seeded:
 
-- If `HOMELAB_ADMIN_PASSWORD` is set, use it to log in.
+- If `INFRAMP_ADMIN_PASSWORD` is set, use it to log in.
 - Otherwise a random password is printed to the console once.
 
 ## Running tests

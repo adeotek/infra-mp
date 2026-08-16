@@ -1,3 +1,5 @@
+name: infra-mp
+
 services:
   infra-mp:
     build: .
@@ -8,12 +10,12 @@ services:
     volumes:
       - infra-mp-data:/data
     environment:
-      HOMELAB_DATA_DIR: /data
-      HOMELAB_SECRET_KEY: ${HOMELAB_SECRET_KEY:-change-me-to-a-long-random-string}
-      HOMELAB_ADMIN_USERNAME: ${HOMELAB_ADMIN_USERNAME:-admin}
+      INFRAMP_DATA_DIR: /data
+      INFRAMP_SECRET_KEY: ${INFRAMP_SECRET_KEY:-change-me-to-a-long-random-string}
+      INFRAMP_ADMIN_USERNAME: ${INFRAMP_ADMIN_USERNAME:-admin}
       # Set this (e.g. in a .env file) to pin the initial admin password;
       # otherwise a random one is generated and printed on first start.
-      HOMELAB_ADMIN_PASSWORD: ${HOMELAB_ADMIN_PASSWORD:-}
+      INFRAMP_ADMIN_PASSWORD: ${INFRAMP_ADMIN_PASSWORD:-}
     restart: unless-stopped
 
 volumes:
