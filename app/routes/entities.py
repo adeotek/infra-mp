@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
@@ -26,6 +27,7 @@ from app.services.schema_service import (
     get_entity,
     get_entity_with_attributes,
     list_entities,
+    reorder_attributes,
     update_attribute,
     update_entity,
 )
@@ -281,6 +283,28 @@ def create_attribute_post(
     return redirect_with_flash(
         f"/entities/{entity.id}", f"Attribute '{attribute.name}' added.", request=request
     )
+
+
+@router.post("/entities/{entity_id}/attributes/reorder")
+def reorder_attributes_post(
+    request: Request,
+    entity_id: int,
+    user: User = Depends(require_capability(MANAGE_SCHEMA)),
+    db: Session = Depends(get_session),
+    order: str = Form(...),
+):
+    entity = get_entity(db, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404)
+    try:
+        ordered_ids = [int(x) for x in order.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400) from None
+    try:
+        reorder_attributes(db, entity_id, ordered_ids)
+    except SchemaError:
+        raise HTTPException(status_code=400) from None
+    return Response(status_code=204)
 
 
 @router.get("/attributes/{attribute_id}/edit")

@@ -169,6 +169,23 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
     return attribute
 
 
+def reorder_attributes(db: Session, entity_id: int, ordered_ids: list[int]) -> None:
+    """Persist a new display order for an entity's attributes.
+
+    ``ordered_ids`` must be exactly the entity's attribute ids (a permutation).
+    Each attribute's ``sort_order`` is rewritten to its index in ``ordered_ids``.
+    """
+    attributes = (
+        db.execute(select(Attribute).where(Attribute.entity_id == entity_id)).scalars().all()
+    )
+    by_id = {a.id: a for a in attributes}
+    if len(ordered_ids) != len(by_id) or set(ordered_ids) != set(by_id):
+        raise SchemaError("The ordering does not match the entity's attributes.")
+    for index, attribute_id in enumerate(ordered_ids):
+        by_id[attribute_id].sort_order = index
+    db.commit()
+
+
 def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -> Attribute:
     _validate_definition(data, db)
     has_records = entity_has_records(db, attribute.entity_id)

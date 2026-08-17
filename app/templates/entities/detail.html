@@ -23,13 +23,22 @@
 {% endif %}
 
 {% if entity.attributes %}
-<table class="table">
+{% if can_manage_schema and entity.attributes|length > 1 %}
+<p class="muted"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> Drag rows to reorder attributes.</p>
+{% endif %}
+<table class="table" id="attributes-table" data-reorder-url="/entities/{{ entity.id }}/attributes/reorder">
   <thead>
-    <tr><th>Name</th><th>Type</th><th>Required</th><th>Active</th><th>Default</th><th></th></tr>
+    <tr>
+      {% if can_manage_schema %}<th class="drag-handle-col" aria-hidden="true"></th>{% endif %}
+      <th>Name</th><th>Type</th><th>Required</th><th>Active</th><th>Default</th><th></th>
+    </tr>
   </thead>
   <tbody>
   {% for a in entity.attributes %}
-    <tr>
+    <tr{% if can_manage_schema %} draggable="true" data-id="{{ a.id }}"{% endif %}>
+      {% if can_manage_schema %}
+      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></td>
+      {% endif %}
       <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
       <td><code>{{ a.data_type }}</code></td>
       <td>{{ "Yes" if a.is_required else "—" }}</td>

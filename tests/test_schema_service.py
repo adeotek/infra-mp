@@ -13,6 +13,7 @@ from app.services.schema_service import (
     delete_attribute,
     entity_record_counts,
     get_entity_with_attributes,
+    reorder_attributes,
     update_attribute,
     update_entity,
 )
@@ -191,3 +192,30 @@ def test_update_attribute_cannot_change_active_when_records_exist(db_session):
         AttributeUpdate(name="Note", data_type=DataType.TEXT, is_active=False),
     )
     assert entity.attributes[0].is_active is True  # frozen while records exist
+
+
+def test_reorder_attributes_persists_new_order(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    a = add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    b = add_attribute(db_session, entity, AttributeCreate(name="IP", data_type=DataType.TEXT))
+    c = add_attribute(db_session, entity, AttributeCreate(name="Role", data_type=DataType.TEXT))
+    reorder_attributes(db_session, entity.id, [c.id, a.id, b.id])
+    refreshed = get_entity_with_attributes(db_session, entity.id)
+    assert refreshed is not None
+    assert [x.slug for x in refreshed.attributes] == ["role", "name", "ip"]
+
+
+def test_reorder_attributes_rejects_mismatched_ids(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="IP", data_type=DataType.TEXT))
+    with pytest.raises(SchemaError):
+        reorder_attributes(db_session, entity.id, [999])
+
+
+def test_reorder_attributes_rejects_duplicate_ids(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    a = add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="IP", data_type=DataType.TEXT))
+    with pytest.raises(SchemaError):
+        reorder_attributes(db_session, entity.id, [a.id, a.id])
