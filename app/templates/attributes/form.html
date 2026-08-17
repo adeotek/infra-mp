@@ -61,7 +61,7 @@
   </div>
 
   <label>Active{% if attribute and has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
-    <select name="is_active" id="is_active" data-locked="{{ '1' if (attribute and has_records) else '0' }}" {% if attribute and has_records %}disabled{% endif %}>
+    <select name="is_active" id="is_active" {% if attribute and has_records %}disabled{% endif %}>
       <option value="true" {% if not fd or fd.is_active %}selected{% endif %}>Active</option>
       <option value="false" {% if fd and not fd.is_active %}selected{% endif %}>Inactive</option>
     </select>
@@ -85,21 +85,6 @@
     }
     typeEl.addEventListener('change', toggle);
     toggle();
-
-    var reqEl = document.getElementById('is_required');
-    var activeEl = document.getElementById('is_active');
-    function syncActive() {
-      if (activeEl.dataset.locked === '1') {
-        activeEl.disabled = true;
-      } else if (reqEl.checked) {
-        activeEl.value = 'true';
-        activeEl.disabled = true;
-      } else {
-        activeEl.disabled = false;
-      }
-    }
-    reqEl.addEventListener('change', syncActive);
-    syncActive();
   })();
 </script>
 {% endblock %}

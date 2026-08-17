@@ -124,14 +124,14 @@ def test_update_attribute_slug_blocked_when_records_exist(db_session):
         )
 
 
-def test_required_attribute_cannot_be_inactivated(db_session):
+def test_required_attribute_can_be_inactivated_when_no_records(db_session):
     entity = create_entity(db_session, EntityCreate(name="Server"))
     attr = add_attribute(
         db_session,
         entity,
         AttributeCreate(name="Name", data_type=DataType.TEXT, is_required=True, is_active=False),
     )
-    assert attr.is_active is True
+    assert attr.is_active is False
 
 
 def test_optional_attribute_can_be_inactivated(db_session):
