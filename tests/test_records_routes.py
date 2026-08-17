@@ -158,3 +158,21 @@ def test_inactive_attribute_hidden_from_record_form(client, login):
     html = client.get("/entities/1/records/new").text
     assert "Name" in html
     assert "Cores" not in html
+
+
+def test_new_record_form_prefills_default_values(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Name", "data_type": "text", "default_value": "web01"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Cores", "data_type": "integer", "default_value": "8"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records/new").text
+    assert 'value="web01"' in html
+    assert 'value="8"' in html

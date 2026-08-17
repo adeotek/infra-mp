@@ -31,6 +31,7 @@
 
   {% for attr in entity.attributes if attr.is_active %}
   {% set val = current.get(attr.slug) if current else none %}
+  {% if val is none %}{% set val = attr.default_value %}{% endif %}
   <label>{{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
     {% if attr.data_type == 'textarea' %}
     <textarea name="{{ attr.slug }}" rows="4">{{ val if val is not none else '' }}</textarea>

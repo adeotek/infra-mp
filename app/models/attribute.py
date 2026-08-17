@@ -38,3 +38,18 @@ class Attribute(TimestampMixin, Base):
     @property
     def data_type_enum(self) -> DataType:
         return DataType(self.data_type)
+
+    @property
+    def options(self) -> list[str]:
+        """Enum options, stored in ``config``."""
+        return list(self.config.get("options", []))
+
+    @property
+    def reference_entity_id(self) -> int | None:
+        """Reference target entity id, stored in ``config``."""
+        return self.config.get("reference_entity_id")
+
+    @property
+    def cardinality(self) -> str:
+        """Reference cardinality, stored in ``config``."""
+        return self.config.get("cardinality", "one")

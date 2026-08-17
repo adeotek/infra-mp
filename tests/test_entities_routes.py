@@ -276,3 +276,34 @@ def test_entity_detail_has_drag_reorder_ui(client, login):
     assert 'id="attributes-table"' in html
     assert 'data-reorder-url="/entities/1/attributes/reorder"' in html
     assert 'draggable="true"' in html
+
+
+def test_edit_attribute_page_shows_enum_options(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Status", "data_type": "enum", "options": "running\nstopped"},
+        follow_redirects=False,
+    )
+    html = client.get("/attributes/1/edit").text
+    assert "running" in html
+    assert "stopped" in html
+
+
+def test_edit_attribute_page_shows_reference_cardinality(client, login):
+    login()
+    client.post("/entities", data={"name": "Rack"}, follow_redirects=False)
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/2/attributes",
+        data={
+            "name": "Rack",
+            "data_type": "reference",
+            "reference_entity_id": "1",
+            "cardinality": "many",
+        },
+        follow_redirects=False,
+    )
+    html = client.get("/attributes/1/edit").text
+    assert 'value="many" selected' in html
