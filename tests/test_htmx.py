@@ -123,3 +123,40 @@ def test_non_htmx_still_renders_full_page(client, login):
     assert resp.status_code == 200
     assert "<html" in resp.text
     assert "sidebar" in resp.text
+
+
+def test_htmx_new_attribute_form_has_explicit_hx_post_url(client, login):
+    _seed_entity(client, login)
+    resp = client.get("/entities/1/attributes/new", headers=HX)
+    assert 'hx-post="/entities/1/attributes"' in resp.text
+
+
+def test_htmx_new_entity_form_has_explicit_hx_post_url(client, login):
+    login()
+    resp = client.get("/entities/new", headers=HX)
+    assert 'hx-post="/entities"' in resp.text
+
+
+def test_htmx_edit_entity_form_has_explicit_hx_post_url(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    resp = client.get("/entities/1/edit", headers=HX)
+    assert 'hx-post="/entities/1/edit"' in resp.text
+
+
+def test_htmx_new_user_form_has_explicit_hx_post_url(client, login):
+    login()
+    resp = client.get("/users/new", headers=HX)
+    assert 'hx-post="/users"' in resp.text
+
+
+def test_htmx_change_password_form_has_explicit_hx_post_url(client, login):
+    login()
+    resp = client.get("/settings/password", headers=HX)
+    assert 'hx-post="/settings/password"' in resp.text
+
+
+def test_required_fields_are_marked_with_asterisk(client, login):
+    _seed_entity(client, login)
+    resp = client.get("/entities/1/attributes/new", headers=HX)
+    assert '<span class="req">*</span>' in resp.text
