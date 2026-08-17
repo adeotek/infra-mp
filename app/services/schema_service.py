@@ -158,7 +158,7 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         slug=unique_slug(db, Attribute, data.name.strip(), scope={"entity_id": entity.id}),
         data_type=data.data_type.value,
         is_required=data.is_required,
-        is_active=data.is_active,
+        is_active=(True if data.is_required else data.is_active),
         default_value=coerce_value(data.data_type, data.default_value),
         hint=(data.hint.strip() if data.hint else None),
         config=_build_config(data),
@@ -195,7 +195,7 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
                     scope={"entity_id": attribute.entity_id},
                     exclude_id=attribute.id,
                 )
-        attribute.is_active = data.is_active
+        attribute.is_active = True if data.is_required else data.is_active
 
     db.commit()
     return attribute
