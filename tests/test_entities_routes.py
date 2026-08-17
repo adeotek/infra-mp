@@ -220,3 +220,15 @@ def test_inactivate_optional_attribute(client, login):
     )
     html = client.get("/entities/1/records/new").text
     assert "Note" not in html
+
+
+def test_update_entity_slug_via_post(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    resp = client.post(
+        "/entities/1/edit",
+        data={"name": "Server", "slug": "server-renamed"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "server-renamed" in client.get("/entities/1").text

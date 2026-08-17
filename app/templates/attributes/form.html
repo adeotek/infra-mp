@@ -24,32 +24,6 @@
     </select>
   </label>
 
-  <label class="checkbox-label">
-    <input type="checkbox" name="is_required" id="is_required" {% if fd and fd.is_required %}checked{% endif %}>
-    Required
-  </label>
-
-  <label>Active
-    <select name="is_active" id="is_active">
-      <option value="true" {% if not fd or fd.is_active %}selected{% endif %}>Active</option>
-      <option value="false" {% if fd and not fd.is_active %}selected{% endif %}>Inactive</option>
-    </select>
-  </label>
-
-  <label>Default value
-    <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
-  </label>
-
-  <label>Hint text <span class="muted">(optional)</span>
-    <textarea name="hint" rows="2" placeholder="Shown under this field on record add/edit forms">{{ fd.hint if fd and fd.hint else '' }}</textarea>
-  </label>
-
-  <div id="enum_fields" class="conditional">
-    <label>Options (one per line)
-      <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>
-    </label>
-  </div>
-
   <div id="reference_fields" class="conditional">
     <label>Target entity
       <select name="reference_entity_id">
@@ -66,6 +40,32 @@
       </select>
     </label>
   </div>
+
+  <label class="checkbox-label">
+    <input type="checkbox" name="is_required" id="is_required" {% if fd and fd.is_required %}checked{% endif %}>
+    Required
+  </label>
+
+  <label>Default value
+    <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
+  </label>
+
+  <label>Hint text <span class="muted">(optional)</span>
+    <textarea name="hint" rows="2" placeholder="Shown under this field on record add/edit forms">{{ fd.hint if fd and fd.hint else '' }}</textarea>
+  </label>
+
+  <div id="enum_fields" class="conditional">
+    <label>Options (one per line)
+      <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>
+    </label>
+  </div>
+
+  <label>Active{% if attribute and has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
+    <select name="is_active" id="is_active" data-locked="{{ '1' if (attribute and has_records) else '0' }}" {% if attribute and has_records %}disabled{% endif %}>
+      <option value="true" {% if not fd or fd.is_active %}selected{% endif %}>Active</option>
+      <option value="false" {% if fd and not fd.is_active %}selected{% endif %}>Inactive</option>
+    </select>
+  </label>
 
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">Save</button>
@@ -89,14 +89,17 @@
     var reqEl = document.getElementById('is_required');
     var activeEl = document.getElementById('is_active');
     function syncActive() {
-      if (reqEl && reqEl.checked) {
+      if (activeEl.dataset.locked === '1') {
+        activeEl.disabled = true;
+      } else if (reqEl.checked) {
         activeEl.value = 'true';
         activeEl.disabled = true;
-      } else if (activeEl) {
+      } else {
         activeEl.disabled = false;
       }
     }
-    if (reqEl) { reqEl.addEventListener('change', syncActive); syncActive(); }
+    reqEl.addEventListener('change', syncActive);
+    syncActive();
   })();
 </script>
 {% endblock %}

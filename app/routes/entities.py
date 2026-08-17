@@ -149,7 +149,11 @@ def edit_entity_page(
     entity = get_entity(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
-    return render(request, "entities/form.html", {"entity": entity})
+    return render(
+        request,
+        "entities/form.html",
+        {"entity": entity, "has_records": entity_has_records(db, entity_id)},
+    )
 
 
 @router.post("/entities/{entity_id}/edit")
@@ -161,20 +165,31 @@ def update_entity_post(
     name: str = Form(...),
     description: str = Form(""),
     icon: str = Form(""),
+    slug: str = Form(""),
 ):
     entity = get_entity(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
     try:
-        update_entity(db, entity, EntityUpdate(name=name, description=description, icon=icon))
+        update_entity(
+            db,
+            entity,
+            EntityUpdate(name=name, description=description, icon=icon, slug=slug.strip() or None),
+        )
     except SchemaError as exc:
         return render(
             request,
             "entities/form.html",
             {
                 "entity": entity,
-                "form_data": {"name": name, "description": description, "icon": icon},
+                "form_data": {
+                    "name": name,
+                    "description": description,
+                    "icon": icon,
+                    "slug": slug.strip() or None,
+                },
                 "error": str(exc),
+                "has_records": entity_has_records(db, entity_id),
             },
             status_code=400,
         )

@@ -163,3 +163,31 @@ def test_update_attribute_updates_hint(db_session):
         AttributeUpdate(name="Hostname", data_type=DataType.TEXT, hint="Updated hint"),
     )
     assert attr.hint == "Updated hint"
+
+
+def test_update_entity_slug_when_no_records(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    update_entity(db_session, entity, EntityUpdate(name="Server", slug="server-renamed"))
+    assert entity.slug == "server-renamed"
+
+
+def test_update_entity_slug_blocked_when_records_exist(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"name": "web01"})
+    with pytest.raises(SchemaError):
+        update_entity(db_session, entity, EntityUpdate(name="Server", slug="changed"))
+
+
+def test_update_attribute_cannot_change_active_when_records_exist(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Note", data_type=DataType.TEXT))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"note": "x"})
+    update_attribute(
+        db_session,
+        entity.attributes[0],
+        AttributeUpdate(name="Note", data_type=DataType.TEXT, is_active=False),
+    )
+    assert entity.attributes[0].is_active is True  # frozen while records exist

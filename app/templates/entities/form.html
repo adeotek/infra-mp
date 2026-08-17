@@ -9,6 +9,11 @@
   <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ f.name if f else '' }}" autofocus>
   </label>
+  {% if entity %}
+  <label>Slug{% if has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
+    <input type="text" name="slug" value="{{ f.slug if f else '' }}" {% if has_records %}disabled{% endif %}>
+  </label>
+  {% endif %}
   <label>Description
     <input type="text" name="description" value="{{ f.description if f else '' }}">
   </label>
