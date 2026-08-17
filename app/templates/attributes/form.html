@@ -24,6 +24,12 @@
     </select>
   </label>
 
+  <div id="enum_fields" class="conditional">
+    <label>Options (one per line)
+      <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>
+    </label>
+  </div>
+
   <div id="reference_fields" class="conditional">
     <label>Target entity
       <select name="reference_entity_id">
@@ -53,12 +59,6 @@
   <label>Hint text <span class="muted">(optional)</span>
     <textarea name="hint" rows="2" placeholder="Shown under this field on record add/edit forms">{{ fd.hint if fd and fd.hint else '' }}</textarea>
   </label>
-
-  <div id="enum_fields" class="conditional">
-    <label>Options (one per line)
-      <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>
-    </label>
-  </div>
 
   <label>Active{% if attribute and has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
     <select name="is_active" id="is_active" data-locked="{{ '1' if (attribute and has_records) else '0' }}" {% if attribute and has_records %}disabled{% endif %}>
