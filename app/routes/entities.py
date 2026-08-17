@@ -388,12 +388,7 @@ def delete_attribute_post(
         raise HTTPException(status_code=404)
     entity_id = attribute.entity_id
     name = attribute.name
-    try:
-        delete_attribute(db, attribute)
-    except SchemaError as exc:
-        return redirect_with_flash(
-            f"/entities/{entity_id}", str(exc), category="error", request=request
-        )
+    delete_attribute(db, attribute)
     return redirect_with_flash(
         f"/entities/{entity_id}", f"Attribute '{name}' deleted.", request=request
     )

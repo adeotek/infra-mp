@@ -219,7 +219,17 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
 
 
 def delete_attribute(db: Session, attribute: Attribute) -> None:
-    if entity_has_records(db, attribute.entity_id):
-        raise SchemaError("Cannot delete an attribute while the entity has records.")
+    """Delete an attribute, removing its value from every record first.
+
+    Record values are keyed by attribute slug, so the slug must be stripped from
+    each of the entity's records (soft-deleted included) before the attribute is
+    deleted.
+    """
+    records = (
+        db.execute(select(Record).where(Record.entity_id == attribute.entity_id)).scalars().all()
+    )
+    for record in records:
+        if record.data and attribute.slug in record.data:
+            record.data = {k: v for k, v in record.data.items() if k != attribute.slug}
     db.delete(attribute)
     db.commit()

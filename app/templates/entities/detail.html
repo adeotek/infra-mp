@@ -47,12 +47,10 @@
       <td class="row-actions">
         {% if can_manage_schema %}
         <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body">Edit</a>
-        {% if record_counts.get(entity.id, 0) == 0 %}
         <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
-              onsubmit="return confirm('Delete this attribute?');">
+              onsubmit="return confirm('Delete this attribute and remove its value from all records? This cannot be undone.');">
           <button type="submit" class="link-danger">Delete</button>
         </form>
-        {% endif %}
         {% endif %}
       </td>
     </tr>

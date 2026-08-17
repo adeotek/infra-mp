@@ -83,13 +83,24 @@ def test_update_attribute_keeps_slug(db_session):
     assert attr.slug == "hostname"
 
 
-def test_delete_attribute_blocked_when_entity_has_records(db_session):
+def test_delete_attribute_removes_values_from_records(db_session):
     entity = create_entity(db_session, EntityCreate(name="Server"))
     add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="Cores", data_type=DataType.INTEGER))
     entity = get_entity_with_attributes(db_session, entity.id)
-    create_record(db_session, entity, entity.attributes, {"name": "web01"})
-    with pytest.raises(SchemaError):
-        delete_attribute(db_session, entity.attributes[0])
+    assert entity is not None
+    record = create_record(db_session, entity, entity.attributes, {"name": "web01", "cores": "8"})
+    assert record.data == {"name": "web01", "cores": 8}
+
+    cores = next(a for a in entity.attributes if a.slug == "cores")
+    delete_attribute(db_session, cores)
+
+    db_session.expire_all()
+    db_session.refresh(record)
+    refreshed = get_entity_with_attributes(db_session, entity.id)
+    assert refreshed is not None
+    assert [a.slug for a in refreshed.attributes] == ["name"]
+    assert record.data == {"name": "web01"}
 
 
 def test_delete_attribute_ok_when_no_records(db_session):

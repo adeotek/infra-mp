@@ -193,7 +193,7 @@ def test_update_attribute_slug_via_post(client, login):
     assert "(fqdn)" in client.get("/entities/1").text
 
 
-def test_delete_attribute_blocked_when_records_exist(client, login):
+def test_delete_attribute_with_records(client, login):
     login()
     client.post("/entities", data={"name": "Server"}, follow_redirects=False)
     client.post(
@@ -202,8 +202,38 @@ def test_delete_attribute_blocked_when_records_exist(client, login):
     client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
     resp = client.post("/attributes/1/delete", follow_redirects=False)
     assert resp.status_code == 303
-    # Attribute still exists (deletion rejected with a flash error).
-    assert "Name" in client.get("/entities/1").text
+    # Attribute is deleted even though the entity has records.
+    assert "No attributes yet" in client.get("/entities/1").text
+
+
+def test_delete_button_shown_when_records_exist(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
+    html = client.get("/entities/1").text
+    assert "/attributes/1/delete" in html
+    assert "remove its value from all records" in html
+
+
+def test_delete_attribute_removes_value_from_record(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Cores", "data_type": "integer"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"name": "web01", "cores": "8"}, follow_redirects=False)
+    client.post("/attributes/1/delete", follow_redirects=False)  # delete "Name"
+    rec_html = client.get("/entities/1/records").text
+    assert "web01" not in rec_html  # deleted attribute's value removed
+    assert "Cores" in rec_html  # remaining attribute intact
 
 
 def test_inactivate_optional_attribute(client, login):
