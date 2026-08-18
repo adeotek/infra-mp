@@ -121,6 +121,18 @@ def test_record_form_renders_attribute_hint(client, login):
     assert 'class="hint"' in html
 
 
+def test_record_form_preserves_multiline_hint(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "hint": "First line\nSecond line"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records/new").text
+    assert "First line\nSecond line" in html  # newline survives to the markup
+
+
 def test_record_list_shows_system_columns(client, login):
     _seed_server(client, login)
     client.post("/entities/1/records", data={"name": "web01"}, follow_redirects=False)
