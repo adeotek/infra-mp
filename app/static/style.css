@@ -81,6 +81,8 @@ a:hover { text-decoration: underline; }
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh; /* visible viewport (fallback above for older engines) */
+  overflow: hidden; /* brand and toggle stay pinned; only the nav scrolls */
   transition: width 0.18s ease;
   flex-shrink: 0;
 }
@@ -96,6 +98,7 @@ a:hover { text-decoration: underline; }
   font-size: 1.05rem;
   color: var(--text);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .sidebar-brand:hover { text-decoration: none; }
 
@@ -177,6 +180,7 @@ a:hover { text-decoration: underline; }
   font-size: 0.85rem;
   font-family: inherit;
   width: calc(100% - 1rem);
+  flex-shrink: 0;
 }
 .sidebar-toggle:hover { color: var(--text); }
 
