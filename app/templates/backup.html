@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Backup & Restore — {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Backup &amp; Restore</h1>
+</div>
+
+<div class="form-section">
+  <h2>Download backup</h2>
+  <p class="muted">Download a zip archive containing a consistent snapshot of the database.</p>
+  <a href="/settings/backup/download" class="btn btn-primary">
+    <i class="fa-solid fa-download" aria-hidden="true"></i> Download backup
+  </a>
+</div>
+
+<div class="form-section">
+  <h2>Restore from backup</h2>
+  <p class="muted">Upload a backup archive to replace the current database. This cannot be undone.</p>
+  <form method="post" action="/settings/backup/restore" enctype="multipart/form-data"
+        onsubmit="return confirm('Replace the current database with the uploaded backup? This cannot be undone.');">
+    <label>Backup archive (.zip)
+      <input type="file" name="file" accept=".zip,application/zip" required>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-danger">Restore</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

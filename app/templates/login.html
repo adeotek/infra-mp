@@ -6,10 +6,10 @@
   {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
     <input type="hidden" name="next" value="{{ next or '' }}">
-    <label>Username
+    <label>Username <span class="req">*</span>
       <input type="text" name="username" required autofocus autocomplete="username">
     </label>
-    <label>Password
+    <label>Password <span class="req">*</span>
       <input type="password" name="password" required autocomplete="current-password">
     </label>
     <button type="submit" class="btn btn-primary btn-block">Sign in</button>

@@ -12,11 +12,22 @@ from app.models.entity import Entity
 from app.models.enums import DataType
 from app.models.mixins import utcnow
 from app.models.record import Record
+from app.models.user import User
 from app.services.validation import ValidationError, coerce_value
 
 
 class RecordError(ValueError):
     """Raised for invalid record data."""
+
+
+def active_attributes(attributes: list[Attribute]) -> list[Attribute]:
+    """Return the attributes shown on (and validated for) record forms."""
+    return [a for a in attributes if a.is_active]
+
+
+def username_map(db: Session) -> dict[int, str]:
+    """Map user id -> username for attribution display."""
+    return {u.id: u.username for u in db.execute(select(User)).scalars()}
 
 
 # --------------------------------------------------------------------------- #
@@ -45,7 +56,7 @@ def create_record(
     raw: dict[str, Any],
     user_id: int | None = None,
 ) -> Record:
-    data, errors = validate_record_data(db, attributes, raw)
+    data, errors = validate_record_data(db, active_attributes(attributes), raw)
     if errors:
         raise RecordError("; ".join(errors))
     record = Record(entity_id=entity.id, data=data, created_by=user_id, updated_by=user_id)
@@ -61,10 +72,14 @@ def update_record(
     raw: dict[str, Any],
     user_id: int | None = None,
 ) -> Record:
-    data, errors = validate_record_data(db, attributes, raw)
+    data, errors = validate_record_data(db, active_attributes(attributes), raw)
     if errors:
         raise RecordError("; ".join(errors))
-    record.data = data
+    # Preserve values for inactive attributes (not submitted from the form).
+    inactive_slugs = {a.slug for a in attributes if not a.is_active}
+    merged = {slug: record.data[slug] for slug in inactive_slugs if slug in record.data}
+    merged.update(data)
+    record.data = merged
     record.updated_by = user_id
     db.commit()
     return record

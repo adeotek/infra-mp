@@ -30,6 +30,7 @@ from app.services.record_service import (
     resolve_reference_titles,
     soft_delete_record,
     update_record,
+    username_map,
 )
 from app.services.schema_service import get_entity_with_attributes
 from app.templates import render
@@ -55,6 +56,7 @@ def records_index(
         {
             "entity": entity,
             "rows": build_rows(entity, records, titles),
+            "user_names": username_map(db),
             "can_create": has_capability(user, CREATE_RECORD),
             "can_update": has_capability(user, UPDATE_RECORD),
             "can_delete": has_capability(user, DELETE_RECORD),
@@ -115,6 +117,7 @@ def edit_record_page(
     if record is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, record.entity_id)
+    user_names = username_map(db)
     return render(
         request,
         "records/form.html",
@@ -124,6 +127,8 @@ def edit_record_page(
             "current": record.data,
             "ref_options": reference_options(db, entity),
             "action_url": f"/records/{record_id}/edit",
+            "created_by_name": user_names.get(record.created_by, "—"),
+            "updated_by_name": user_names.get(record.updated_by, "—"),
         },
     )
 
@@ -170,18 +175,18 @@ def _render_form_error(
     raw: dict[str, Any],
     error: str,
 ):
-    return render(
-        request,
-        "records/form.html",
-        {
-            "entity": entity,
-            "record": record,
-            "current": best_effort_coerce(entity.attributes, raw),
-            "ref_options": reference_options(db, entity),
-            "action_url": (
-                f"/entities/{entity.id}/records" if record is None else f"/records/{record.id}/edit"
-            ),
-            "error": error,
-        },
-        status_code=400,
-    )
+    context = {
+        "entity": entity,
+        "record": record,
+        "current": best_effort_coerce(entity.attributes, raw),
+        "ref_options": reference_options(db, entity),
+        "action_url": (
+            f"/entities/{entity.id}/records" if record is None else f"/records/{record.id}/edit"
+        ),
+        "error": error,
+    }
+    if record is not None:
+        user_names = username_map(db)
+        context["created_by_name"] = user_names.get(record.created_by, "—")
+        context["updated_by_name"] = user_names.get(record.updated_by, "—")
+    return render(request, "records/form.html", context, status_code=400)

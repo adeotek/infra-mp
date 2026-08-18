@@ -27,7 +27,9 @@ class Attribute(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(128))
     data_type: Mapped[str] = mapped_column(String(32))
     is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     default_value: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    hint: Mapped[str | None] = mapped_column(String(500), nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -36,3 +38,18 @@ class Attribute(TimestampMixin, Base):
     @property
     def data_type_enum(self) -> DataType:
         return DataType(self.data_type)
+
+    @property
+    def options(self) -> list[str]:
+        """Enum options, stored in ``config``."""
+        return list(self.config.get("options", []))
+
+    @property
+    def reference_entity_id(self) -> int | None:
+        """Reference target entity id, stored in ``config``."""
+        return self.config.get("reference_entity_id")
+
+    @property
+    def cardinality(self) -> str:
+        """Reference cardinality, stored in ``config``."""
+        return self.config.get("cardinality", "one")

@@ -14,6 +14,10 @@ class AttributeCreate(BaseModel):
     data_type: DataType
     is_required: bool = False
     default_value: Any | None = None
+    # Help text shown under the field on record add/edit forms.
+    hint: str | None = None
+    # Inactive attributes are hidden from the record add/edit forms.
+    is_active: bool = True
     # Enum-specific: the list of allowed values.
     options: list[str] | None = None
     # Reference-specific: the target entity and relationship cardinality.
@@ -22,4 +26,5 @@ class AttributeCreate(BaseModel):
 
 
 class AttributeUpdate(AttributeCreate):
-    pass
+    # Only editable while the entity has no records (values are keyed by slug).
+    slug: str | None = None

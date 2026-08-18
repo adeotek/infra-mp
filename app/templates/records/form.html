@@ -9,8 +9,29 @@
 
 {% if entity.attributes %}
 <form method="post" action="{{ action_url }}">
-  {% for attr in entity.attributes %}
+  {% if record %}
+  <fieldset class="form-section">
+    <legend>Record metadata</legend>
+    <div class="grid-2">
+      <label>Created at
+        <input type="text" value="{{ record.created_at | datetime_display }}" disabled>
+      </label>
+      <label>Created by
+        <input type="text" value="{{ created_by_name }}" disabled>
+      </label>
+      <label>Last modified at
+        <input type="text" value="{{ record.updated_at | datetime_display }}" disabled>
+      </label>
+      <label>Last modified by
+        <input type="text" value="{{ updated_by_name }}" disabled>
+      </label>
+    </div>
+  </fieldset>
+  {% endif %}
+
+  {% for attr in entity.attributes if attr.is_active %}
   {% set val = current.get(attr.slug) if current else none %}
+  {% if val is none %}{% set val = attr.default_value %}{% endif %}
   <label>{{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
     {% if attr.data_type == 'textarea' %}
     <textarea name="{{ attr.slug }}" rows="4">{{ val if val is not none else '' }}</textarea>
@@ -33,11 +54,28 @@
     </select>
     {% elif attr.data_type == 'reference' %}
       {% if attr.config.get('cardinality', 'one') == 'many' %}
-      <select name="{{ attr.slug }}" multiple size="5">
-        {% for rid, title in ref_options.get(attr.slug, []) %}
-        <option value="{{ rid }}" {% if val and rid in val %}selected{% endif %}>{{ title }}</option>
-        {% endfor %}
-      </select>
+      {% set opts = ref_options.get(attr.slug, []) %}
+      {% set selected_ids = val if val else [] %}
+      <div class="multi-ref" data-field="{{ attr.slug }}">
+        <div class="multi-ref-control">
+          <select data-source>
+            <option value="">—</option>
+            {% for rid, title in opts if rid not in selected_ids %}
+            <option value="{{ rid }}">{{ title }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-primary" data-add>Add</button>
+        </div>
+        <ul class="multi-ref-list">
+          {% for rid, title in opts if rid in selected_ids %}
+          <li class="chip">
+            <span class="chip-label">{{ title }}</span>
+            <input type="hidden" name="{{ attr.slug }}" value="{{ rid }}">
+            <button type="button" class="chip-remove" data-remove aria-label="Remove">&times;</button>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
       {% else %}
       <select name="{{ attr.slug }}">
         <option value="">—</option>
@@ -49,6 +87,7 @@
     {% else %}
     <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
     {% endif %}
+    {% if attr.hint %}<span class="hint">{{ attr.hint }}</span>{% endif %}
   </label>
   {% endfor %}
   <div class="form-actions">

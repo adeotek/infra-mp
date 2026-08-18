@@ -14,6 +14,16 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.filters["datetime_local"] = lambda value: (value or "")[:16]
 
 
+def _datetime_display(value) -> str:
+    """Format a timestamp for display (naive UTC -> "YYYY-MM-DD HH:MM")."""
+    if not value:
+        return "—"
+    return value.strftime("%Y-%m-%d %H:%M")
+
+
+templates.env.filters["datetime_display"] = _datetime_display
+
+
 def is_htmx(request: Request) -> bool:
     """True when the request was issued by HTMX (sets the ``HX-Request`` header)."""
     return request.headers.get("HX-Request", "").lower() == "true"

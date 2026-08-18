@@ -5,10 +5,16 @@
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 
 {% set fd = form_data or attribute %}
-<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post hx-target="#modal-body"{% endif %}>
-  <label>Name
+<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
+  <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
   </label>
+
+  {% if attribute %}
+  <label>Slug{% if has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
+    <input type="text" name="slug" value="{{ fd.slug if fd else '' }}" {% if has_records %}disabled{% endif %}>
+  </label>
+  {% endif %}
 
   <label>Type
     <select name="data_type" id="data_type">
@@ -16,15 +22,6 @@
       <option value="{{ t.value }}" {% if fd and fd.data_type == t.value %}selected{% endif %}>{{ t.value }}</option>
       {% endfor %}
     </select>
-  </label>
-
-  <label class="checkbox-label">
-    <input type="checkbox" name="is_required" {% if fd and fd.is_required %}checked{% endif %}>
-    Required
-  </label>
-
-  <label>Default value
-    <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
   </label>
 
   <div id="enum_fields" class="conditional">
@@ -50,6 +47,26 @@
     </label>
   </div>
 
+  <label class="checkbox-label">
+    <input type="checkbox" name="is_required" id="is_required" {% if fd and fd.is_required %}checked{% endif %}>
+    Required
+  </label>
+
+  <label>Default value
+    <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
+  </label>
+
+  <label>Hint text <span class="muted">(optional)</span>
+    <textarea name="hint" rows="2" placeholder="Shown under this field on record add/edit forms">{{ fd.hint if fd and fd.hint else '' }}</textarea>
+  </label>
+
+  <label>Active{% if attribute and has_records %} <span class="muted">(locked — entity has records)</span>{% endif %}
+    <select name="is_active" id="is_active" data-locked="{{ '1' if (attribute and has_records) else '0' }}" {% if attribute and has_records %}disabled{% endif %}>
+      <option value="true" {% if not fd or fd.is_active %}selected{% endif %}>Active</option>
+      <option value="false" {% if fd and not fd.is_active %}selected{% endif %}>Inactive</option>
+    </select>
+  </label>
+
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">Save</button>
     <a href="/entities/{{ entity.id }}" class="btn" data-modal-close>Cancel</a>
@@ -68,6 +85,21 @@
     }
     typeEl.addEventListener('change', toggle);
     toggle();
+
+    var reqEl = document.getElementById('is_required');
+    var activeEl = document.getElementById('is_active');
+    function syncActive() {
+      if (activeEl.dataset.locked === '1') {
+        activeEl.disabled = true;
+      } else if (reqEl.checked) {
+        activeEl.value = 'true';
+        activeEl.disabled = true;
+      } else {
+        activeEl.disabled = false;
+      }
+    }
+    reqEl.addEventListener('change', syncActive);
+    syncActive();
   })();
 </script>
 {% endblock %}

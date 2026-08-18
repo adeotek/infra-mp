@@ -9,6 +9,7 @@ from app.auth.permissions import has_capability
 from app.auth.sessions import resolve_user
 from app.config import get_settings
 from app.db import get_session
+from app.models.enums import Role
 from app.models.user import User
 
 
@@ -39,3 +40,10 @@ def require_capability(capability: str):
         return user
 
     return _dependency
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Dependency enforcing the administrator role."""
+    if user.role_enum != Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return user
