@@ -24,6 +24,19 @@ def _datetime_display(value) -> str:
 templates.env.filters["datetime_display"] = _datetime_display
 
 
+def _icon_class(value, fallback: str = "fa-cube") -> str:
+    """Normalise a stored icon value into a FontAwesome solid class."""
+    value = (value or "").strip()
+    if not value:
+        return fallback
+    if value.startswith("fa-"):
+        return value
+    return f"fa-{value}"
+
+
+templates.env.filters["icon_class"] = _icon_class
+
+
 def is_htmx(request: Request) -> bool:
     """True when the request was issued by HTMX (sets the ``HX-Request`` header)."""
     return request.headers.get("HX-Request", "").lower() == "true"
@@ -53,12 +66,14 @@ def render(
     }
     if context:
         ctx.update(context)
-    # The sidebar lists every custom view; skip the query for htmx fragments.
+    # The sidebar lists every custom view and entity; skip the query for htmx fragments.
     if not fragment and ctx["current_user"] is not None:
         factory = getattr(request.app.state, "session_factory", None)
         if factory is not None:
+            from app.services.schema_service import list_entities
             from app.services.view_service import list_views
 
             with factory() as session:
                 ctx["sidebar_views"] = list_views(session)
+                ctx["sidebar_entities"] = list_entities(session)
     return templates.TemplateResponse(request, template_name, ctx, status_code=status_code)

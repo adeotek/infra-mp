@@ -38,6 +38,23 @@
       </div>
 
       <div class="nav-section">
+        <div class="nav-item nav-section-title" title="Data">
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+          <span class="nav-label">Data</span>
+        </div>
+        <div class="nav-section-items">
+          {% for e in sidebar_entities %}
+          <a href="/entities/{{ e.id }}/records" class="nav-item nav-sub{% if current_path == '/entities/' ~ e.id ~ '/records' or current_path.startswith('/entities/' ~ e.id ~ '/records/') %} active{% endif %}" title="{{ e.name }}">
+            <i class="fa-solid {{ e.icon | icon_class }}" aria-hidden="true"></i>
+            <span class="nav-label">{{ e.name }}</span>
+          </a>
+          {% else %}
+          <span class="nav-item nav-sub muted">No entities yet</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="nav-section">
         <div class="nav-item nav-section-title" title="Views">
           <i class="fa-solid fa-table-list" aria-hidden="true"></i>
           <span class="nav-label">Views</span>
@@ -45,7 +62,7 @@
         <div class="nav-section-items">
           {% for v in sidebar_views %}
           <a href="/views/{{ v.id }}" class="nav-item nav-sub{% if current_path == '/views/' ~ v.id %} active{% endif %}" title="{{ v.name }}">
-            <i class="fa-solid {{ v.icon or 'fa-table' }}" aria-hidden="true"></i>
+            <i class="fa-solid {{ v.icon | icon_class('fa-table') }}" aria-hidden="true"></i>
             <span class="nav-label">{{ v.name }}</span>
           </a>
           {% else %}
@@ -60,7 +77,8 @@
           <span class="nav-label">Configuration</span>
         </div>
         <div class="nav-section-items">
-          <a href="/entities" class="nav-item nav-sub{% if current_path.startswith('/entities') or current_path.startswith('/records') or current_path.startswith('/attributes') %} active{% endif %}" title="Entities" aria-label="Entities">
+          {% set on_entity_records = current_path.startswith('/entities/') and '/records' in current_path %}
+          <a href="/entities" class="nav-item nav-sub{% if current_path == '/entities' or (current_path.startswith('/entities/') and not on_entity_records) or current_path.startswith('/attributes') or current_path.startswith('/records') %} active{% endif %}" title="Entities" aria-label="Entities">
             <i class="fa-solid fa-database" aria-hidden="true"></i>
             <span class="nav-label">Entities</span>
           </a>

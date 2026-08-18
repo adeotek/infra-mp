@@ -317,9 +317,14 @@ def test_sidebar_sections_and_custom_views(client, login):
         follow_redirects=False,
     )
     html = client.get("/dashboard").text
-    # Level-1: Dashboard link + two section titles.
-    assert html.count("nav-section-title") == 2
+    # Level-1: Dashboard link + three section titles (Data, Views, Configuration).
+    assert html.count("nav-section-title") == 3
+    assert ">Data</span>" in html
     assert ">Configuration</span>" in html
+    assert "fa-layer-group" in html  # Data section icon
+    # Level-2: entities point at their records lists.
+    assert 'href="/entities/1/records"' in html
+    assert "fa-cube" in html  # fallback icon for the entity without one
     # Level-2 custom views in the sidebar, ordered by name.
     assert 'href="/views/1"' in html
     assert 'href="/views/2"' in html
@@ -330,3 +335,16 @@ def test_sidebar_sections_and_custom_views(client, login):
     assert 'aria-label="Users"' in html
     assert 'aria-label="Backup"' in html
     assert 'aria-label="Entities"' in html
+
+
+def test_sidebar_active_state_on_records_pages(client, login):
+    _seed_server(client, login)
+    html = client.get("/entities/1/records").text
+    # The Data child for the entity is active; the Configuration Entities
+    # item is not (records pages belong to Data).
+    assert 'href="/entities/1/records" class="nav-item nav-sub active"' in html
+    assert 'href="/entities" class="nav-item nav-sub"' in html
+    # Schema pages keep the Configuration Entities item active.
+    detail = client.get("/entities/1").text
+    assert 'href="/entities" class="nav-item nav-sub active"' in detail
+    assert 'href="/entities/1/records" class="nav-item nav-sub"' in detail
