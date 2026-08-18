@@ -6,6 +6,7 @@ from app.models.enums import DataType
 from app.schemas.attribute import AttributeCreate
 from app.schemas.entity import EntityCreate
 from app.services.record_service import (
+    RecordError,
     create_record,
     list_records,
     soft_delete_record,
@@ -126,3 +127,62 @@ def test_update_record_preserves_inactive_attribute_value(db_session, server_ent
     update_record(db_session, record, server_entity.attributes, {"hostname": "web01-renamed"})
     assert record.data["hostname"] == "web01-renamed"
     assert record.data["cores"] == 8
+
+
+# --------------------------------------------------------------------------- #
+# Unique attribute values
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def unique_entity(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Hostname", data_type=DataType.TEXT, is_unique=True),
+    )
+    add_attribute(db_session, entity, AttributeCreate(name="Cores", data_type=DataType.INTEGER))
+    loaded = get_entity_with_attributes(db_session, entity.id)
+    assert loaded is not None
+    return loaded
+
+
+def test_unique_duplicate_value_rejected_on_create(db_session, unique_entity):
+    create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+    with pytest.raises(RecordError, match="must be unique"):
+        create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+
+
+def test_unique_distinct_values_accepted(db_session, unique_entity):
+    create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+    create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web2"})
+    assert len(list_records(db_session, unique_entity.id)) == 2
+
+
+def test_unique_empty_values_are_exempt(db_session, unique_entity):
+    create_record(db_session, unique_entity, unique_entity.attributes, {"cores": "4"})
+    create_record(db_session, unique_entity, unique_entity.attributes, {"cores": "8"})
+    assert len(list_records(db_session, unique_entity.id)) == 2
+
+
+def test_unique_update_to_duplicate_rejected(db_session, unique_entity):
+    create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+    other = create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web2"})
+    with pytest.raises(RecordError, match="must be unique"):
+        update_record(db_session, other, unique_entity.attributes, {"hostname": "web1"})
+
+
+def test_unique_update_keeping_own_value_accepted(db_session, unique_entity):
+    record = create_record(
+        db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"}
+    )
+    update_record(db_session, record, unique_entity.attributes, {"hostname": "web1", "cores": "8"})
+    assert record.data["cores"] == 8
+
+
+def test_unique_soft_deleted_record_does_not_block(db_session, unique_entity):
+    old = create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+    soft_delete_record(db_session, old)
+    create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
+    assert len(list_records(db_session, unique_entity.id)) == 1

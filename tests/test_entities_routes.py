@@ -337,3 +337,52 @@ def test_edit_attribute_page_shows_reference_cardinality(client, login):
     )
     html = client.get("/attributes/1/edit").text
     assert 'value="many" selected' in html
+
+
+def test_attribute_form_has_unique_field(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert 'name="is_unique"' in html
+
+
+def test_unique_attribute_rejects_duplicate_record(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    assert (
+        client.post(
+            "/entities/1/records", data={"hostname": "web1"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+    resp = client.post("/entities/1/records", data={"hostname": "web1"}, follow_redirects=False)
+    assert resp.status_code == 400
+    assert "must be unique" in resp.text
+
+
+def test_unique_attribute_rejects_duplicate_on_record_edit(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"hostname": "web1"}, follow_redirects=False)
+    client.post("/entities/1/records", data={"hostname": "web2"}, follow_redirects=False)
+    # Editing record 2 to take record 1's value is rejected...
+    resp = client.post("/records/2/edit", data={"hostname": "web1"}, follow_redirects=False)
+    assert resp.status_code == 400
+    assert "must be unique" in resp.text
+    # ...but keeping its own value is fine.
+    assert (
+        client.post(
+            "/records/2/edit", data={"hostname": "web2"}, follow_redirects=False
+        ).status_code
+        == 303
+    )

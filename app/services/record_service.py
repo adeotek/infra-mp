@@ -72,7 +72,9 @@ def update_record(
     raw: dict[str, Any],
     user_id: int | None = None,
 ) -> Record:
-    data, errors = validate_record_data(db, active_attributes(attributes), raw)
+    data, errors = validate_record_data(
+        db, active_attributes(attributes), raw, exclude_record_id=record.id
+    )
     if errors:
         raise RecordError("; ".join(errors))
     # Preserve values for inactive attributes (not submitted from the form).
@@ -99,12 +101,26 @@ def validate_record_data(
     db: Session,
     attributes: list[Attribute],
     raw: dict[str, Any],
+    exclude_record_id: int | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Validate raw form data against ``attributes``.
 
     Returns ``(canonical_data, errors)`` where ``canonical_data`` maps attribute
-    slug -> canonical value.
+    slug -> canonical value. ``exclude_record_id`` skips one record in the
+    uniqueness check (the record being edited).
     """
+    unique_attrs = [a for a in attributes if a.is_unique]
+    existing: list[Record] = []
+    if unique_attrs:
+        existing = list(
+            db.execute(
+                select(Record).where(
+                    Record.entity_id == unique_attrs[0].entity_id,
+                    Record.deleted_at.is_(None),
+                )
+            ).scalars()
+        )
+
     data: dict[str, Any] = {}
     errors: list[str] = []
     for attr in attributes:
@@ -123,8 +139,27 @@ def validate_record_data(
                 data[attr.slug] = attr.default_value
             continue
 
+        if attr.is_unique and _duplicate_value(existing, attr, value, exclude_record_id):
+            errors.append(f"{attr.name} must be unique.")
+            continue
+
         data[attr.slug] = value
     return data, errors
+
+
+def _duplicate_value(
+    existing: list[Record],
+    attr: Attribute,
+    value: Any,
+    exclude_record_id: int | None,
+) -> bool:
+    """True when another (non-excluded) record already holds this attribute value."""
+    for other in existing:
+        if exclude_record_id is not None and other.id == exclude_record_id:
+            continue
+        if other.data.get(attr.slug) == value:
+            return True
+    return False
 
 
 def coerce_attribute_value(attr: Attribute, raw_value: Any) -> Any:

@@ -52,6 +52,11 @@
     Required
   </label>
 
+  <label class="checkbox-label">
+    <input type="checkbox" name="is_unique" id="is_unique" {% if fd and fd.is_unique %}checked{% endif %}>
+    Unique <span class="muted">(values must be unique across records)</span>
+  </label>
+
   <label>Default value
     <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
   </label>
