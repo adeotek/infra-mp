@@ -141,7 +141,13 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow);
 }
 .sidebar-collapsed .nav-section:hover .nav-section-items { display: flex; }
-.sidebar-collapsed .nav-sub { padding-left: 0.75rem; }
+/* Overlay items: the generic collapsed rules center icon-only rows; restore
+   left-aligned rows (icon + text) inside the overlay cards. */
+.sidebar-collapsed .nav-section-items .nav-item {
+  justify-content: flex-start;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
 .sidebar-collapsed .nav-section-items .nav-label { display: inline; }
 
 .sidebar-toggle {
