@@ -176,3 +176,57 @@ def test_new_record_form_prefills_default_values(client, login):
     html = client.get("/entities/1/records/new").text
     assert 'value="web01"' in html
     assert 'value="8"' in html
+
+
+def _seed_reference_many(client, login):
+    login()
+    client.post("/entities", data={"name": "Rack"}, follow_redirects=False)
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post("/entities/1/records", data={"name": "rack-01"}, follow_redirects=False)
+    client.post("/entities/1/records", data={"name": "rack-02"}, follow_redirects=False)
+    client.post(
+        "/entities/2/attributes",
+        data={
+            "name": "Racks",
+            "data_type": "reference",
+            "reference_entity_id": "1",
+            "cardinality": "many",
+        },
+        follow_redirects=False,
+    )
+
+
+def test_record_form_renders_multi_reference_widget(client, login):
+    _seed_reference_many(client, login)
+    html = client.get("/entities/2/records/new").text
+    assert 'class="multi-ref"' in html
+    assert "data-add" in html
+    assert "rack-01" in html  # available options in the source select
+    assert "rack-02" in html
+
+
+def test_create_record_with_multi_reference(client, login):
+    _seed_reference_many(client, login)
+    resp = client.post(
+        "/entities/2/records",
+        data={"racks": ["1", "2"]},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/entities/2/records").text
+    assert "rack-01" in html
+    assert "rack-02" in html
+
+
+def test_record_edit_shows_selected_reference_chips(client, login):
+    _seed_reference_many(client, login)
+    client.post("/entities/2/records", data={"racks": ["1", "2"]}, follow_redirects=False)
+    html = client.get("/records/3/edit").text
+    assert 'class="chip"' in html
+    assert 'name="racks"' in html  # hidden inputs carry the selected values
+    assert "data-remove" in html
+    assert "rack-01" in html
+    assert "rack-02" in html

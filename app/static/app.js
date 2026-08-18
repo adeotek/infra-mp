@@ -139,4 +139,61 @@
       });
     });
   }
+
+  // Multi-value reference field: single select + "Add" + removable chip list.
+  function appendRefChip(wrap, value, label) {
+    var ul = wrap.querySelector('.multi-ref-list');
+    var li = document.createElement('li');
+    li.className = 'chip';
+    var span = document.createElement('span');
+    span.className = 'chip-label';
+    span.textContent = label;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = wrap.getAttribute('data-field');
+    input.value = value;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip-remove';
+    btn.setAttribute('data-remove', '');
+    btn.setAttribute('aria-label', 'Remove');
+    btn.textContent = '\u00d7';
+    li.appendChild(span);
+    li.appendChild(input);
+    li.appendChild(btn);
+    ul.appendChild(li);
+  }
+
+  function sortRefOptions(select) {
+    var options = Array.prototype.slice.call(select.options)
+      .filter(function (o) { return o.value !== ''; })
+      .sort(function (a, b) { return a.textContent.localeCompare(b.textContent); });
+    options.forEach(function (o) { select.add(o); });
+  }
+
+  document.body.addEventListener('click', function (e) {
+    var addBtn = e.target.closest('[data-add]');
+    if (addBtn) {
+      var wrap = addBtn.closest('.multi-ref');
+      var select = wrap.querySelector('[data-source]');
+      var opt = select.options[select.selectedIndex];
+      if (opt && opt.value) {
+        appendRefChip(wrap, opt.value, opt.textContent);
+        opt.remove();
+      }
+      return;
+    }
+    var removeBtn = e.target.closest('[data-remove]');
+    if (removeBtn) {
+      var wrap = removeBtn.closest('.multi-ref');
+      var chip = removeBtn.closest('.chip');
+      var select = wrap.querySelector('[data-source]');
+      var option = document.createElement('option');
+      option.value = chip.querySelector('input[type="hidden"]').value;
+      option.textContent = chip.querySelector('.chip-label').textContent;
+      select.add(option);
+      sortRefOptions(select);
+      chip.remove();
+    }
+  });
 })();

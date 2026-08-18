@@ -54,11 +54,28 @@
     </select>
     {% elif attr.data_type == 'reference' %}
       {% if attr.config.get('cardinality', 'one') == 'many' %}
-      <select name="{{ attr.slug }}" multiple size="5">
-        {% for rid, title in ref_options.get(attr.slug, []) %}
-        <option value="{{ rid }}" {% if val and rid in val %}selected{% endif %}>{{ title }}</option>
-        {% endfor %}
-      </select>
+      {% set opts = ref_options.get(attr.slug, []) %}
+      {% set selected_ids = val if val else [] %}
+      <div class="multi-ref" data-field="{{ attr.slug }}">
+        <div class="multi-ref-control">
+          <select data-source>
+            <option value="">—</option>
+            {% for rid, title in opts if rid not in selected_ids %}
+            <option value="{{ rid }}">{{ title }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn" data-add>Add</button>
+        </div>
+        <ul class="multi-ref-list">
+          {% for rid, title in opts if rid in selected_ids %}
+          <li class="chip">
+            <span class="chip-label">{{ title }}</span>
+            <input type="hidden" name="{{ attr.slug }}" value="{{ rid }}">
+            <button type="button" class="chip-remove" data-remove aria-label="Remove">&times;</button>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
       {% else %}
       <select name="{{ attr.slug }}">
         <option value="">—</option>
