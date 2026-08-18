@@ -17,6 +17,7 @@ from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
+    VIEW_ICONS,
     apply_config,
     build_view_graph,
     build_view_rows,
@@ -66,6 +67,11 @@ def _config_from_form(raw: dict) -> dict:
     return config
 
 
+def _icon_from_form(raw: dict) -> str:
+    icon = str(raw.get("icon", "")).strip()
+    return icon if icon in VIEW_ICONS else ""
+
+
 def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
     return {
         "entity": entity,
@@ -75,6 +81,7 @@ def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
         "filter_op_label": filter_op_label,
         "current_config": view.config if view else None,
         "view_graph": build_view_graph(db, entity.id),
+        "view_icons": VIEW_ICONS,
     }
 
 
@@ -134,7 +141,9 @@ async def create_view_post(
             {**_view_form_context(db, entity, None), "error": "Name is required."},
             status_code=400,
         )
-    view = create_view(db, entity, name, _config_from_form(raw), user_id=user.id)
+    view = create_view(
+        db, entity, name, _config_from_form(raw), icon=_icon_from_form(raw), user_id=user.id
+    )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' created.")
 
 
@@ -200,7 +209,7 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
-    update_view(db, view, name, _config_from_form(raw))
+    update_view(db, view, name, _config_from_form(raw), icon=_icon_from_form(raw))
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")
 
 

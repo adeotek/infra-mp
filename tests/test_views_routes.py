@@ -264,3 +264,69 @@ def test_edit_view_page_embeds_graph_and_replays_columns(client, login):
     # Stored column config is embedded for the JS replay.
     assert '"ref": "rack"' in html
     assert '"many": "first"' in html
+
+
+def test_view_form_has_icon_picker(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'name="icon"' in html
+    assert 'value="fa-bolt"' in html
+
+
+def test_create_view_with_icon_shows_in_sidebar(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "fa-bolt"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert "fa-bolt" in client.get("/dashboard").text
+
+
+def test_update_view_icon(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "fa-bolt"}, follow_redirects=False
+    )
+    client.post(
+        "/views/1/edit",
+        data={"name": "V", "entity_id": "1", "icon": "fa-cloud"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert "fa-cloud" in html
+    assert "fa-bolt" not in html
+
+
+def test_invalid_view_icon_ignored(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "bogus"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    html = client.get("/dashboard").text
+    assert "bogus" not in html
+    assert "fa-table" in html  # fallback icon in the menu
+
+
+def test_sidebar_sections_and_custom_views(client, login):
+    _seed_server(client, login)
+    client.post("/views", data={"name": "Servers View", "entity_id": "1"}, follow_redirects=False)
+    client.post(
+        "/views",
+        data={"name": "Cores View", "entity_id": "1", "icon": "fa-bolt"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    # Level-1: Dashboard link + two section titles.
+    assert html.count("nav-section-title") == 2
+    assert ">Configuration</span>" in html
+    # Level-2 custom views in the sidebar, ordered by name.
+    assert 'href="/views/1"' in html
+    assert 'href="/views/2"' in html
+    assert "Servers View" in html
+    assert "fa-table" in html  # fallback icon for the view without one
+    assert "fa-bolt" in html  # chosen icon
+    # Configuration items: admin sees Users and Backup.
+    assert 'aria-label="Users"' in html
+    assert 'aria-label="Backup"' in html
+    assert 'aria-label="Entities"' in html

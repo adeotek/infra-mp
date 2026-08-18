@@ -114,6 +114,36 @@ a:hover { text-decoration: underline; }
 .nav-item:hover { background: var(--hover); color: var(--text); text-decoration: none; }
 .nav-item.active { background: var(--hover); color: var(--primary); font-weight: 600; }
 
+/* Two-level menu: level-1 sections separated by a thin line; level-2 items
+   are hidden when collapsed and shown as an overlay on section hover. */
+.nav-section { position: relative; }
+.nav-section + .nav-section {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+.nav-section-title { cursor: default; user-select: none; }
+.nav-section-items { display: flex; flex-direction: column; gap: 0.15rem; }
+.nav-sub { padding-left: 1.75rem; font-size: 0.92rem; }
+
+.sidebar-collapsed .nav-section-items {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  z-index: 40;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.sidebar-collapsed .nav-section:hover .nav-section-items { display: flex; }
+.sidebar-collapsed .nav-sub { padding-left: 0.75rem; }
+.sidebar-collapsed .nav-section-items .nav-label { display: inline; }
+
 .sidebar-toggle {
   display: flex;
   align-items: center;

@@ -53,4 +53,12 @@ def render(
     }
     if context:
         ctx.update(context)
+    # The sidebar lists every custom view; skip the query for htmx fragments.
+    if not fragment and ctx["current_user"] is not None:
+        factory = getattr(request.app.state, "session_factory", None)
+        if factory is not None:
+            from app.services.view_service import list_views
+
+            with factory() as session:
+                ctx["sidebar_views"] = list_views(session)
     return templates.TemplateResponse(request, template_name, ctx, status_code=status_code)

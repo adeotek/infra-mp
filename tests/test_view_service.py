@@ -152,13 +152,15 @@ def test_filter_op_label():
 
 
 def test_view_crud(db_session, servers):
-    view = create_view(db_session, servers, "Active", {"columns": ["name"]})
+    view = create_view(db_session, servers, "Active", {"columns": ["name"]}, icon="fa-bolt")
     assert view.name == "Active"
+    assert view.icon == "fa-bolt"
     assert get_view(db_session, view.id) is view
     assert list_views(db_session) == [view]
 
-    update_view(db_session, view, "Renamed", {"columns": ["cores"]})
+    update_view(db_session, view, "Renamed", {"columns": ["cores"]}, icon="fa-cloud")
     assert get_view(db_session, view.id).name == "Renamed"
+    assert view.icon == "fa-cloud"
     assert view.config == {"columns": ["cores"]}
 
     delete_view(db_session, view)

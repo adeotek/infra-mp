@@ -26,6 +26,51 @@ from app.services.validation import ValidationError, coerce_value
 
 FILTER_OPS = ["eq", "neq", "contains", "gt", "gte", "lt", "lte", "is_null", "not_null"]
 
+# FontAwesome (free solid) classes offered in the view form's icon picker,
+# shown next to the view's name in the sidebar menu.
+VIEW_ICONS: dict[str, str] = {
+    "fa-table": "Table",
+    "fa-table-list": "Table list",
+    "fa-gauge": "Gauge",
+    "fa-chart-column": "Chart",
+    "fa-server": "Server",
+    "fa-network-wired": "Network",
+    "fa-database": "Database",
+    "fa-memory": "Memory",
+    "fa-hard-drive": "Hard drive",
+    "fa-microchip": "Microchip",
+    "fa-globe": "Globe",
+    "fa-cloud": "Cloud",
+    "fa-shield-halved": "Shield",
+    "fa-bolt": "Bolt",
+    "fa-tower-broadcast": "Antenna",
+    "fa-wifi": "Wi-Fi",
+    "fa-laptop": "Laptop",
+    "fa-mobile-screen": "Mobile",
+    "fa-house": "Home",
+    "fa-building": "Building",
+    "fa-warehouse": "Warehouse",
+    "fa-diagram-project": "Diagram",
+    "fa-sitemap": "Sitemap",
+    "fa-list-check": "Checklist",
+    "fa-floppy-disk": "Backup",
+    "fa-envelope": "Mail",
+    "fa-bell": "Bell",
+    "fa-calendar-days": "Calendar",
+    "fa-terminal": "Terminal",
+    "fa-key": "Key",
+    "fa-lock": "Lock",
+    "fa-boxes-stacked": "Boxes",
+    "fa-truck-fast": "Shipping",
+    "fa-heart-pulse": "Health",
+    "fa-cube": "Cube",
+    "fa-book": "Book",
+    "fa-folder-open": "Folder",
+    "fa-map-location-dot": "Map",
+    "fa-gears": "Settings",
+    "fa-user-gear": "User settings",
+}
+
 _FILTER_OP_LABELS = {
     "eq": "equals",
     "neq": "does not equal",
@@ -63,6 +108,7 @@ def create_view(
     entity: Entity,
     name: str,
     config: dict,
+    icon: str = "",
     user_id: int | None = None,
 ) -> View:
     view = View(
@@ -70,6 +116,7 @@ def create_view(
         name=name.strip(),
         slug=unique_slug(db, View, name.strip(), scope={"entity_id": entity.id}),
         config=config,
+        icon=icon,
         created_by=user_id,
     )
     db.add(view)
@@ -77,9 +124,10 @@ def create_view(
     return view
 
 
-def update_view(db: Session, view: View, name: str, config: dict) -> View:
+def update_view(db: Session, view: View, name: str, config: dict, icon: str = "") -> View:
     view.name = name.strip()
     view.config = config
+    view.icon = icon
     db.commit()
     return view
 

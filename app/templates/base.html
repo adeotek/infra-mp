@@ -30,28 +30,56 @@
       <span class="brand-text">{{ app_name }}</span>
     </a>
     <nav class="side-nav">
-      <a href="/dashboard" class="nav-item{% if current_path in ('/dashboard', '/') %} active{% endif %}" title="Dashboard" aria-label="Dashboard">
-        <i class="fa-solid fa-gauge" aria-hidden="true"></i>
-        <span class="nav-label">Dashboard</span>
-      </a>
-      <a href="/entities" class="nav-item{% if current_path.startswith('/entities') or current_path.startswith('/records') or current_path.startswith('/attributes') %} active{% endif %}" title="Entities" aria-label="Entities">
-        <i class="fa-solid fa-database" aria-hidden="true"></i>
-        <span class="nav-label">Entities</span>
-      </a>
-      <a href="/views" class="nav-item{% if current_path.startswith('/views') %} active{% endif %}" title="Views" aria-label="Views">
-        <i class="fa-solid fa-list" aria-hidden="true"></i>
-        <span class="nav-label">Views</span>
-      </a>
-      {% if current_user.role == 'admin' %}
-      <a href="/users" class="nav-item{% if current_path.startswith('/users') %} active{% endif %}" title="Users" aria-label="Users">
-        <i class="fa-solid fa-users" aria-hidden="true"></i>
-        <span class="nav-label">Users</span>
-      </a>
-      <a href="/settings/backup" class="nav-item{% if current_path.startswith('/settings/backup') %} active{% endif %}" title="Backup" aria-label="Backup">
-        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
-        <span class="nav-label">Backup</span>
-      </a>
-      {% endif %}
+      <div class="nav-section">
+        <a href="/dashboard" class="nav-item{% if current_path in ('/dashboard', '/') %} active{% endif %}" title="Dashboard" aria-label="Dashboard">
+          <i class="fa-solid fa-gauge" aria-hidden="true"></i>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-item nav-section-title" title="Views">
+          <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+          <span class="nav-label">Views</span>
+        </div>
+        <div class="nav-section-items">
+          {% for v in sidebar_views %}
+          <a href="/views/{{ v.id }}" class="nav-item nav-sub{% if current_path == '/views/' ~ v.id %} active{% endif %}" title="{{ v.name }}">
+            <i class="fa-solid {{ v.icon or 'fa-table' }}" aria-hidden="true"></i>
+            <span class="nav-label">{{ v.name }}</span>
+          </a>
+          {% else %}
+          <span class="nav-item nav-sub muted">No views yet</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-item nav-section-title" title="Configuration">
+          <i class="fa-solid fa-gears" aria-hidden="true"></i>
+          <span class="nav-label">Configuration</span>
+        </div>
+        <div class="nav-section-items">
+          <a href="/entities" class="nav-item nav-sub{% if current_path.startswith('/entities') or current_path.startswith('/records') or current_path.startswith('/attributes') %} active{% endif %}" title="Entities" aria-label="Entities">
+            <i class="fa-solid fa-database" aria-hidden="true"></i>
+            <span class="nav-label">Entities</span>
+          </a>
+          <a href="/views" class="nav-item nav-sub{% if current_path == '/views' or current_path == '/views/new' or (current_path.startswith('/views/') and current_path.endswith('/edit')) %} active{% endif %}" title="Views" aria-label="Views">
+            <i class="fa-solid fa-list" aria-hidden="true"></i>
+            <span class="nav-label">Views</span>
+          </a>
+          {% if current_user.role == 'admin' %}
+          <a href="/users" class="nav-item nav-sub{% if current_path.startswith('/users') %} active{% endif %}" title="Users" aria-label="Users">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            <span class="nav-label">Users</span>
+          </a>
+          <a href="/settings/backup" class="nav-item nav-sub{% if current_path.startswith('/settings/backup') %} active{% endif %}" title="Backup" aria-label="Backup">
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+            <span class="nav-label">Backup</span>
+          </a>
+          {% endif %}
+        </div>
+      </div>
     </nav>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Collapse menu" aria-label="Collapse menu">
       <i class="fa-solid fa-angles-left" aria-hidden="true"></i>

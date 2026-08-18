@@ -12,6 +12,15 @@
     <input type="text" name="name" required value="{{ view.name if view else '' }}" autofocus>
   </label>
 
+  <label>Icon <span class="muted">(optional — shown only in the menu)</span>
+    <select name="icon">
+      <option value="">— none —</option>
+      {% for class, label in view_icons.items() %}
+      <option value="{{ class }}" {% if view and view.icon == class %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
   <fieldset class="form-section">
     <legend>Columns</legend>
     <p class="muted">Add a column row per attribute. Rows may follow reference hops to parent or
