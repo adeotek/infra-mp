@@ -16,14 +16,14 @@
   <table class="table">
     <thead>
       <tr>
-        {% for c in columns %}<th>{{ c.name }}</th>{% endfor %}
+        {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr>
         {% for c in columns %}
-        <td>{{ row.cells[c.slug] }}</td>
+        <td>{{ row.cells[c.key] }}</td>
         {% endfor %}
       </tr>
       {% endfor %}

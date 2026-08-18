@@ -465,6 +465,20 @@ tr.dragging { opacity: 0.4; }
 .filter-row select, .filter-row input { margin-top: 0; }
 #add-filter { margin-top: 0.5rem; }
 
+/* ------------------------------------------------------- View column builder */
+.column-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.column-row select { width: auto; min-width: 9rem; margin-top: 0; }
+.column-row input { margin-top: 0; }
+.col-hops { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.btn-ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn-ghost:hover { border-color: var(--border); color: var(--danger); text-decoration: none; }
+
 /* --------------------------------------------------------- Dashboard widgets */
 .widget-grid {
   display: grid;

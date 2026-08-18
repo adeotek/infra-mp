@@ -142,3 +142,125 @@ def test_delete_view(client, login):
 def test_delete_view_404(client, login):
     _seed_server(client, login)
     assert client.post("/views/9999/delete", follow_redirects=False).status_code == 404
+
+
+def _seed_with_references(client, login):
+    """Site (1) <- Rack (2) <- Server (3); one record chain S1 <- R1 <- A."""
+    login()
+    for name in ["Site", "Rack", "Server"]:
+        assert (
+            client.post("/entities", data={"name": name}, follow_redirects=False).status_code == 303
+        )
+    assert (
+        client.post(
+            "/entities/1/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/attributes",
+            data={
+                "name": "Site",
+                "data_type": "reference",
+                "reference_entity_id": "1",
+                "cardinality": "one",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/attributes",
+            data={
+                "name": "Rack",
+                "data_type": "reference",
+                "reference_entity_id": "2",
+                "cardinality": "one",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    # Records: site #1, rack #2 (site=1), server #3 (rack=2).
+    assert (
+        client.post("/entities/1/records", data={"name": "S1"}, follow_redirects=False).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/records", data={"name": "R1", "site": "1"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/records", data={"name": "A", "rack": "2"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+
+
+def test_create_view_with_related_columns(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "Servers",
+            "entity_id": "3",
+            "col": ["base:name", "rel:up:rack:2:first→name"],
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1").text
+    assert "Rack › Name" in html
+    assert "<th>Name</th>" in html
+    assert "R1" in html
+
+
+def test_create_view_malformed_column_values_ignored(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={"name": "V", "entity_id": "3", "col": ["garbage", "rel:up:nope:2:first→name"]},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    # No valid columns -> every attribute is shown.
+    assert "<th>Name</th>" in client.get("/views/1").text
+    assert "<th>Rack</th>" in client.get("/views/1").text
+
+
+def test_edit_view_page_embeds_graph_and_replays_columns(client, login):
+    _seed_with_references(client, login)
+    client.post(
+        "/views",
+        data={"name": "V", "entity_id": "3", "col": ["rel:up:rack:2:first→name"]},
+        follow_redirects=False,
+    )
+    html = client.get("/views/1/edit").text
+    assert '"base"' in html
+    assert '"entities"' in html
+    # Stored column config is embedded for the JS replay.
+    assert '"ref": "rack"' in html
+    assert '"many": "first"' in html

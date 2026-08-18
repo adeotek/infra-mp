@@ -13,16 +13,19 @@ from app.form import parse_form, to_list
 from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
-from app.services.record_service import build_rows, list_records, resolve_reference_titles
+from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
     apply_config,
+    build_view_graph,
+    build_view_rows,
     create_view,
     delete_view,
     filter_op_label,
     get_view,
     list_views,
+    parse_column_spec,
     update_view,
 )
 from app.templates import render
@@ -31,7 +34,14 @@ router = APIRouter()
 
 
 def _config_from_form(raw: dict) -> dict:
-    columns = to_list(raw.get("columns"))
+    column_specs = []
+    for value in to_list(raw.get("col")):
+        spec = parse_column_spec(value)
+        if spec is not None:
+            column_specs.append(spec)
+    if not column_specs:
+        # Legacy form: flat base-attribute slugs.
+        column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
     sort_slug = raw.get("sort_slug")
     sort_dir = raw.get("sort_dir") if raw.get("sort_dir") in ("asc", "desc") else "asc"
 
@@ -50,7 +60,7 @@ def _config_from_form(raw: dict) -> dict:
             }
         )
 
-    config: dict = {"columns": columns, "filters": filters}
+    config: dict = {"columns": column_specs, "filters": filters}
     if sort_slug:
         config["sort"] = {"slug": sort_slug, "dir": sort_dir}
     return config
@@ -64,6 +74,7 @@ def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
         "filter_ops": FILTER_OPS,
         "filter_op_label": filter_op_label,
         "current_config": view.config if view else None,
+        "view_graph": build_view_graph(db, entity.id),
     }
 
 
@@ -138,10 +149,10 @@ def view_detail(
     if view is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
-    records, columns = apply_config(entity, list_records(db, view.entity_id), view.config)
-    titles = resolve_reference_titles(db, entity)
-    # build_rows needs the full entity attributes; filter to visible columns for display.
-    rows = build_rows(entity, records, titles)
+    records, columns = apply_config(
+        entity, list_records(db, view.entity_id), view.config, list_entities(db)
+    )
+    rows = build_view_rows(db, entity, records, columns)
     return render(
         request,
         "views/detail.html",
