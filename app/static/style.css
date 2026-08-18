@@ -20,6 +20,7 @@
   --code-bg: #eef1f4;
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.10);
   --radius: 8px;
+  --topbar-height: 56px;
 }
 
 /* Dark theme (default) */
@@ -89,6 +90,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  height: var(--topbar-height);
   padding: 1rem 0.9rem;
   font-weight: 700;
   font-size: 1.05rem;
@@ -140,7 +142,7 @@ a:hover { text-decoration: underline; }
 
 /* ------------------------------------------------------------------ Header */
 .topbar {
-  height: 56px;
+  height: var(--topbar-height);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
