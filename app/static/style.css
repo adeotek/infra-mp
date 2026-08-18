@@ -383,11 +383,46 @@ tr.dragging { opacity: 0.4; }
 
 /* ------------------------------------------- Multi-value reference field */
 .multi-ref-control { display: flex; gap: 0.5rem; align-items: stretch; }
-.multi-ref-control select { flex: 1; min-width: 0; }
-.multi-ref-list { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; padding: 0.5rem 0 0; margin: 0; }
-.chip { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 0.25rem 0.6rem; font-size: 0.85rem; }
-.chip-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; }
-.chip-remove:hover { color: var(--danger); }
+.multi-ref-control select { flex: 1; min-width: 0; margin-top: 0; }
+.multi-ref-control .btn { padding: 0.35rem 0.9rem; white-space: nowrap; }
+.multi-ref-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.multi-ref-list:empty { display: none; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.4rem 0.2rem 0.7rem;
+  font-size: 0.85rem;
+}
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+}
+.chip-remove:hover { background: var(--danger-bg); color: var(--danger); }
 
 /* ---------------------------------------------------------- Fieldset/grid */
 .form-section {

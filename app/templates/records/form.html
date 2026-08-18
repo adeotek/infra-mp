@@ -64,7 +64,7 @@
             <option value="{{ rid }}">{{ title }}</option>
             {% endfor %}
           </select>
-          <button type="button" class="btn" data-add>Add</button>
+          <button type="button" class="btn btn-primary" data-add>Add</button>
         </div>
         <ul class="multi-ref-list">
           {% for rid, title in opts if rid in selected_ids %}
