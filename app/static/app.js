@@ -31,8 +31,39 @@
       var collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
       try { localStorage.setItem(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded'); } catch (e) { /* ignore */ }
       updateToggleLabel();
+      closeAllOverlays();
     });
   }
+
+  // Collapsed sidebar: overlay menus for the level-1 sections. The overlays
+  // are position:fixed so they escape the scrollable .side-nav clipping
+  // context; coordinates are computed from the hovered section on open.
+  function openSectionOverlay(section) {
+    var overlay = section.querySelector('.nav-section-items');
+    if (!overlay || section.classList.contains('overlay-open')) return;
+    section.classList.add('overlay-open');
+    var rect = section.getBoundingClientRect();
+    overlay.style.left = rect.right + 'px';
+    var top = Math.min(rect.top, window.innerHeight - overlay.offsetHeight - 12);
+    overlay.style.top = Math.max(top, 8) + 'px';
+  }
+
+  function closeAllOverlays() {
+    document.querySelectorAll('.nav-section.overlay-open').forEach(function (section) {
+      section.classList.remove('overlay-open');
+    });
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    var section = e.target.closest('.sidebar-collapsed .nav-section');
+    if (section) openSectionOverlay(section);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var section = e.target.closest('.sidebar-collapsed .nav-section');
+    if (!section) return;
+    if (section.contains(e.relatedTarget)) return;
+    section.classList.remove('overlay-open');
+  });
 
   // User menu dropdown.
   var userMenu = document.getElementById('user-menu');
