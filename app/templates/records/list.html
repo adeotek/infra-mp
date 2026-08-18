@@ -38,13 +38,15 @@
           <td class="muted">{{ user_names.get(row.record.updated_by, "—") }}</td>
           {% if can_update %}
           <td class="row-actions">
-            <a href="/records/{{ row.record.id }}/edit">Edit</a>
-            {% if can_delete %}
-            <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
-                  onsubmit="return confirm('Delete this record?');">
-              <button type="submit" class="link-danger">Delete</button>
-            </form>
-            {% endif %}
+            <div class="row-actions-inner">
+              <a href="/records/{{ row.record.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+              {% if can_delete %}
+              <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
+                    onsubmit="return confirm('Delete this record?');">
+                <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+              </form>
+              {% endif %}
+            </div>
           </td>
           {% endif %}
         </tr>

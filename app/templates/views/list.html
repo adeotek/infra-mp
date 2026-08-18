@@ -20,11 +20,13 @@
       <td>{{ v.config.get('filters', [])|length }}</td>
       <td class="row-actions">
         {% if can_manage_views %}
-        <a href="/views/{{ v.id }}/edit">Edit</a>
-        <form method="post" action="/views/{{ v.id }}/delete" class="inline"
-              onsubmit="return confirm('Delete this view?');">
-          <button type="submit" class="link-danger">Delete</button>
-        </form>
+        <div class="row-actions-inner">
+          <a href="/views/{{ v.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <form method="post" action="/views/{{ v.id }}/delete" class="inline"
+                onsubmit="return confirm('Delete this view?');">
+            <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+          </form>
+        </div>
         {% endif %}
       </td>
     </tr>

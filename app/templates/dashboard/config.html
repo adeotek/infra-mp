@@ -48,11 +48,13 @@
       <td><code>{{ w.widget_type }}</code></td>
       <td>{{ w.entity.name if w.entity else '—' }}</td>
       <td class="row-actions">
-        <a href="/dashboard/widgets/{{ w.id }}/edit">Edit</a>
-        <form method="post" action="/dashboard/widgets/{{ w.id }}/delete" class="inline"
-              onsubmit="return confirm('Remove this widget?');">
-          <button type="submit" class="link-danger">Remove</button>
-        </form>
+        <div class="row-actions-inner">
+          <a href="/dashboard/widgets/{{ w.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <form method="post" action="/dashboard/widgets/{{ w.id }}/delete" class="inline"
+                onsubmit="return confirm('Remove this widget?');">
+            <button type="submit" class="action-btn action-btn-danger" title="Remove" aria-label="Remove"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+          </form>
+        </div>
       </td>
     </tr>
   {% endfor %}

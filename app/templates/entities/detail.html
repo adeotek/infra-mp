@@ -46,11 +46,13 @@
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td class="row-actions">
         {% if can_manage_schema %}
-        <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body">Edit</a>
-        <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
-              onsubmit="return confirm('Delete this attribute and remove its value from all records? This cannot be undone.');">
-          <button type="submit" class="link-danger">Delete</button>
-        </form>
+        <div class="row-actions-inner">
+          <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
+                onsubmit="return confirm('Delete this attribute and remove its value from all records? This cannot be undone.');">
+            <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
+          </form>
+        </div>
         {% endif %}
       </td>
     </tr>
