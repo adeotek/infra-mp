@@ -4,7 +4,9 @@
 <div class="page-head">
   <h1>{{ entity.name }}</h1>
   <div class="actions">
+    <a href="/entities/{{ entity.id }}/records/export" class="btn">Export CSV</a>
     {% if can_create %}
+    <a href="/entities/{{ entity.id }}/records/import" class="btn" hx-get="/entities/{{ entity.id }}/records/import" hx-target="#modal-body">Import CSV</a>
     <a href="/entities/{{ entity.id }}/records/new" class="btn btn-primary">Add record</a>
     {% endif %}
     <a href="/entities/{{ entity.id }}" class="btn">Back to entity</a>

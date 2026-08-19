@@ -7,6 +7,7 @@
     {% if can_manage_views %}
     <a href="/views/{{ view.id }}/edit" class="btn">Edit view</a>
     {% endif %}
+    <a href="/views/{{ view.id }}/export" class="btn">Export CSV</a>
     <a href="/entities/{{ entity.id }}/records" class="btn">All {{ entity.name }} records</a>
   </div>
 </div>

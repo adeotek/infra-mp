@@ -23,6 +23,7 @@
       <td>{{ record_counts.get(e.id, 0) }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
+          <a href="/entities/{{ e.id }}" class="action-btn" title="Attributes"><i class="fa-solid fa-list" aria-hidden="true"></i></a>
           {% if can_manage_schema %}
           <a href="/entities/{{ e.id }}/edit" hx-get="/entities/{{ e.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           {% endif %}

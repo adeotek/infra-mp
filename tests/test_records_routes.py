@@ -29,6 +29,66 @@ def test_records_index(client, login):
     assert client.get("/entities/1/records").status_code == 200
 
 
+def test_records_export(client, login):
+    _seed_server(client, login)
+    client.post("/entities/1/records", data={"name": "web01", "cores": "8"}, follow_redirects=False)
+    resp = client.get("/entities/1/records/export")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="server-records.csv"' in resp.headers["content-disposition"]
+    body = resp.text.lstrip("\ufeff")
+    assert body.startswith("Name,Cores")
+    assert "web01,8" in body
+
+
+def test_records_export_404(client, login):
+    login()
+    assert client.get("/entities/9999/records/export").status_code == 404
+
+
+def test_records_import_page(client, login):
+    _seed_server(client, login)
+    assert client.get("/entities/1/records/import").status_code == 200
+
+
+def test_records_import_success(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/entities/1/records/import",
+        files={"file": ("servers.csv", b"Name,Cores\nweb01,8\nweb02,16\n", "text/csv")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Imported 2 record(s)." in resp.text
+    assert "web01" in resp.text
+    assert "web02" in resp.text
+
+
+def test_records_import_invalid_row_rolls_back(client, login):
+    _seed_server(client, login)
+    client.post("/entities/1/records", data={"name": "existing"}, follow_redirects=False)
+    resp = client.post(
+        "/entities/1/records/import",
+        files={"file": ("servers.csv", b"Name,Cores\nweb01,8\nweb02,oops\n", "text/csv")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "web01" not in resp.text  # all-or-nothing
+    assert "Import aborted" in resp.text
+    assert "Row 3" in resp.text
+
+
+def test_records_import_missing_required_column(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/entities/1/records/import",
+        files={"file": ("servers.csv", b"Cores\n8\n", "text/csv")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Missing required column" in resp.text
+
+
 def test_records_index_404(client, login):
     _seed_server(client, login)
     assert client.get("/entities/9999/records").status_code == 404

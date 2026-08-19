@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
@@ -13,6 +14,7 @@ from app.form import parse_form, to_list
 from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
+from app.services.csv_service import export_view_csv
 from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
@@ -179,6 +181,29 @@ def view_detail(
             "rows": rows,
             "can_manage_views": has_capability(user, MANAGE_VIEWS),
         },
+    )
+
+
+@router.get("/views/{view_id}/export")
+def export_view(
+    request: Request,
+    view_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    view = get_view(db, view_id)
+    if view is None:
+        raise HTTPException(status_code=404)
+    entity = get_entity_with_attributes(db, view.entity_id)
+    records, columns = apply_config(
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+    )
+    rows = build_view_rows(db, entity, records, columns)
+    csv_text = export_view_csv(columns, rows)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{view.slug}.csv"'},
     )
 
 

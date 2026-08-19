@@ -128,6 +128,31 @@ def test_view_form_sort_select_is_column_driven(client, login):
     assert 'name="sort_slug"' not in html
 
 
+def test_view_export_csv(client, login):
+    _seed_with_references(client, login)
+    client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "3",
+            "col": ["base:name", "rel:up:rack:2:first→name"],
+        },
+        follow_redirects=False,
+    )
+    resp = client.get("/views/1/export")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="v.csv"' in resp.headers["content-disposition"]
+    body = resp.text.lstrip("\ufeff")
+    assert body.startswith("Name,Rack › Name")
+    assert "R1" in body
+
+
+def test_view_export_404(client, login):
+    login()
+    assert client.get("/views/9999/export").status_code == 404
+
+
 def test_create_view_requires_name(client, login):
     _seed_server(client, login)
     resp = client.post("/views", data={"name": "", "entity_id": "1"}, follow_redirects=False)

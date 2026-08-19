@@ -1,0 +1,20 @@
+{% extends base_template %}
+{% block title %}Import CSV — {{ app_name }}{% endblock %}
+{% block content %}
+<h1>Import CSV <span class="muted">into {{ entity.name }}</span></h1>
+<p class="muted">
+  The first row must be a header naming the columns — attribute names or slugs both work.
+  Reference values may be record titles or numeric IDs; multiple references in one cell are
+  separated by <code>|</code>. Empty cells are ignored. The import is all-or-nothing: if any
+  row is invalid, nothing is imported and the errors are reported with row numbers.
+</p>
+<form method="post" action="/entities/{{ entity.id }}/records/import" enctype="multipart/form-data">
+  <label>CSV file
+    <input type="file" name="file" accept=".csv,text/csv" required>
+  </label>
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a href="/entities/{{ entity.id }}/records" class="btn" data-modal-close>Cancel</a>
+  </div>
+</form>
+{% endblock %}
