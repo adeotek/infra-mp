@@ -49,7 +49,9 @@ def _render_table_widget(db: Session, widget: DashboardWidget):
     entity = get_entity_with_attributes(db, widget.entity_id)
     records = list_records(db, widget.entity_id)
     if widget.view_id is not None:
-        records, columns = apply_config(entity, records, widget.view.config)
+        records, columns = apply_config(
+            entity, records, widget.view.config, list_entities(db), db=db
+        )
     else:
         columns = entity.attributes
     titles = resolve_reference_titles(db, entity)
@@ -63,7 +65,7 @@ def _render_count_widget(db: Session, widget: DashboardWidget) -> int:
     entity = get_entity_with_attributes(db, widget.entity_id)
     records = list_records(db, widget.entity_id)
     if widget.view_id is not None:
-        records, _ = apply_config(entity, records, widget.view.config)
+        records, _ = apply_config(entity, records, widget.view.config, list_entities(db), db=db)
     return len(records)
 
 

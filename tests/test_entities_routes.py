@@ -6,6 +6,18 @@ def test_entities_index(client, login):
     assert client.get("/entities").status_code == 200
 
 
+def test_entities_list_action_buttons(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities").text
+    assert ">Open<" not in html
+    # Edit first (schema managers only), then the records link.
+    assert 'hx-get="/entities/1/edit"' in html
+    assert 'title="Edit"' in html
+    assert 'href="/entities/1/records" class="action-btn"' in html
+    assert 'title="Records" aria-label="Records"' in html
+
+
 def test_new_entity_page(client, login):
     login()
     assert client.get("/entities/new").status_code == 200

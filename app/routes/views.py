@@ -33,7 +33,7 @@ from app.templates import render
 router = APIRouter()
 
 
-def _config_from_form(raw: dict) -> dict:
+def _config_from_form(raw: dict, entity: Entity) -> dict:
     column_specs = []
     for value in to_list(raw.get("col")):
         spec = parse_column_spec(value)
@@ -42,7 +42,7 @@ def _config_from_form(raw: dict) -> dict:
     if not column_specs:
         # Legacy form: flat base-attribute slugs.
         column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
-    sort_slug = raw.get("sort_slug")
+    sort_value = str(raw.get("sort_col", "") or raw.get("sort_slug", "") or "").strip()
     sort_dir = raw.get("sort_dir") if raw.get("sort_dir") in ("asc", "desc") else "asc"
 
     filters = []
@@ -61,8 +61,16 @@ def _config_from_form(raw: dict) -> dict:
         )
 
     config: dict = {"columns": column_specs, "filters": filters}
-    if sort_slug:
-        config["sort"] = {"slug": sort_slug, "dir": sort_dir}
+    if sort_value:
+        # Any view column may be the sort column: the form submits the same
+        # encoding as the `col` fields. Legacy plain slugs still work.
+        spec = parse_column_spec(sort_value)
+        if isinstance(spec, str):
+            config["sort"] = {"slug": spec, "dir": sort_dir}
+        elif isinstance(spec, dict):
+            config["sort"] = {"col": spec, "dir": sort_dir}
+        elif sort_value in {a.slug for a in entity.attributes}:
+            config["sort"] = {"slug": sort_value, "dir": sort_dir}
     return config
 
 
@@ -141,7 +149,7 @@ async def create_view_post(
             status_code=400,
         )
     view = create_view(
-        db, entity, name, _config_from_form(raw), icon=_icon_from_form(raw), user_id=user.id
+        db, entity, name, _config_from_form(raw, entity), icon=_icon_from_form(raw), user_id=user.id
     )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' created.")
 
@@ -158,7 +166,7 @@ def view_detail(
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
     records, columns = apply_config(
-        entity, list_records(db, view.entity_id), view.config, list_entities(db)
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
     )
     rows = build_view_rows(db, entity, records, columns)
     return render(
@@ -208,7 +216,7 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
-    update_view(db, view, name, _config_from_form(raw), icon=_icon_from_form(raw))
+    update_view(db, view, name, _config_from_form(raw, entity), icon=_icon_from_form(raw))
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")
 
 

@@ -73,13 +73,13 @@
 
       <div class="nav-section">
         <div class="nav-item nav-section-title" title="Configuration">
-          <i class="fa-solid fa-gears" aria-hidden="true"></i>
+          <i class="fa-solid fa-gear" aria-hidden="true"></i>
           <span class="nav-label">Configuration</span>
         </div>
         <div class="nav-section-items">
           {% set on_entity_records = current_path.startswith('/entities/') and '/records' in current_path %}
           <a href="/entities" class="nav-item nav-sub{% if current_path == '/entities' or (current_path.startswith('/entities/') and not on_entity_records) or current_path.startswith('/attributes') or current_path.startswith('/records') %} active{% endif %}" title="Entities" aria-label="Entities">
-            <i class="fa-solid fa-database" aria-hidden="true"></i>
+            <i class="fa-solid fa-gears" aria-hidden="true"></i>
             <span class="nav-label">Entities</span>
           </a>
           <a href="/views" class="nav-item nav-sub{% if current_path == '/views' or current_path == '/views/new' or (current_path.startswith('/views/') and current_path.endswith('/edit')) %} active{% endif %}" title="Views" aria-label="Views">

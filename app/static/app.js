@@ -274,6 +274,47 @@
 
   document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
 
+  // Quick search: client-side row filter (records pages). A row matches when
+  // any of its cells contains the term (case-insensitive). Works alongside
+  // column sorting: hidden rows stay hidden through re-sorts.
+  document.querySelectorAll('.quick-search[data-filter-table]').forEach(function (box) {
+    var table = document.getElementById(box.getAttribute('data-filter-table'));
+    if (!table) return;
+    var input = box.querySelector('input[type="text"]');
+    var applyBtn = box.querySelector('[data-apply]');
+    var clearBtn = box.querySelector('[data-clear]');
+    var countEl = box.querySelector('.quick-search-count');
+    var rows = table.querySelectorAll('tbody tr');
+
+    function applyFilter() {
+      var term = (input ? input.value : '').trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (tr) {
+        var match = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
+        tr.hidden = !match;
+        if (match) shown += 1;
+      });
+      if (countEl) countEl.textContent = term ? shown + ' of ' + rows.length + ' shown' : '';
+      if (clearBtn) clearBtn.classList.toggle('hidden', !term);
+    }
+
+    if (applyBtn) applyBtn.addEventListener('click', applyFilter);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (input) input.value = '';
+        applyFilter();
+      });
+    }
+    if (input) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applyFilter();
+        }
+      });
+    }
+  });
+
   // Multi-value reference field: single select + "Add" + removable chip list.
   function appendRefChip(wrap, value, label) {
     var ul = wrap.querySelector('.multi-ref-list');

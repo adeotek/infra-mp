@@ -21,7 +21,14 @@
       <td class="muted">{{ e.slug }}</td>
       <td>{{ e.attributes|length }}</td>
       <td>{{ record_counts.get(e.id, 0) }}</td>
-      <td><a href="/entities/{{ e.id }}">Open</a></td>
+      <td class="row-actions">
+        <div class="row-actions-inner">
+          {% if can_manage_schema %}
+          <a href="/entities/{{ e.id }}/edit" hx-get="/entities/{{ e.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          {% endif %}
+          <a href="/entities/{{ e.id }}/records" class="action-btn" title="Records" aria-label="Records"><i class="fa-solid fa-table-list" aria-hidden="true"></i></a>
+        </div>
+      </td>
     </tr>
   {% endfor %}
   </tbody>

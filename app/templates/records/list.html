@@ -14,8 +14,14 @@
 
 {% if entity.attributes %}
   {% if rows %}
+  <div class="quick-search" data-filter-table="records-table">
+    <input type="text" placeholder="Quick search — any column…" aria-label="Quick search">
+    <button type="button" class="btn" data-apply>Apply</button>
+    <button type="button" class="btn btn-ghost hidden" data-clear>Clear</button>
+    <span class="muted quick-search-count"></span>
+  </div>
   <div class="table-wrap">
-    <table class="table" data-sortable>
+    <table class="table" id="records-table" data-sortable>
       <thead>
         <tr>
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}

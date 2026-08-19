@@ -28,21 +28,20 @@
   <fieldset class="form-section">
     <legend>Sort</legend>
     <div class="grid-2">
-      <label>Attribute
-        <select name="sort_slug">
+      <label>Column
+        <select name="sort_col" id="sort-col">
           <option value="">— none —</option>
-          {% for a in entity.attributes %}
-          <option value="{{ a.slug }}" {% if cfg.get('sort', {}).get('slug') == a.slug %}selected{% endif %}>{{ a.name }}</option>
-          {% endfor %}
         </select>
       </label>
       <label>Direction
         <select name="sort_dir">
           <option value="asc" {% if cfg.get('sort', {}).get('dir', 'asc') == 'asc' %}selected{% endif %}>Ascending</option>
-          <option value="desc" {% if cfg.get('sort', {}).get('dir') == 'desc' %}selected{% endif %}>Descending</option>
+          <option value="desc" {% if cfg.get('sort', {}).get('dir', 'asc') == 'desc' %}selected{% endif %}>Descending</option>
         </select>
       </label>
     </div>
+    <p class="muted">Any view column can be the default sort. Pick one of the columns
+      added above — the list updates as you edit the columns.</p>
   </fieldset>
 
   <fieldset class="form-section">
@@ -266,8 +265,83 @@
       if (spec.attr) row.querySelector('.col-attr').value = spec.attr;
     }
 
+    // --- Sort column select: mirrors the current column rows ---
+    var sortCol = document.getElementById('sort-col');
+
+    function sortEncodingOfConfig() {
+      var sort = (CONFIG.sort) || null;
+      if (!sort) return '';
+      if (sort.col !== undefined && sort.col !== null) {
+        if (typeof sort.col === 'string') return sort.col;
+        var hops = (sort.col.path || []).map(function (h) {
+          return h.dir + ':' + h.ref + ':' + h.to + ':' + (h.many || 'first');
+        });
+        return 'rel:' + hops.join('/') + '\u2192' + sort.col.attr;
+      }
+      if (sort.slug) return 'base:' + sort.slug;
+      return '';
+    }
+
+    var storedSortEncoding = sortEncodingOfConfig();
+
+    function sortLabelForRow(row) {
+      // Human label in the same shape as the rendered column headers.
+      var parts = [];
+      var current = GRAPH.base;
+      (row._state || []).forEach(function (h) {
+        var tok = h.token.split(':');
+        var node = ent(current);
+        var hop = null;
+        if (node) {
+          var candidates = tok[0] === 'up' ? node.up : node.down;
+          (candidates || []).forEach(function (candidate) {
+            if (hop) return;
+            var targetId = tok[0] === 'up' ? candidate.to : candidate.from;
+            if (candidate.ref === tok[1] && String(targetId) === tok[2]) hop = candidate;
+          });
+        }
+        parts.push(hop ? hop.name : tok[1]);
+        current = parseInt(tok[2], 10);
+      });
+      var attrSel = row.querySelector('.col-attr');
+      if (attrSel && attrSel.selectedIndex >= 0) {
+        parts.push(attrSel.options[attrSel.selectedIndex].textContent);
+      }
+      return parts.join(' \u203a ');
+    }
+
+    function columnEncodingOfRow(row) {
+      serializeColumnRow(row);
+      return row.querySelector('input[name="col"]').value;
+    }
+
+    function rebuildSortOptions() {
+      if (!sortCol) return;
+      var selected = sortCol.value || storedSortEncoding;
+      while (sortCol.options.length > 1) sortCol.remove(1);
+      var seen = {};
+      columnsBox.querySelectorAll('.column-row').forEach(function (row) {
+        var encoding = columnEncodingOfRow(row);
+        if (!encoding || seen[encoding]) return;
+        seen[encoding] = true;
+        var option = document.createElement('option');
+        option.value = encoding;
+        option.textContent = sortLabelForRow(row);
+        sortCol.appendChild(option);
+      });
+      sortCol.value = '';
+      for (var i = 0; i < sortCol.options.length; i++) {
+        if (sortCol.options[i].value === selected) {
+          sortCol.value = selected;
+          break;
+        }
+      }
+      storedSortEncoding = '';
+    }
+
     // Replay stored columns on edit.
     (CONFIG.columns || []).forEach(loadColumn);
+    rebuildSortOptions();
 
     columnsBox.addEventListener('change', function (e) {
       var row = e.target.closest('.column-row');
@@ -280,17 +354,23 @@
       } else if (e.target.classList.contains('col-many')) {
         row._state = readColumnState(row);
       }
+      rebuildSortOptions();
     });
 
     columnsBox.addEventListener('click', function (e) {
       if (e.target.classList.contains('remove-column')) {
         e.target.closest('.column-row').remove();
+        rebuildSortOptions();
       }
     });
 
-    document.getElementById('add-column').addEventListener('click', newColumnRow);
+    document.getElementById('add-column').addEventListener('click', function () {
+      newColumnRow();
+      rebuildSortOptions();
+    });
     document.getElementById('view-form').addEventListener('submit', function () {
       columnsBox.querySelectorAll('.column-row').forEach(serializeColumnRow);
+      rebuildSortOptions();
     });
 
     // Filters

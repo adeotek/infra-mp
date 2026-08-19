@@ -301,6 +301,50 @@ def test_related_column_up_one_hop(db_session, ref_graph):
     assert cells["C"][columns[0].key] == "—"
 
 
+def test_sort_by_related_column(db_session, ref_graph):
+    server, rack = ref_graph["server"], ref_graph["rack"]
+    sort_col = {
+        "path": [{"dir": "up", "ref": "rack", "to": rack.id, "many": "first"}],
+        "attr": "name",
+    }
+    config = {
+        "columns": [sort_col],
+        "sort": {"col": sort_col, "dir": "desc"},
+    }
+    records, _ = apply_config(
+        server,
+        list_records(db_session, server.id),
+        config,
+        list_entities(db_session),
+        db=db_session,
+    )
+    # B -> R2, A -> R1, C and D have no rack (value-less records last,
+    # keeping their relative order: D is the most recent record).
+    assert [r.data["name"] for r in records] == ["B", "A", "D", "C"]
+
+
+def test_sort_by_related_many_column_uses_first_value(db_session, ref_graph):
+    server, nic = ref_graph["server"], ref_graph["nic"]
+    sort_col = {
+        "path": [{"dir": "up", "ref": "nics", "to": nic.id, "many": "first"}],
+        "attr": "ip",
+    }
+    config = {
+        "columns": [sort_col],
+        "sort": {"col": sort_col, "dir": "asc"},
+    }
+    records, _ = apply_config(
+        server,
+        list_records(db_session, server.id),
+        config,
+        list_entities(db_session),
+        db=db_session,
+    )
+    # D and A both start with 10.0.0.1 (stable order D, A — D is newest),
+    # B has 10.0.0.3, C has none and goes last.
+    assert [r.data["name"] for r in records] == ["D", "A", "B", "C"]
+
+
 def test_related_column_two_hops_up(db_session, ref_graph):
     server, rack, site = ref_graph["server"], ref_graph["rack"], ref_graph["site"]
     config = {

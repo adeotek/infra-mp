@@ -39,6 +39,11 @@ def test_records_list_is_sortable(client, login):
     html = client.get("/entities/1/records").text
     assert "data-sortable" in html
     assert "no-sort" in html  # the actions column
+    # Quick search filter wiring.
+    assert 'data-filter-table="records-table"' in html
+    assert 'id="records-table"' in html
+    assert ">Apply<" in html
+    assert ">Clear<" in html
 
 
 def test_attributes_grid_is_sortable_and_reorderable(client, login):

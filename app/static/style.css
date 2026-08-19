@@ -171,7 +171,7 @@ a:hover { text-decoration: underline; }
   align-items: center;
   gap: 0.7rem;
   padding: 0.6rem 0.75rem;
-  margin: 0 0.5rem 0.75rem;
+  margin: 0 0.5rem;
   background: none;
   border: none;
   border-top: 1px solid var(--border);
@@ -410,6 +410,19 @@ th.sortable:hover { color: var(--primary); }
 .sort-indicator { margin-left: 0.35rem; font-size: 0.8em; opacity: 0.45; }
 th.sorted-asc .sort-indicator,
 th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
+
+/* -------------------------------------------------------------- Utilities */
+.hidden { display: none !important; }
+
+/* ----------------------------------------------------------- Quick search */
+.quick-search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+.quick-search input[type="text"] { width: 16rem; margin-top: 0; }
+.quick-search-count { margin-left: auto; font-size: 0.85rem; }
 
 /* ---------------------------------------------------------- Empty states */
 .empty-state {

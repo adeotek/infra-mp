@@ -102,15 +102,18 @@ def apply_config(
     records: list[Record],
     config: dict,
     entities: list[Entity] | None = None,
+    db: Session | None = None,
 ) -> tuple[list[Record], list[ViewColumn]]:
     """Filter and sort records; return ``(records, visible_columns)``.
 
     ``entities`` (all entities with their attributes loaded) is required to
     resolve related-entity columns; without it those columns are skipped.
+    ``db`` is required to sort by a related column (its values live in other
+    entities' records); without it a related sort is skipped.
     """
     attrs_by_slug = {a.slug: a for a in entity.attributes}
     filtered = _apply_filters(records, attrs_by_slug, config.get("filters", []))
-    filtered = _apply_sort(filtered, attrs_by_slug, config.get("sort"))
+    filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db)
     columns = _resolve_columns(entity, config.get("columns"), entities)
     return filtered, columns
 
@@ -180,19 +183,48 @@ def _coerce_filter_target(attr: Attribute, raw_target: Any) -> Any:
 
 def _apply_sort(
     records: list[Record],
-    attrs_by_slug: dict[str, Attribute],
+    entity: Entity,
     sort_spec: dict | None,
+    entities: list[Entity] | None,
+    db: Session | None,
 ) -> list[Record]:
+    """Sort by any view column: base attribute (``sort.slug`` / ``sort.col``
+    string, legacy compatible) or related column (``sort.col`` dict spec).
+    Records without a value always go last, matching the legacy behaviour."""
     if not sort_spec:
         return records
-    attr = attrs_by_slug.get(sort_spec.get("slug") or "")
-    if attr is None:
+    column_spec = sort_spec.get("col")
+    if column_spec is None:
+        column_spec = sort_spec.get("slug")  # legacy: base attribute slug
+    if column_spec is None:
         return records
-    reverse = sort_spec.get("dir") == "desc"
 
-    with_value = [r for r in records if r.data.get(attr.slug) is not None]
-    without_value = [r for r in records if r.data.get(attr.slug) is None]
-    with_value.sort(key=lambda r: _sortable(r.data[attr.slug]), reverse=reverse)
+    if isinstance(column_spec, str):
+        attr = {a.slug: a for a in entity.attributes}.get(column_spec)
+        if attr is None:
+            return records
+        column = ViewColumn(key=attr.slug, label=attr.name, attr=attr)
+    elif isinstance(column_spec, dict):
+        column = _resolve_related_column(entity, column_spec, {e.id: e for e in entities or []})
+        if column is None:
+            return records
+    else:
+        return records
+
+    reverse = sort_spec.get("dir") == "desc"
+    if column.path is None:
+        with_value = [r for r in records if r.data.get(column.attr.slug) is not None]
+        without_value = [r for r in records if r.data.get(column.attr.slug) is None]
+        with_value.sort(key=lambda r: _sortable(r.data[column.attr.slug]), reverse=reverse)
+        return with_value + without_value
+
+    if db is None:
+        return records  # related sort values live in other entities' records
+    context = _related_context(db, entity, [column], records)
+    values = {r.id: _resolve_related_sort_value(r, column, context) for r in records}
+    with_value = [r for r in records if values[r.id] is not None]
+    without_value = [r for r in records if values[r.id] is None]
+    with_value.sort(key=lambda r: values[r.id], reverse=reverse)
     return with_value + without_value
 
 
@@ -410,30 +442,9 @@ def build_view_rows(
     """Build display rows for a view, resolving related-entity columns."""
     base_titles = resolve_reference_titles(db, entity)
     related = [c for c in columns if c.path is not None]
-
-    entity_ids = {entity.id}
-    for column in related:
-        for hop in column.path or []:
-            entity_ids.add(hop["to"])
-    records_by_entity = {eid: {r.id: r for r in list_records(db, eid)} for eid in entity_ids}
-
-    reverse_index: dict[tuple[int, str], dict[int, list[int]]] = {}
-    for column in related:
-        for hop in column.path or []:
-            if hop["dir"] == "down":
-                key = (hop["to"], hop["ref"])
-                if key not in reverse_index:
-                    reverse_index[key] = _build_reverse_index(
-                        records_by_entity.get(hop["to"], {}), hop["ref"]
-                    )
-
-    terminal_titles: dict[int, dict[int, str]] = {}
-    for column in related:
-        attr = column.attr
-        if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
-            target_id = attr.reference_entity_id
-            if target_id not in terminal_titles:
-                terminal_titles[target_id] = build_record_titles(db, target_id)
+    records_by_entity, reverse_index, terminal_titles = _related_context(
+        db, entity, related, records
+    )
 
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -449,6 +460,48 @@ def build_view_rows(
                 )
         rows.append({"record": record, "cells": cells})
     return rows
+
+
+def _related_context(
+    db: Session,
+    entity: Entity,
+    columns: list[ViewColumn],
+    records: list[Record],
+) -> tuple[
+    dict[int, dict[int, Record]],
+    dict[tuple[int, str], dict[int, list[int]]],
+    dict[int, dict[int, str]],
+]:
+    """Load the shared resolution context for related columns.
+
+    Returns ``(records_by_entity, reverse_index, terminal_titles)`` — the
+    three maps needed to walk reference hops and format terminal values.
+    """
+    entity_ids = {entity.id}
+    for column in columns:
+        for hop in column.path or []:
+            entity_ids.add(hop["to"])
+    records_by_entity = {eid: {r.id: r for r in list_records(db, eid)} for eid in entity_ids}
+
+    reverse_index: dict[tuple[int, str], dict[int, list[int]]] = {}
+    for column in columns:
+        for hop in column.path or []:
+            if hop["dir"] == "down":
+                key = (hop["to"], hop["ref"])
+                if key not in reverse_index:
+                    reverse_index[key] = _build_reverse_index(
+                        records_by_entity.get(hop["to"], {}), hop["ref"]
+                    )
+
+    terminal_titles: dict[int, dict[int, str]] = {}
+    for column in columns:
+        attr = column.attr
+        if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
+            target_id = attr.reference_entity_id
+            if target_id not in terminal_titles:
+                terminal_titles[target_id] = build_record_titles(db, target_id)
+
+    return records_by_entity, reverse_index, terminal_titles
 
 
 def _build_reverse_index(records_by_id: dict[int, Record], ref: str) -> dict[int, list[int]]:
@@ -499,6 +552,46 @@ def _resolve_related_cell(
         if value is not None:
             parts.append(format_value(value))
     return ", ".join(parts) or "—"
+
+
+def _resolve_related_sort_value(
+    record: Record,
+    column: ViewColumn,
+    context: tuple[
+        dict[int, dict[int, Record]],
+        dict[tuple[int, str], dict[int, list[int]]],
+        dict[int, dict[int, str]],
+    ],
+) -> Any:
+    """First terminal value of a related column, used as the sort key.
+
+    Reference terminals sort by their display title; scalars sort by their
+    raw (typed) value so numbers order numerically. ``None`` when the path
+    is broken or the value is missing — such records sort last.
+    """
+    records_by_entity, reverse_index, terminal_titles = context
+    current: list[Record] = [record]
+    for hop in column.path or []:
+        reached: list[Record] = []
+        for rec in current:
+            reached.extend(_follow_hop(rec, hop, records_by_entity, reverse_index))
+        current = reached
+        if not current:
+            return None
+
+    attr = column.attr
+    for rec in current:
+        value = rec.data.get(attr.slug)
+        if value is None:
+            continue
+        ids = value if isinstance(value, list) else [value]
+        if not ids:
+            continue
+        if attr.data_type == DataType.REFERENCE.value:
+            titles = terminal_titles.get(attr.reference_entity_id or -1, {})
+            return titles.get(ids[0], f"#{ids[0]}")
+        return ids[0]
+    return None
 
 
 def _follow_hop(

@@ -79,6 +79,53 @@ def test_create_view(client, login):
     )
     assert resp.status_code == 303
     assert "/views/1" in resp.headers["location"]
+    # Legacy plain-slug sort is preserved.
+    assert '"slug": "cores"' in client.get("/views/1/edit").text
+
+
+def test_create_view_sort_by_base_column_encoding(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "1",
+            "col": ["base:name"],
+            "sort_col": "base:name",
+            "sort_dir": "desc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert '"slug": "name"' in client.get("/views/1/edit").text
+
+
+def test_create_view_sort_by_related_column(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "3",
+            "col": ["rel:up:rack:2:first→name"],
+            "sort_col": "rel:up:rack:2:first→name",
+            "sort_dir": "desc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1/edit").text
+    assert '"col"' in html
+    assert '"attr": "name"' in html
+    # The sorted view renders fine.
+    assert client.get("/views/1").status_code == 200
+
+
+def test_view_form_sort_select_is_column_driven(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'name="sort_col"' in html
+    assert 'name="sort_slug"' not in html
 
 
 def test_create_view_requires_name(client, login):
