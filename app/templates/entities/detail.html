@@ -30,7 +30,7 @@
   <thead>
     <tr>
       {% if can_manage_schema %}<th class="drag-handle-col" aria-hidden="true"></th>{% endif %}
-      <th>Name</th><th>Type</th><th>Required</th><th>Active</th><th>Default</th><th></th>
+      <th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Active</th><th>Default</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -42,6 +42,7 @@
       <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
       <td><code>{{ a.data_type }}</code></td>
       <td>{{ "Yes" if a.is_required else "—" }}</td>
+      <td>{{ "Yes" if a.is_unique else "—" }}</td>
       <td>{{ "Yes" if a.is_active else "No" }}</td>
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td class="row-actions">

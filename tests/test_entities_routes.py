@@ -308,6 +308,25 @@ def test_entity_detail_has_drag_reorder_ui(client, login):
     assert 'draggable="true"' in html
 
 
+def test_entity_detail_shows_unique_column(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Cores", "data_type": "integer"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1").text
+    assert "<th>Unique</th>" in html
+    # Yes cells: Hostname (Unique + Active) and Cores (Active only).
+    assert html.count("<td>Yes</td>") == 3
+
+
 def test_edit_attribute_page_shows_enum_options(client, login):
     login()
     client.post("/entities", data={"name": "Server"}, follow_redirects=False)
