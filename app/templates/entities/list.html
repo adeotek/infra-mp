@@ -17,7 +17,7 @@
   <tbody>
   {% for e in entities %}
     <tr>
-      <td><a href="/entities/{{ e.id }}">{{ e.name }}</a></td>
+      <td>{{ e.name }}</td>
       <td class="muted">{{ e.slug }}</td>
       <td>{{ e.attributes|length }}</td>
       <td>{{ record_counts.get(e.id, 0) }}</td>
