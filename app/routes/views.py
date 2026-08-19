@@ -17,7 +17,6 @@ from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
-    VIEW_ICONS,
     apply_config,
     build_view_graph,
     build_view_rows,
@@ -68,8 +67,9 @@ def _config_from_form(raw: dict) -> dict:
 
 
 def _icon_from_form(raw: dict) -> str:
-    icon = str(raw.get("icon", "")).strip()
-    return icon if icon in VIEW_ICONS else ""
+    # Free text: any value is accepted and normalised to an `fa-*` class at
+    # render time by the `icon_class` Jinja filter (same as entity icons).
+    return str(raw.get("icon", "")).strip()
 
 
 def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
@@ -81,7 +81,6 @@ def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
         "filter_op_label": filter_op_label,
         "current_config": view.config if view else None,
         "view_graph": build_view_graph(db, entity.id),
-        "view_icons": VIEW_ICONS,
     }
 
 

@@ -31,6 +31,14 @@
         {% for v in views %}<option value="{{ v.id }}">{{ v.name }} ({{ v.entity.name if v.entity else '—' }})</option>{% endfor %}
       </select>
     </label>
+    <label>Width
+      <select name="width">
+        <option value="1/4">1/4</option>
+        <option value="1/2" selected>1/2</option>
+        <option value="3/4">3/4</option>
+        <option value="full">Full</option>
+      </select>
+    </label>
   </div>
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">Add widget</button>
@@ -39,14 +47,19 @@
 
 <h2>Widgets</h2>
 {% if widgets %}
-<table class="table">
-  <thead><tr><th>Title</th><th>Type</th><th>Entity</th><th></th></tr></thead>
+{% if widgets|length > 1 %}
+<p class="muted"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> Drag rows to reorder widgets.</p>
+{% endif %}
+<table class="table" id="widgets-table" data-sortable data-reorder-url="/dashboard/widgets/reorder">
+  <thead><tr><th class="no-sort drag-handle-col" aria-hidden="true"></th><th>Title</th><th>Type</th><th>Entity</th><th>Width</th><th class="no-sort"></th></tr></thead>
   <tbody>
   {% for w in widgets %}
-    <tr>
+    <tr draggable="true" data-id="{{ w.id }}">
+      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></td>
       <td>{{ w.title or '—' }}</td>
       <td><code>{{ w.widget_type }}</code></td>
       <td>{{ w.entity.name if w.entity else '—' }}</td>
+      <td>{{ "Full" if w.width == "full" else w.width }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
           <a href="/dashboard/widgets/{{ w.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>

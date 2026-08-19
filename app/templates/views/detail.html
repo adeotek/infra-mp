@@ -13,7 +13,7 @@
 <p class="muted">{{ entity.name }} · {{ rows|length }} record(s)</p>
 
 <div class="table-wrap">
-  <table class="table">
+  <table class="table" data-sortable>
     <thead>
       <tr>
         {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}

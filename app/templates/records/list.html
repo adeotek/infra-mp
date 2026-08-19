@@ -15,7 +15,7 @@
 {% if entity.attributes %}
   {% if rows %}
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" data-sortable>
       <thead>
         <tr>
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
@@ -23,7 +23,7 @@
           <th class="muted">Created by</th>
           <th class="muted">Last modified at</th>
           <th class="muted">Last modified by</th>
-          {% if can_update %}<th></th>{% endif %}
+          {% if can_update %}<th class="no-sort"></th>{% endif %}
         </tr>
       </thead>
       <tbody>

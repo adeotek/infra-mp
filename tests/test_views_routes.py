@@ -266,11 +266,11 @@ def test_edit_view_page_embeds_graph_and_replays_columns(client, login):
     assert '"many": "first"' in html
 
 
-def test_view_form_has_icon_picker(client, login):
+def test_view_form_has_icon_text_input(client, login):
     _seed_server(client, login)
     html = client.get("/views/new", params={"entity_id": 1}).text
     assert 'name="icon"' in html
-    assert 'value="fa-bolt"' in html
+    assert 'type="text" name="icon"' in html
 
 
 def test_create_view_with_icon_shows_in_sidebar(client, login):
@@ -297,15 +297,14 @@ def test_update_view_icon(client, login):
     assert "fa-bolt" not in html
 
 
-def test_invalid_view_icon_ignored(client, login):
+def test_view_icon_accepts_free_text(client, login):
     _seed_server(client, login)
     resp = client.post(
         "/views", data={"name": "V", "entity_id": "1", "icon": "bogus"}, follow_redirects=False
     )
     assert resp.status_code == 303
     html = client.get("/dashboard").text
-    assert "bogus" not in html
-    assert "fa-table" in html  # fallback icon in the menu
+    assert "fa-bogus" in html  # normalised by the icon_class filter, as with entity icons
 
 
 def test_sidebar_sections_and_custom_views(client, login):

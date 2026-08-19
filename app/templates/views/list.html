@@ -10,8 +10,8 @@
 <p class="muted">Views are saved, filtered, sorted windows into a single entity's data.</p>
 
 {% if views %}
-<table class="table">
-  <thead><tr><th>Name</th><th>Entity</th><th>Filters</th><th></th></tr></thead>
+<table class="table" data-sortable>
+  <thead><tr><th>Name</th><th>Entity</th><th>Filters</th><th class="no-sort"></th></tr></thead>
   <tbody>
   {% for v in views %}
     <tr>

@@ -10,9 +10,9 @@
 <p class="muted">Entities define the structure of your data. Add attributes to each entity to describe what you want to track.</p>
 
 {% if entities %}
-<table class="table">
+<table class="table" data-sortable>
   <thead>
-    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th></th></tr>
+    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th class="no-sort"></th></tr>
   </thead>
   <tbody>
   {% for e in entities %}

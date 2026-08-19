@@ -117,14 +117,14 @@
     });
   }
 
-  // Drag-and-drop attribute reordering (entity detail page). Rows are reordered
-  // live on dragover; the final order is persisted on dragend via fetch.
-  var attrTable = document.getElementById('attributes-table');
-  if (attrTable) {
+  // Drag-and-drop row reordering (any table with data-reorder-url: entity
+  // attributes, dashboard widgets). Rows are reordered live on dragover; the
+  // final order is persisted on dragend via fetch.
+  function initReorderTable(table) {
     var dragRow = null;
-    var reorderUrl = attrTable.getAttribute('data-reorder-url');
+    var reorderUrl = table.getAttribute('data-reorder-url');
 
-    attrTable.addEventListener('dragstart', function (e) {
+    table.addEventListener('dragstart', function (e) {
       var tr = e.target.closest('tr[draggable]');
       if (!tr) return;
       dragRow = tr;
@@ -136,7 +136,7 @@
       }
     });
 
-    attrTable.addEventListener('dragover', function (e) {
+    table.addEventListener('dragover', function (e) {
       if (!dragRow) return;
       e.preventDefault();
       var tr = e.target.closest('tr[draggable]');
@@ -150,15 +150,21 @@
       }
     });
 
-    attrTable.addEventListener('drop', function (e) { e.preventDefault(); });
+    table.addEventListener('drop', function (e) { e.preventDefault(); });
 
-    attrTable.addEventListener('dragend', function () {
+    table.addEventListener('dragend', function () {
       if (!dragRow) return;
       dragRow.classList.remove('dragging');
+      var rows = table.querySelectorAll('tr[draggable]');
       var ids = Array.prototype.map.call(
-        attrTable.querySelectorAll('tr[draggable]'),
+        rows,
         function (tr) { return tr.getAttribute('data-id'); }
       );
+      // Keep the sortable "restore original order" index in sync with the
+      // newly persisted order.
+      Array.prototype.forEach.call(rows, function (tr, index) {
+        tr.setAttribute('data-sort-index', String(index));
+      });
       dragRow = null;
       if (!reorderUrl) return;
       fetch(reorderUrl, {
@@ -170,6 +176,103 @@
       });
     });
   }
+
+  document.querySelectorAll('table[data-reorder-url]').forEach(initReorderTable);
+
+  // Sortable tables: clicking a header cycles None -> Ascending -> Descending
+  // -> None. Icons in the header show the active state. Headers marked
+  // "no-sort" (actions / drag-handle columns) are skipped.
+  function sortKey(text) {
+    var t = String(text == null ? '' : text).trim().replace(/\s+/g, ' ');
+    var m = t.match(/^(-?[\d][\d.,]*)(.*)$/);
+    if (m) {
+      var num = parseFloat(m[1].replace(/,/g, ''));
+      if (!isNaN(num) && (m[2] === '' || /^\s*\D/.test(m[2]))) {
+        return { num: num, text: t.toLowerCase() };
+      }
+    }
+    return { num: null, text: t.toLowerCase() };
+  }
+
+  function initSortableTable(table) {
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    // The initial DOM order is the "None" state.
+    rows.forEach(function (tr, index) {
+      tr.setAttribute('data-sort-index', String(index));
+    });
+    var headers = Array.prototype.slice.call(table.querySelectorAll('thead th'));
+
+    function moveRows(comparator) {
+      rows.slice().sort(comparator).forEach(function (tr) {
+        tbody.appendChild(tr);
+      });
+    }
+
+    function resetHeaders() {
+      headers.forEach(function (h) {
+        h.classList.remove('sorted-asc', 'sorted-desc');
+        h.removeAttribute('aria-sort');
+        var icon = h.querySelector('.sort-indicator i');
+        if (icon) icon.className = 'fa-solid fa-sort';
+      });
+    }
+
+    headers.forEach(function (th) {
+      if (th.classList.contains('no-sort')) return;
+      th.classList.add('sortable');
+      var indicator = document.createElement('span');
+      indicator.className = 'sort-indicator';
+      indicator.innerHTML = '<i class="fa-solid fa-sort" aria-hidden="true"></i>';
+      th.appendChild(indicator);
+
+      th.addEventListener('click', function () {
+        var column = Array.prototype.indexOf.call(th.parentNode.children, th);
+        var direction;
+        if (th.classList.contains('sorted-asc')) {
+          direction = 'desc';
+        } else if (th.classList.contains('sorted-desc')) {
+          direction = 'none';
+        } else {
+          direction = 'asc';
+        }
+        resetHeaders();
+        if (direction === 'none') {
+          moveRows(function (a, b) {
+            var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+            var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+            return ia - ib;
+          });
+          return;
+        }
+        th.classList.add(direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        th.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+        var icon = th.querySelector('.sort-indicator i');
+        if (icon) {
+          icon.className = 'fa-solid ' + (direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down');
+        }
+        moveRows(function (a, b) {
+          var ka = sortKey(a.children[column] ? a.children[column].textContent : '');
+          var kb = sortKey(b.children[column] ? b.children[column].textContent : '');
+          var cmp;
+          if (ka.num !== null && kb.num !== null && ka.num !== kb.num) {
+            cmp = ka.num - kb.num;
+          } else {
+            cmp = ka.text < kb.text ? -1 : ka.text > kb.text ? 1 : 0;
+          }
+          if (cmp === 0) {
+            var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+            var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+            cmp = ia - ib;
+          }
+          return direction === 'desc' ? -cmp : cmp;
+        });
+      });
+    });
+  }
+
+  document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
 
   // Multi-value reference field: single select + "Add" + removable chip list.
   function appendRefChip(wrap, value, label) {
