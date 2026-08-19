@@ -4,7 +4,7 @@
 <div class="page-head">
   <h1>{{ entity.name }}</h1>
   <div class="actions">
-    <a href="/entities/{{ entity.id }}/records" class="btn btn-primary">View records</a>
+    
     {% if can_manage_schema %}
     <a href="/entities/{{ entity.id }}/edit" class="btn" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
     <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
@@ -12,6 +12,8 @@
       <button type="submit" class="btn btn-danger">Delete</button>
     </form>
     {% endif %}
+    <a href="/entities/{{ entity.id }}/records" class="btn btn-primary">View records</a>
+    <a href="/entities" class="btn">Back to Entities</a>
   </div>
 </div>
 {% if entity.description %}<p class="muted">{{ entity.description }}</p>{% endif %}
