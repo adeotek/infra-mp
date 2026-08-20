@@ -14,6 +14,15 @@
         if (localStorage.getItem('inframp-sidebar') === 'collapsed') {
           document.documentElement.classList.add('sidebar-collapsed');
         }
+        // UI state: menu section toggles + data-grid sort/filter persistence.
+        var ui = JSON.parse(localStorage.getItem('inframp-ui-state') || 'null') || {};
+        window.__inframpUIState = ui;
+        var sections = ui.sections || {};
+        ['data', 'views', 'config'].forEach(function (s) {
+          if (sections[s] === false) {
+            document.documentElement.classList.add('sect-' + s + '-collapsed');
+          }
+        });
       } catch (e) { /* ignore */ }
     })();
   </script>
@@ -38,10 +47,11 @@
         </a>
       </div>
 
-      <div class="nav-section">
-        <div class="nav-item nav-section-title" title="Data">
+      <div class="nav-section" id="nav-section-data">
+        <div class="nav-item nav-section-title" title="Data" data-section="data" role="button" tabindex="0" aria-expanded="true">
           <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
           <span class="nav-label">Data</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
         </div>
         <div class="nav-section-items">
           {% for e in sidebar_entities %}
@@ -55,10 +65,11 @@
         </div>
       </div>
 
-      <div class="nav-section">
-        <div class="nav-item nav-section-title" title="Views">
+      <div class="nav-section" id="nav-section-views">
+        <div class="nav-item nav-section-title" title="Views" data-section="views" role="button" tabindex="0" aria-expanded="true">
           <i class="fa-solid fa-table-list" aria-hidden="true"></i>
           <span class="nav-label">Views</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
         </div>
         <div class="nav-section-items">
           {% for v in sidebar_views %}
@@ -72,10 +83,11 @@
         </div>
       </div>
 
-      <div class="nav-section">
-        <div class="nav-item nav-section-title" title="Configuration">
+      <div class="nav-section" id="nav-section-config">
+        <div class="nav-item nav-section-title" title="Configuration" data-section="config" role="button" tabindex="0" aria-expanded="true">
           <i class="fa-solid fa-gear" aria-hidden="true"></i>
           <span class="nav-label">Configuration</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
         </div>
         <div class="nav-section-items">
           {% set on_entity_records = current_path.startswith('/entities/') and '/records' in current_path %}

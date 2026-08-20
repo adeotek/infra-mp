@@ -18,6 +18,7 @@ def test_entities_list_is_sortable(client, login):
     _seed_entity_with_record(client, login)
     html = client.get("/entities").text
     assert "data-sortable" in html
+    assert 'data-grid-key="entities"' in html
     assert "no-sort" in html  # the Open column
 
 
@@ -25,19 +26,23 @@ def test_users_list_is_sortable(client, login):
     login()
     html = client.get("/users").text
     assert "data-sortable" in html
+    assert 'data-grid-key="users"' in html
     assert "no-sort" in html  # the actions column
 
 
 def test_views_list_is_sortable(client, login):
     _seed_entity_with_record(client, login)
     client.post("/views", data={"name": "V", "entity_id": "1"}, follow_redirects=False)
-    assert "data-sortable" in client.get("/views").text
+    html = client.get("/views").text
+    assert "data-sortable" in html
+    assert 'data-grid-key="views"' in html
 
 
 def test_records_list_is_sortable(client, login):
     _seed_entity_with_record(client, login)
     html = client.get("/entities/1/records").text
     assert "data-sortable" in html
+    assert 'data-grid-key="records-1"' in html
     assert "no-sort" in html  # the actions column
     # Quick search filter wiring.
     assert 'data-filter-table="records-table"' in html
@@ -55,6 +60,7 @@ def test_attributes_grid_is_sortable_and_reorderable(client, login):
     )
     html = client.get("/entities/1").text
     assert "data-sortable" in html
+    assert 'data-grid-key="attributes-1"' in html
     assert 'data-reorder-url="/entities/1/attributes/reorder"' in html
     assert "no-sort" in html  # grip + actions columns
 
@@ -62,7 +68,9 @@ def test_attributes_grid_is_sortable_and_reorderable(client, login):
 def test_view_detail_grid_is_sortable(client, login):
     _seed_entity_with_record(client, login)
     client.post("/views", data={"name": "V", "entity_id": "1"}, follow_redirects=False)
-    assert "data-sortable" in client.get("/views/1").text
+    html = client.get("/views/1").text
+    assert "data-sortable" in html
+    assert 'data-grid-key="view-1"' in html
 
 
 def test_dashboard_config_table_is_sortable_and_reorderable(client, login):
@@ -74,6 +82,7 @@ def test_dashboard_config_table_is_sortable_and_reorderable(client, login):
     )
     html = client.get("/dashboard/config").text
     assert "data-sortable" in html
+    assert 'data-grid-key="dashboard-config"' in html
     assert 'data-reorder-url="/dashboard/widgets/reorder"' in html
     assert "no-sort" in html  # grip + actions columns
 
@@ -85,4 +94,24 @@ def test_dashboard_widget_tables_are_sortable(client, login):
         data={"title": "W", "widget_type": "table", "entity_id": "1", "view_id": ""},
         follow_redirects=False,
     )
-    assert "data-sortable" in client.get("/dashboard").text
+    html = client.get("/dashboard").text
+    assert "data-sortable" in html
+    assert 'data-grid-key="dashboard-widget-1"' in html
+
+
+def test_ui_state_bootstrap_is_rendered(client, login):
+    login()
+    html = client.get("/dashboard").text
+    # The <head> script applies persisted section collapse before first paint.
+    assert "inframp-ui-state" in html
+    assert "window.__inframpUIState" in html
+
+
+def test_sidebar_sections_are_collapsible(client, login):
+    login()
+    html = client.get("/dashboard").text
+    for section in ("data", "views", "config"):
+        assert f'data-section="{section}"' in html
+        assert f'id="nav-section-{section}"' in html
+    assert html.count("section-chevron") == 3
+    assert 'aria-expanded="true"' in html

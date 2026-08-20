@@ -4,6 +4,52 @@
 
   var THEME_KEY = 'inframp-theme';
   var SIDEBAR_KEY = 'inframp-sidebar';
+  var UI_STATE_KEY = 'inframp-ui-state';
+  var MAX_GRID_ENTRIES = 60;
+
+  // --------------------------------------------------------------------------
+  // UI state: one JSON blob in localStorage, parsed once (the <head> script
+  // stashes it on window to avoid a second parse). Holds the menu section
+  // toggles and per-grid sort/filter state. Writes are debounced; the grid
+  // map is bounded so it cannot grow without limit.
+  // --------------------------------------------------------------------------
+  var uiState = window.__inframpUIState || (function () {
+    try { return JSON.parse(localStorage.getItem(UI_STATE_KEY) || 'null') || {}; } catch (e) { return {}; }
+  })();
+  if (!uiState.sections) uiState.sections = {};
+  if (!uiState.grids) uiState.grids = {};
+  var uiSaveTimer = null;
+
+  function saveUIState() {
+    if (uiSaveTimer) return;
+    uiSaveTimer = setTimeout(function () {
+      uiSaveTimer = null;
+      try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState)); } catch (e) { /* ignore */ }
+    }, 200);
+  }
+
+  function gridStateFor(key) {
+    return (uiState.grids && uiState.grids[key]) || null;
+  }
+
+  function updateGridState(key, patch) {
+    var entry = uiState.grids[key] || {};
+    var k;
+    for (k in patch) {
+      if (patch[k] === null || patch[k] === undefined) delete entry[k];
+      else entry[k] = patch[k];
+    }
+    var hasKeys = false;
+    for (k in entry) { hasKeys = true; break; }
+    if (!hasKeys) {
+      delete uiState.grids[key];
+    } else {
+      uiState.grids[key] = entry;
+      var keys = Object.keys(uiState.grids);
+      while (keys.length > MAX_GRID_ENTRIES) delete uiState.grids[keys.shift()];
+    }
+    saveUIState();
+  }
 
   // Theme toggle (dark is the default, applied early in <head>).
   var themeToggle = document.getElementById('theme-toggle');
@@ -34,6 +80,37 @@
       closeAllOverlays();
     });
   }
+
+  // Sidebar section collapse: clicking a level-1 section title toggles its
+  // child items (expanded sidebar). State persists in the UI blob; the
+  // collapse itself is applied via html-level classes from the <head> script.
+  document.querySelectorAll('.nav-section-title[data-section]').forEach(function (title) {
+    var key = title.getAttribute('data-section');
+    var htmlClass = 'sect-' + key + '-collapsed';
+
+    function syncAria() {
+      title.setAttribute(
+        'aria-expanded',
+        document.documentElement.classList.contains(htmlClass) ? 'false' : 'true'
+      );
+    }
+    syncAria();
+
+    function toggleSection() {
+      var collapsed = document.documentElement.classList.toggle(htmlClass);
+      uiState.sections[key] = !collapsed;
+      saveUIState();
+      syncAria();
+    }
+
+    title.addEventListener('click', toggleSection);
+    title.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleSection();
+      }
+    });
+  });
 
   // Collapsed sidebar: overlay menus for the level-1 sections. The overlays
   // are position:fixed so they escape the scrollable .side-nav clipping
@@ -197,6 +274,7 @@
   function initSortableTable(table) {
     var tbody = table.tBodies[0];
     if (!tbody) return;
+    var gridKey = table.getAttribute('data-grid-key') || null;
     var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
     // The initial DOM order is the "None" state.
     rows.forEach(function (tr, index) {
@@ -219,6 +297,45 @@
       });
     }
 
+    function comparatorFor(th, direction) {
+      var column = Array.prototype.indexOf.call(th.parentNode.children, th);
+      return function (a, b) {
+        var ka = sortKey(a.children[column] ? a.children[column].textContent : '');
+        var kb = sortKey(b.children[column] ? b.children[column].textContent : '');
+        var cmp;
+        if (ka.num !== null && kb.num !== null && ka.num !== kb.num) {
+          cmp = ka.num - kb.num;
+        } else {
+          cmp = ka.text < kb.text ? -1 : ka.text > kb.text ? 1 : 0;
+        }
+        if (cmp === 0) {
+          var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+          var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+          cmp = ia - ib;
+        }
+        return direction === 'desc' ? -cmp : cmp;
+      };
+    }
+
+    function applySort(th, direction) {
+      resetHeaders();
+      if (direction === 'none') {
+        moveRows(function (a, b) {
+          var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+          var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+          return ia - ib;
+        });
+        return;
+      }
+      th.classList.add(direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      th.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+      var icon = th.querySelector('.sort-indicator i');
+      if (icon) {
+        icon.className = 'fa-solid ' + (direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down');
+      }
+      moveRows(comparatorFor(th, direction));
+    }
+
     headers.forEach(function (th) {
       if (th.classList.contains('no-sort')) return;
       th.classList.add('sortable');
@@ -228,7 +345,6 @@
       th.appendChild(indicator);
 
       th.addEventListener('click', function () {
-        var column = Array.prototype.indexOf.call(th.parentNode.children, th);
         var direction;
         if (th.classList.contains('sorted-asc')) {
           direction = 'desc';
@@ -237,39 +353,30 @@
         } else {
           direction = 'asc';
         }
-        resetHeaders();
-        if (direction === 'none') {
-          moveRows(function (a, b) {
-            var ia = parseInt(a.getAttribute('data-sort-index'), 10);
-            var ib = parseInt(b.getAttribute('data-sort-index'), 10);
-            return ia - ib;
-          });
-          return;
+        applySort(th, direction);
+        if (gridKey) {
+          updateGridState(
+            gridKey,
+            direction === 'none'
+              ? { label: null, dir: null }
+              : { label: th.textContent.trim(), dir: direction }
+          );
         }
-        th.classList.add(direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
-        th.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
-        var icon = th.querySelector('.sort-indicator i');
-        if (icon) {
-          icon.className = 'fa-solid ' + (direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down');
-        }
-        moveRows(function (a, b) {
-          var ka = sortKey(a.children[column] ? a.children[column].textContent : '');
-          var kb = sortKey(b.children[column] ? b.children[column].textContent : '');
-          var cmp;
-          if (ka.num !== null && kb.num !== null && ka.num !== kb.num) {
-            cmp = ka.num - kb.num;
-          } else {
-            cmp = ka.text < kb.text ? -1 : ka.text > kb.text ? 1 : 0;
-          }
-          if (cmp === 0) {
-            var ia = parseInt(a.getAttribute('data-sort-index'), 10);
-            var ib = parseInt(b.getAttribute('data-sort-index'), 10);
-            cmp = ia - ib;
-          }
-          return direction === 'desc' ? -cmp : cmp;
-        });
       });
     });
+
+    // Restore the persisted sort for this grid (read once on page load).
+    if (gridKey) {
+      var saved = gridStateFor(gridKey);
+      if (saved && saved.label && (saved.dir === 'asc' || saved.dir === 'desc')) {
+        for (var i = 0; i < headers.length; i++) {
+          if (headers[i].textContent.trim() === saved.label) {
+            applySort(headers[i], saved.dir);
+            break;
+          }
+        }
+      }
+    }
   }
 
   document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
@@ -280,6 +387,7 @@
   document.querySelectorAll('.quick-search[data-filter-table]').forEach(function (box) {
     var table = document.getElementById(box.getAttribute('data-filter-table'));
     if (!table) return;
+    var gridKey = table.getAttribute('data-grid-key') || null;
     var input = box.querySelector('input[type="text"]');
     var applyBtn = box.querySelector('[data-apply]');
     var clearBtn = box.querySelector('[data-clear]');
@@ -296,6 +404,7 @@
       });
       if (countEl) countEl.textContent = term ? shown + ' of ' + rows.length + ' shown' : '';
       if (clearBtn) clearBtn.classList.toggle('hidden', !term);
+      if (gridKey) updateGridState(gridKey, { filter: term || null });
     }
 
     if (applyBtn) applyBtn.addEventListener('click', applyFilter);
@@ -312,6 +421,15 @@
           applyFilter();
         }
       });
+    }
+
+    // Restore the persisted filter (read once on page load).
+    if (gridKey) {
+      var saved = gridStateFor(gridKey);
+      if (saved && saved.filter) {
+        if (input) input.value = saved.filter;
+        applyFilter();
+      }
     }
   });
 

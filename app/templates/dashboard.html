@@ -22,7 +22,7 @@
     <div class="stat-value">{{ w.data }}</div>
     {% elif w.data %}
     <div class="table-wrap">
-      <table class="table" data-sortable>
+      <table class="table" data-sortable data-grid-key="dashboard-widget-{{ w.widget.id }}">
         <thead><tr>{% for c in w.data.columns %}<th>{{ c.name }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in w.data.rows %}

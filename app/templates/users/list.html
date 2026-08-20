@@ -5,7 +5,7 @@
   <h1>Users</h1>
   <a href="/users/new" class="btn btn-primary" hx-get="/users/new" hx-target="#modal-body">New user</a>
 </div>
-<table class="table" data-sortable>
+<table class="table" data-sortable data-grid-key="users">
   <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Status</th><th class="no-sort"></th></tr></thead>
   <tbody>
   {% for u in users %}

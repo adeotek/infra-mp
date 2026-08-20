@@ -23,7 +23,7 @@
     <span class="muted quick-search-count"></span>
   </div>
   <div class="table-wrap">
-    <table class="table" id="records-table" data-sortable>
+    <table class="table" id="records-table" data-sortable data-grid-key="records-{{ entity.id }}">
       <thead>
         <tr>
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}

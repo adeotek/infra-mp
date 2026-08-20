@@ -14,7 +14,7 @@
 <p class="muted">{{ entity.name }} · {{ rows|length }} record(s)</p>
 
 <div class="table-wrap">
-  <table class="table" data-sortable>
+  <table class="table" data-sortable data-grid-key="view-{{ view.id }}">
     <thead>
       <tr>
         {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}

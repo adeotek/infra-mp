@@ -136,9 +136,30 @@ a:hover { text-decoration: underline; }
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
 }
-.nav-section-title { cursor: default; user-select: none; }
+.nav-section-title { cursor: pointer; user-select: none; }
+.section-chevron {
+  margin-left: auto;
+  font-size: 0.7em;
+  opacity: 0.6;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
 .nav-section-items { display: flex; flex-direction: column; gap: 0.15rem; }
 .nav-sub { padding-left: 1.75rem; font-size: 0.92rem; }
+
+/* Section collapse: clicking a section title hides its children (expanded
+   sidebar only — the collapsed rail keeps its hover overlays). */
+html:not(.sidebar-collapsed).sect-data-collapsed #nav-section-data .nav-section-items,
+html:not(.sidebar-collapsed).sect-views-collapsed #nav-section-views .nav-section-items,
+html:not(.sidebar-collapsed).sect-config-collapsed #nav-section-config .nav-section-items {
+  display: none;
+}
+html.sect-data-collapsed #nav-section-data .section-chevron,
+html.sect-views-collapsed #nav-section-views .section-chevron,
+html.sect-config-collapsed #nav-section-config .section-chevron {
+  transform: rotate(0deg);
+}
+.sidebar-collapsed .section-chevron { display: none; }
 
 .sidebar-collapsed .nav-section-items {
   display: none;
