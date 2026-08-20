@@ -110,12 +110,13 @@ def validate_record_data(
     uniqueness check (the record being edited).
     """
     unique_attrs = [a for a in attributes if a.is_unique]
+    key_attrs = [a for a in attributes if a.is_key]
     existing: list[Record] = []
-    if unique_attrs:
+    if unique_attrs or key_attrs:
         existing = list(
             db.execute(
                 select(Record).where(
-                    Record.entity_id == unique_attrs[0].entity_id,
+                    Record.entity_id == attributes[0].entity_id,
                     Record.deleted_at.is_(None),
                 )
             ).scalars()
@@ -144,6 +145,18 @@ def validate_record_data(
             continue
 
         data[attr.slug] = value
+
+    # Entity key: the combination of key-attribute values identifies a record
+    # and must be unique. Records with any missing key value are exempt (the
+    # key is only enforced when it is fully present).
+    if key_attrs and not errors and all(a.slug in data for a in key_attrs):
+        key_values = tuple(data[a.slug] for a in key_attrs)
+        for other in existing:
+            if exclude_record_id is not None and other.id == exclude_record_id:
+                continue
+            if tuple(other.data.get(a.slug) for a in key_attrs) == key_values:
+                errors.append("The entity key values must be unique.")
+                break
     return data, errors
 
 
@@ -227,16 +240,30 @@ def title_attribute(attributes: list[Attribute]) -> Attribute | None:
 
 
 def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
-    """Map record_id -> display title for every non-deleted record of an entity."""
+    """Map record_id -> display title for every non-deleted record of an entity.
+
+    When the entity defines a key (one or more ``is_key`` attributes, in
+    display order), the title is the joined key values — these identify the
+    record in reference selects and cells. Otherwise the first text
+    attribute is used, with ``#<id>`` as the last-resort fallback.
+    """
     entity = db.execute(
         select(Entity).options(selectinload(Entity.attributes)).where(Entity.id == entity_id)
     ).scalar_one_or_none()
     if entity is None:
         return {}
-    title_attr = title_attribute(entity.attributes)
+    key_attrs = [a for a in entity.attributes if a.is_key and a.is_active]
+    title_attr = None if key_attrs else title_attribute(entity.attributes)
     titles: dict[int, str] = {}
     for record in list_records(db, entity_id):
-        if title_attr is not None and record.data.get(title_attr.slug):
+        if key_attrs:
+            parts = [
+                format_value(record.data.get(a.slug))
+                for a in key_attrs
+                if record.data.get(a.slug) is not None
+            ]
+            titles[record.id] = " · ".join(parts) or f"#{record.id}"
+        elif title_attr is not None and record.data.get(title_attr.slug):
             titles[record.id] = str(record.data[title_attr.slug])
         else:
             titles[record.id] = f"#{record.id}"

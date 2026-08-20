@@ -48,6 +48,7 @@ def _attribute_from_form(
     slug: str = "",
     is_active: bool = True,
     is_unique: bool = False,
+    is_key: bool = False,
 ) -> AttributeUpdate:
     options_list = [o.strip() for o in options.splitlines() if o.strip()] or None
     ref_id = int(reference_entity_id) if reference_entity_id.strip() else None
@@ -56,6 +57,7 @@ def _attribute_from_form(
         data_type=data_type,
         is_required=is_required,
         is_unique=is_unique,
+        is_key=is_key,
         default_value=default_value or None,
         options=options_list,
         reference_entity_id=ref_id,
@@ -262,6 +264,7 @@ def create_attribute_post(
     hint: str = Form(""),
     is_active: bool = Form(True),
     is_unique: bool = Form(False),
+    is_key: bool = Form(False),
 ):
     entity = get_entity(db, entity_id)
     if entity is None:
@@ -278,6 +281,7 @@ def create_attribute_post(
         hint,
         is_active=is_active,
         is_unique=is_unique,
+        is_key=is_key,
     )
     try:
         attribute = add_attribute(db, entity, data)
@@ -353,6 +357,7 @@ def update_attribute_post(
     slug: str = Form(""),
     is_active: bool = Form(True),
     is_unique: bool = Form(False),
+    is_key: bool = Form(False),
 ):
     attribute = db.get(Attribute, attribute_id)
     if attribute is None:
@@ -371,6 +376,7 @@ def update_attribute_post(
         slug=slug,
         is_active=is_active,
         is_unique=is_unique,
+        is_key=is_key,
     )
     try:
         update_attribute(db, attribute, data)

@@ -186,3 +186,72 @@ def test_unique_soft_deleted_record_does_not_block(db_session, unique_entity):
     soft_delete_record(db_session, old)
     create_record(db_session, unique_entity, unique_entity.attributes, {"hostname": "web1"})
     assert len(list_records(db_session, unique_entity.id)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Entity key (single or composite): record identity + uniqueness
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def keyed_entity(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Device"))
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT, is_key=True)
+    )
+    add_attribute(db_session, entity, AttributeCreate(name="Model", data_type=DataType.TEXT))
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Vendor", data_type=DataType.TEXT, is_key=True)
+    )
+    loaded = get_entity_with_attributes(db_session, entity.id)
+    assert loaded is not None
+    return loaded
+
+
+def test_key_duplicate_values_rejected_on_create(db_session, keyed_entity):
+    create_record(
+        db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "TerraMaster"}
+    )
+    with pytest.raises(RecordError, match="key values must be unique"):
+        create_record(
+            db_session,
+            keyed_entity,
+            keyed_entity.attributes,
+            {"name": "nas", "vendor": "TerraMaster"},
+        )
+
+
+def test_key_partial_difference_accepted(db_session, keyed_entity):
+    # Composite key: differing on any key attribute is fine.
+    create_record(
+        db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "TerraMaster"}
+    )
+    create_record(
+        db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "Synology"}
+    )
+    assert len(list_records(db_session, keyed_entity.id)) == 2
+
+
+def test_key_missing_values_are_exempt(db_session, keyed_entity):
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
+    assert len(list_records(db_session, keyed_entity.id)) == 2
+
+
+def test_key_update_to_duplicate_rejected(db_session, keyed_entity):
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "A"})
+    other = create_record(
+        db_session, keyed_entity, keyed_entity.attributes, {"name": "nas2", "vendor": "B"}
+    )
+    with pytest.raises(RecordError, match="key values must be unique"):
+        update_record(db_session, other, keyed_entity.attributes, {"name": "nas", "vendor": "A"})
+
+
+def test_key_update_keeping_own_values_accepted(db_session, keyed_entity):
+    record = create_record(
+        db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "A"}
+    )
+    update_record(
+        db_session, record, keyed_entity.attributes, {"name": "nas", "vendor": "A", "model": "X"}
+    )
+    assert record.data["model"] == "X"

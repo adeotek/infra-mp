@@ -18,6 +18,26 @@ def test_entities_list_action_buttons(client, login):
     assert 'title="Records" aria-label="Records"' in html
 
 
+def test_attribute_form_has_key_checkbox(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    assert 'name="is_key"' in client.get("/entities/1/attributes/new").text
+
+
+def test_attribute_key_flag_shows_in_grid(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Name", "data_type": "text", "is_key": "on"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1").text
+    assert "<th>Key</th>" in html
+    # Name: Key=Yes and Active=Yes are the two Yes cells.
+    assert html.count("<td>Yes</td>") == 2
+
+
 def test_new_entity_page(client, login):
     login()
     assert client.get("/entities/new").status_code == 200

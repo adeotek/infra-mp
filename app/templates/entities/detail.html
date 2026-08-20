@@ -32,7 +32,7 @@
   <thead>
     <tr>
       {% if can_manage_schema %}<th class="no-sort drag-handle-col" aria-hidden="true"></th>{% endif %}
-      <th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Active</th><th>Default</th><th class="no-sort"></th>
+      <th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Key</th><th>Active</th><th>Default</th><th class="no-sort"></th>
     </tr>
   </thead>
   <tbody>
@@ -45,6 +45,7 @@
       <td><code>{{ a.data_type }}</code></td>
       <td>{{ "Yes" if a.is_required else "—" }}</td>
       <td>{{ "Yes" if a.is_unique else "—" }}</td>
+      <td>{{ "Yes" if a.is_key else "—" }}</td>
       <td>{{ "Yes" if a.is_active else "No" }}</td>
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td class="row-actions">

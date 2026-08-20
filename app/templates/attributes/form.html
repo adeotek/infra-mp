@@ -57,6 +57,11 @@
     Unique <span class="muted">(values must be unique across records)</span>
   </label>
 
+  <label class="checkbox-label">
+    <input type="checkbox" name="is_key" id="is_key" {% if fd and fd.is_key %}checked{% endif %}>
+    Key <span class="muted">(part of the entity key — identifies records in reference selects, key must be unique)</span>
+  </label>
+
   <label>Default value
     <input type="text" name="default_value" value="{{ fd.default_value if fd and fd.default_value is not none else '' }}">
   </label>
