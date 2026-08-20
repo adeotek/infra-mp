@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a bug or unexpected behaviour
+title: "Bug: <short description>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill in as much as you can.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: InfraMP version (shown at the bottom of the left sidebar).
+      placeholder: e.g. 0.3.0
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Numbered steps to reproduce the issue, e.g.:
+        1. Go to '…'
+        2. Click '…'
+        3. See error
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Deployment method (Docker/local), OS, browser, Python version.
+      placeholder: |
+        - Docker (ghcr.io/adeotek/infra-mp:0.3.0)
+        - Browser: Firefox 128
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Relevant container logs (`docker logs infra-mp`) or screenshots.
