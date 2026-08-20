@@ -232,10 +232,19 @@ def test_key_partial_difference_accepted(db_session, keyed_entity):
     assert len(list_records(db_session, keyed_entity.id)) == 2
 
 
-def test_key_missing_values_are_exempt(db_session, keyed_entity):
+def test_key_missing_values_collide(db_session, keyed_entity):
+    # Partial keys are enforced too: empty == empty.
     create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
+    with pytest.raises(RecordError, match="key values must be unique"):
+        create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
+
+
+def test_key_empty_value_does_not_match_any_value(db_session, keyed_entity):
+    # empty != any value: (nas, None), (nas, "A") and (None, "B") all differ.
     create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
-    assert len(list_records(db_session, keyed_entity.id)) == 2
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "A"})
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"vendor": "B"})
+    assert len(list_records(db_session, keyed_entity.id)) == 3
 
 
 def test_key_update_to_duplicate_rejected(db_session, keyed_entity):

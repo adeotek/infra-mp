@@ -147,10 +147,10 @@ def validate_record_data(
         data[attr.slug] = value
 
     # Entity key: the combination of key-attribute values identifies a record
-    # and must be unique. Records with any missing key value are exempt (the
-    # key is only enforced when it is fully present).
-    if key_attrs and not errors and all(a.slug in data for a in key_attrs):
-        key_values = tuple(data[a.slug] for a in key_attrs)
+    # and must be unique — including partial keys. Missing values compare as
+    # empty: empty == empty (collides), empty != any value.
+    if key_attrs and not errors:
+        key_values = tuple(data.get(a.slug) for a in key_attrs)
         for other in existing:
             if exclude_record_id is not None and other.id == exclude_record_id:
                 continue
