@@ -4,14 +4,15 @@
 <div class="page-head">
   <h1>{{ entity.name }}</h1>
   <div class="actions">
-    <a href="/entities/{{ entity.id }}/records" class="btn btn-primary">View records</a>
+    <a href="/entities/{{ entity.id }}/records" class="btn btn-teal">View records</a>
     {% if can_manage_schema %}
-    <a href="/entities/{{ entity.id }}/edit" class="btn" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
+    <a href="/entities/{{ entity.id }}/edit" class="btn btn-primary" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
     <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
-          onsubmit="return confirm('Delete this entity and all its records? This cannot be undone.');">
+          data-confirm="Delete this entity and all its records? This cannot be undone.">
       <button type="submit" class="btn btn-danger">Delete</button>
     </form>
     {% endif %}
+    <a href="/entities" class="btn">Back to Entities</a>
   </div>
 </div>
 {% if entity.description %}<p class="muted">{{ entity.description }}</p>{% endif %}
@@ -29,8 +30,8 @@
 <table class="table" id="attributes-table" data-reorder-url="/entities/{{ entity.id }}/attributes/reorder">
   <thead>
     <tr>
-      {% if can_manage_schema %}<th class="drag-handle-col" aria-hidden="true"></th>{% endif %}
-      <th>Name</th><th>Type</th><th>Required</th><th>Active</th><th>Default</th><th></th>
+      {% if can_manage_schema %}<th class="no-sort drag-handle-col" aria-hidden="true"></th>{% endif %}
+      <th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Key</th><th>Active</th><th>Default</th><th class="no-sort"></th>
     </tr>
   </thead>
   <tbody>
@@ -42,14 +43,16 @@
       <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
       <td><code>{{ a.data_type }}</code></td>
       <td>{{ "Yes" if a.is_required else "—" }}</td>
+      <td>{{ "Yes" if a.is_unique else "—" }}</td>
+      <td>{{ "Yes" if a.is_key else "—" }}</td>
       <td>{{ "Yes" if a.is_active else "No" }}</td>
       <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td class="row-actions">
         {% if can_manage_schema %}
         <div class="row-actions-inner">
-          <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
-                onsubmit="return confirm('Delete this attribute and remove its value from all records? This cannot be undone.');">
+                data-confirm="Delete this attribute and remove its value from all records? This cannot be undone.">
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

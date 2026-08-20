@@ -158,6 +158,8 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         slug=unique_slug(db, Attribute, data.name.strip(), scope={"entity_id": entity.id}),
         data_type=data.data_type.value,
         is_required=data.is_required,
+        is_unique=data.is_unique,
+        is_key=data.is_key,
         is_active=(True if data.is_required else data.is_active),
         default_value=coerce_value(data.data_type, data.default_value),
         hint=(data.hint.strip() if data.hint else None),
@@ -193,6 +195,8 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     attribute.name = data.name.strip()
     attribute.data_type = data.data_type.value
     attribute.is_required = data.is_required
+    attribute.is_unique = data.is_unique
+    attribute.is_key = data.is_key
     attribute.default_value = coerce_value(data.data_type, data.default_value)
     attribute.hint = data.hint.strip() if data.hint else None
     attribute.config = _build_config(data)

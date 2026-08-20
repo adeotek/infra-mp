@@ -17,10 +17,14 @@
   <h2>Restore from backup</h2>
   <p class="muted">Upload a backup archive to replace the current database. This cannot be undone.</p>
   <form method="post" action="/settings/backup/restore" enctype="multipart/form-data"
-        onsubmit="return confirm('Replace the current database with the uploaded backup? This cannot be undone.');">
-    <label>Backup archive (.zip)
-      <input type="file" name="file" accept=".zip,application/zip" required>
-    </label>
+        data-confirm="Replace the current database with the uploaded backup? This cannot be undone.">
+    <input type="file" name="file" id="restore-file" accept=".zip,application/zip" class="hidden">
+    <button type="button" class="drop-zone" id="restore-zone" data-input="restore-file"
+            data-title="restore-zone-title" data-accept="zip">
+      <i class="fa-solid fa-file-zipper" aria-hidden="true"></i>
+      <span class="drop-zone-title" id="restore-zone-title">Drag &amp; drop a backup archive here</span>
+      <span class="drop-zone-sub">or click to browse</span>
+    </button>
     <div class="form-actions">
       <button type="submit" class="btn btn-danger">Restore</button>
     </div>

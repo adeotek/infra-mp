@@ -13,6 +13,12 @@ class AttributeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     data_type: DataType
     is_required: bool = False
+    # Record values must be unique across the entity's records.
+    is_unique: bool = False
+    # Part of the entity's key: identifies records in reference selects and
+    # must be unique across records (composite keys supported, ordered by
+    # the attribute display order).
+    is_key: bool = False
     default_value: Any | None = None
     # Help text shown under the field on record add/edit forms.
     hint: str | None = None

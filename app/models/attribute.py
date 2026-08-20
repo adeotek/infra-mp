@@ -27,6 +27,11 @@ class Attribute(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(128))
     data_type: Mapped[str] = mapped_column(String(32))
     is_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Record values for this attribute must be unique across the entity's records.
+    is_unique: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Part of the entity's key (single or composite, ordered by sort_order).
+    # The key identifies records in reference selects and must be unique.
+    is_key: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     default_value: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     hint: Mapped[str | None] = mapped_column(String(500), nullable=True)

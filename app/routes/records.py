@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
@@ -19,6 +20,12 @@ from app.flash import redirect_with_flash
 from app.form import parse_form
 from app.models.record import Record
 from app.models.user import User
+from app.services.csv_service import (
+    MAX_UPLOAD_BYTES,
+    export_records_csv,
+    import_record_rows,
+    parse_csv_upload,
+)
 from app.services.record_service import (
     RecordError,
     best_effort_coerce,
@@ -62,6 +69,76 @@ def records_index(
             "can_delete": has_capability(user, DELETE_RECORD),
         },
     )
+
+
+@router.get("/entities/{entity_id}/records/export")
+def export_records(
+    request: Request,
+    entity_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    entity = get_entity_with_attributes(db, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404)
+    titles = resolve_reference_titles(db, entity)
+    csv_text = export_records_csv(entity, list_records(db, entity_id), titles)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{entity.slug}-records.csv"'},
+    )
+
+
+@router.get("/entities/{entity_id}/records/import")
+def import_records_page(
+    request: Request,
+    entity_id: int,
+    user: User = Depends(require_capability(CREATE_RECORD)),
+    db: Session = Depends(get_session),
+):
+    entity = get_entity_with_attributes(db, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404)
+    return render(request, "records/import.html", {"entity": entity})
+
+
+@router.post("/entities/{entity_id}/records/import")
+async def import_records_post(
+    request: Request,
+    entity_id: int,
+    file: Annotated[UploadFile | None, File()] = None,
+    user: User = Depends(require_capability(CREATE_RECORD)),
+    db: Session = Depends(get_session),
+):
+    entity = get_entity_with_attributes(db, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404)
+    target = f"/entities/{entity_id}/records"
+    if file is None or not (file.filename or "").strip():
+        return redirect_with_flash(target, "Import aborted: no file selected.", "error")
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        return redirect_with_flash(target, "Import aborted: the file is larger than 5 MB.", "error")
+    try:
+        rows = parse_csv_upload(contents)
+    except UnicodeDecodeError:
+        return redirect_with_flash(
+            target, "Import aborted: the file must be UTF-8 encoded CSV.", "error"
+        )
+    created, updated, errors = import_record_rows(db, entity, rows, user_id=user.id)
+    if errors:
+        detail = "; ".join(errors[:5])
+        if len(errors) > 5:
+            detail += f" (and {len(errors) - 5} more)"
+        return redirect_with_flash(
+            target, f"Import aborted — nothing was changed. {detail}", "error"
+        )
+    if updated:
+        message = f"Imported {created} record(s) and updated {updated}."
+    else:
+        message = f"Imported {created} record(s)."
+    return redirect_with_flash(target, message)
 
 
 @router.get("/entities/{entity_id}/records/new")

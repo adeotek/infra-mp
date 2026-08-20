@@ -5,43 +5,43 @@
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 
 {% set cfg = current_config or {} %}
-<form method="post" action="{{ '/views/' ~ view.id ~ '/edit' if view else '/views' }}">
+<form method="post" action="{{ '/views/' ~ view.id ~ '/edit' if view else '/views' }}" id="view-form">
   {% if not view %}<input type="hidden" name="entity_id" value="{{ entity.id }}">{% endif %}
 
   <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ view.name if view else '' }}" autofocus>
   </label>
 
+  <label>Icon (optional)
+    <input type="text" name="icon" value="{{ view.icon if view else '' }}" placeholder="e.g. fa-server">
+  </label>
+
   <fieldset class="form-section">
     <legend>Columns</legend>
-    <p class="muted">Leave all unchecked to show every attribute.</p>
-    {% for a in entity.attributes %}
-    <label class="checkbox-label">
-      <input type="checkbox" name="columns" value="{{ a.slug }}"
-        {% if cfg.get('columns') and a.slug in cfg.get('columns') %}checked{% endif %}>
-      {{ a.name }}
-    </label>
-    {% endfor %}
+    <p class="muted">Add a column row per attribute. Rows may follow reference hops to parent or
+      child entities (any depth) and end on one of their attributes. Leave empty to show every
+      attribute.</p>
+    <div id="columns"></div>
+    <button type="button" id="add-column" class="btn">Add column</button>
   </fieldset>
 
   <fieldset class="form-section">
     <legend>Sort</legend>
     <div class="grid-2">
-      <label>Attribute
-        <select name="sort_slug">
+      <label>Column
+        <select name="sort_col" id="sort-col">
           <option value="">— none —</option>
-          {% for a in entity.attributes %}
-          <option value="{{ a.slug }}" {% if cfg.get('sort', {}).get('slug') == a.slug %}selected{% endif %}>{{ a.name }}</option>
-          {% endfor %}
         </select>
       </label>
       <label>Direction
         <select name="sort_dir">
           <option value="asc" {% if cfg.get('sort', {}).get('dir', 'asc') == 'asc' %}selected{% endif %}>Ascending</option>
-          <option value="desc" {% if cfg.get('sort', {}).get('dir') == 'desc' %}selected{% endif %}>Descending</option>
+          <option value="desc" {% if cfg.get('sort', {}).get('dir', 'asc') == 'desc' %}selected{% endif %}>Descending</option>
         </select>
       </label>
     </div>
+    <p class="muted">Any view column can be the default sort. Pick one of the columns
+      added above — the list updates as you edit the columns.</p>
   </fieldset>
 
   <fieldset class="form-section">
@@ -75,6 +75,15 @@
   </div>
 </form>
 
+<template id="column-row-template">
+  <div class="column-row">
+    <div class="col-hops"></div>
+    <select class="col-attr" aria-label="Attribute"></select>
+    <input type="hidden" name="col" value="">
+    <button type="button" class="btn btn-ghost remove-column">Remove</button>
+  </div>
+</template>
+
 <template id="filter-row-template">
   <div class="filter-row grid-3">
     <select name="filter_slug">
@@ -95,12 +104,282 @@
 
 <script>
   (function () {
-    var container = document.getElementById('filters');
-    var template = document.getElementById('filter-row-template');
-    document.getElementById('add-filter').addEventListener('click', function () {
-      container.appendChild(template.content.cloneNode(true));
+    var GRAPH = {{ view_graph | tojson }};
+    var CONFIG = {{ (current_config or {}) | tojson }};
+    var columnsBox = document.getElementById('columns');
+    var columnTemplate = document.getElementById('column-row-template');
+
+    function ent(id) { return GRAPH.entities[String(id)] || null; }
+
+    function newColumnRow() {
+      var row = columnTemplate.content.cloneNode(true).firstElementChild;
+      row._state = [];
+      columnsBox.appendChild(row);
+      renderColumnRow(row);
+      return row;
+    }
+
+    function hopOptions(nodeId, visited) {
+      var node = ent(nodeId);
+      var frag = document.createDocumentFragment();
+      if (!node) return frag;
+      var up = document.createElement('optgroup');
+      up.label = 'Parents (this entity references)';
+      node.up.forEach(function (h) {
+        var o = document.createElement('option');
+        o.value = 'up:' + h.ref + ':' + h.to + ':' + (h.many ? 'many' : 'one');
+        o.textContent = '\u2191 ' + h.name + ' \u2192 ' + (ent(h.to) ? ent(h.to).name : '?');
+        if (visited.indexOf(h.to) !== -1) o.disabled = true;
+        up.appendChild(o);
+      });
+      var down = document.createElement('optgroup');
+      down.label = 'Children (entities referencing this)';
+      node.down.forEach(function (h) {
+        var o = document.createElement('option');
+        o.value = 'down:' + h.ref + ':' + h.from + ':' + (h.many ? 'many' : 'one');
+        o.textContent = '\u2193 ' + (ent(h.from) ? ent(h.from).name : '?') + ' \u00b7 ' + h.name;
+        if (visited.indexOf(h.from) !== -1) o.disabled = true;
+        down.appendChild(o);
+      });
+      if (up.childElementCount) frag.appendChild(up);
+      if (down.childElementCount) frag.appendChild(down);
+      return frag;
+    }
+
+    function attrOptions(nodeId, selected) {
+      var node = ent(nodeId);
+      var frag = document.createDocumentFragment();
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '\u2014 attribute \u2014';
+      frag.appendChild(placeholder);
+      ((node && node.attrs) || []).forEach(function (a) {
+        var o = document.createElement('option');
+        o.value = a.slug;
+        o.textContent = a.name;
+        if (a.slug === selected) o.selected = true;
+        frag.appendChild(o);
+      });
+      return frag;
+    }
+
+    function manyChooser(selected) {
+      var sel = document.createElement('select');
+      sel.className = 'col-many';
+      [['first', 'First value'], ['all', 'All values']].forEach(function (pair) {
+        var o = document.createElement('option');
+        o.value = pair[0];
+        o.textContent = pair[1];
+        if (pair[0] === selected) o.selected = true;
+        sel.appendChild(o);
+      });
+      return sel;
+    }
+
+    function renderColumnRow(row) {
+      var hopsWrap = row.querySelector('.col-hops');
+      var attrSel = row.querySelector('.col-attr');
+      var prevAttr = attrSel.value;
+      hopsWrap.innerHTML = '';
+      var current = GRAPH.base;
+      var visited = [GRAPH.base];
+      (row._state || []).forEach(function (h) {
+        var parts = h.token.split(':');
+        var to = parseInt(parts[2], 10);
+        if (visited.indexOf(to) !== -1) return;
+        var hopSel = document.createElement('select');
+        hopSel.className = 'col-hop';
+        hopSel.appendChild(hopOptions(current, visited));
+        hopSel.value = h.token;
+        hopsWrap.appendChild(hopSel);
+        if (parts[3] === 'many') {
+          hopsWrap.appendChild(manyChooser(h.many || 'first'));
+        }
+        visited.push(to);
+        current = to;
+      });
+      // One empty select to add the next hop, when any remain.
+      var next = hopOptions(current, visited);
+      if (next.childElementCount) {
+        var emptySel = document.createElement('select');
+        emptySel.className = 'col-hop';
+        var first = document.createElement('option');
+        first.value = '';
+        first.textContent = '\u2014 add hop \u2014';
+        emptySel.appendChild(first);
+        while (next.firstChild) emptySel.appendChild(next.firstChild);
+        hopsWrap.appendChild(emptySel);
+      }
+      attrSel.innerHTML = '';
+      attrSel.appendChild(attrOptions(current, prevAttr));
+    }
+
+    function readColumnState(row) {
+      // Fresh state from the DOM: hop tokens plus the First/All choice per many hop.
+      var state = [];
+      var manyCount = 0;
+      var manySels = row.querySelectorAll('.col-many');
+      row.querySelectorAll('.col-hop').forEach(function (sel) {
+        if (!sel.value) return;
+        var parts = sel.value.split(':');
+        var many = parts[3] === 'many'
+          ? (manySels[manyCount] ? manySels[manyCount].value : 'first')
+          : 'first';
+        if (parts[3] === 'many') manyCount += 1;
+        state.push({ token: sel.value, many: many });
+      });
+      return state;
+    }
+
+    function serializeColumnRow(row) {
+      var state = readColumnState(row);
+      var attr = row.querySelector('.col-attr').value;
+      var hidden = row.querySelector('input[name="col"]');
+      if (!state.length) {
+        hidden.value = attr ? 'base:' + attr : '';
+        return;
+      }
+      var hops = state.map(function (h) {
+        return h.token.split(':').slice(0, 3).join(':') + ':' + h.many;
+      });
+      hidden.value = attr ? 'rel:' + hops.join('/') + '\u2192' + attr : '';
+    }
+
+    function loadColumn(spec) {
+      var row = newColumnRow();
+      if (typeof spec === 'string') {
+        row.querySelector('.col-attr').value = spec;
+        return;
+      }
+      (spec.path || []).forEach(function (hop) {
+        var hopSels = row.querySelectorAll('.col-hop');
+        var sel = hopSels[hopSels.length - 1];
+        var opt = null;
+        Array.prototype.forEach.call(sel.options, function (o) {
+          if (!opt && o.value.indexOf(hop.dir + ':' + hop.ref + ':' + hop.to + ':') === 0) opt = o;
+        });
+        if (!opt) return;
+        row._state.push({ token: opt.value, many: hop.many || 'first' });
+        renderColumnRow(row);
+      });
+      if (spec.attr) row.querySelector('.col-attr').value = spec.attr;
+    }
+
+    // --- Sort column select: mirrors the current column rows ---
+    var sortCol = document.getElementById('sort-col');
+
+    function sortEncodingOfConfig() {
+      var sort = (CONFIG.sort) || null;
+      if (!sort) return '';
+      if (sort.col !== undefined && sort.col !== null) {
+        if (typeof sort.col === 'string') return sort.col;
+        var hops = (sort.col.path || []).map(function (h) {
+          return h.dir + ':' + h.ref + ':' + h.to + ':' + (h.many || 'first');
+        });
+        return 'rel:' + hops.join('/') + '\u2192' + sort.col.attr;
+      }
+      if (sort.slug) return 'base:' + sort.slug;
+      return '';
+    }
+
+    var storedSortEncoding = sortEncodingOfConfig();
+
+    function sortLabelForRow(row) {
+      // Human label in the same shape as the rendered column headers.
+      var parts = [];
+      var current = GRAPH.base;
+      (row._state || []).forEach(function (h) {
+        var tok = h.token.split(':');
+        var node = ent(current);
+        var hop = null;
+        if (node) {
+          var candidates = tok[0] === 'up' ? node.up : node.down;
+          (candidates || []).forEach(function (candidate) {
+            if (hop) return;
+            var targetId = tok[0] === 'up' ? candidate.to : candidate.from;
+            if (candidate.ref === tok[1] && String(targetId) === tok[2]) hop = candidate;
+          });
+        }
+        parts.push(hop ? hop.name : tok[1]);
+        current = parseInt(tok[2], 10);
+      });
+      var attrSel = row.querySelector('.col-attr');
+      if (attrSel && attrSel.selectedIndex >= 0) {
+        parts.push(attrSel.options[attrSel.selectedIndex].textContent);
+      }
+      return parts.join(' \u203a ');
+    }
+
+    function columnEncodingOfRow(row) {
+      serializeColumnRow(row);
+      return row.querySelector('input[name="col"]').value;
+    }
+
+    function rebuildSortOptions() {
+      if (!sortCol) return;
+      var selected = sortCol.value || storedSortEncoding;
+      while (sortCol.options.length > 1) sortCol.remove(1);
+      var seen = {};
+      columnsBox.querySelectorAll('.column-row').forEach(function (row) {
+        var encoding = columnEncodingOfRow(row);
+        if (!encoding || seen[encoding]) return;
+        seen[encoding] = true;
+        var option = document.createElement('option');
+        option.value = encoding;
+        option.textContent = sortLabelForRow(row);
+        sortCol.appendChild(option);
+      });
+      sortCol.value = '';
+      for (var i = 0; i < sortCol.options.length; i++) {
+        if (sortCol.options[i].value === selected) {
+          sortCol.value = selected;
+          break;
+        }
+      }
+      storedSortEncoding = '';
+    }
+
+    // Replay stored columns on edit.
+    (CONFIG.columns || []).forEach(loadColumn);
+    rebuildSortOptions();
+
+    columnsBox.addEventListener('change', function (e) {
+      var row = e.target.closest('.column-row');
+      if (!row) return;
+      if (e.target.classList.contains('col-hop')) {
+        var hopSels = row.querySelectorAll('.col-hop');
+        var idx = Array.prototype.indexOf.call(hopSels, e.target);
+        row._state = readColumnState(row).slice(0, idx + 1);
+        renderColumnRow(row);
+      } else if (e.target.classList.contains('col-many')) {
+        row._state = readColumnState(row);
+      }
+      rebuildSortOptions();
     });
-    container.addEventListener('click', function (e) {
+
+    columnsBox.addEventListener('click', function (e) {
+      if (e.target.classList.contains('remove-column')) {
+        e.target.closest('.column-row').remove();
+        rebuildSortOptions();
+      }
+    });
+
+    document.getElementById('add-column').addEventListener('click', function () {
+      newColumnRow();
+      rebuildSortOptions();
+    });
+    document.getElementById('view-form').addEventListener('submit', function () {
+      columnsBox.querySelectorAll('.column-row').forEach(serializeColumnRow);
+      rebuildSortOptions();
+    });
+
+    // Filters
+    var filterBox = document.getElementById('filters');
+    var filterTemplate = document.getElementById('filter-row-template');
+    document.getElementById('add-filter').addEventListener('click', function () {
+      filterBox.appendChild(filterTemplate.content.cloneNode(true));
+    });
+    filterBox.addEventListener('click', function (e) {
       if (e.target.classList.contains('remove-filter')) {
         e.target.closest('.filter-row').remove();
       }

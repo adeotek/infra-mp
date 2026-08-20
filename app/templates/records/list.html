@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ entity.name }} records — {{ app_name }}{% endblock %}
+{% block content_class %}content-wide{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>{{ entity.name }}</h1>
   <div class="actions">
+    <a href="/entities/{{ entity.id }}/records/export" class="btn btn-teal">Export CSV</a>
     {% if can_create %}
+    <a href="/entities/{{ entity.id }}/records/import" class="btn btn-primary" hx-get="/entities/{{ entity.id }}/records/import" hx-target="#modal-body">Import CSV</a>
     <a href="/entities/{{ entity.id }}/records/new" class="btn btn-primary">Add record</a>
     {% endif %}
     <a href="/entities/{{ entity.id }}" class="btn">Back to entity</a>
@@ -14,8 +17,14 @@
 
 {% if entity.attributes %}
   {% if rows %}
+  <div class="quick-search" data-filter-table="records-table">
+    <input type="text" placeholder="Quick search — any column…" aria-label="Quick search">
+    <button type="button" class="btn" data-apply>Apply</button>
+    <button type="button" class="btn btn-ghost hidden" data-clear>Clear</button>
+    <span class="muted quick-search-count"></span>
+  </div>
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="records-table" data-sortable data-grid-key="records-{{ entity.id }}">
       <thead>
         <tr>
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
@@ -23,7 +32,7 @@
           <th class="muted">Created by</th>
           <th class="muted">Last modified at</th>
           <th class="muted">Last modified by</th>
-          {% if can_update %}<th></th>{% endif %}
+          {% if can_update %}<th class="no-sort"></th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -39,10 +48,10 @@
           {% if can_update %}
           <td class="row-actions">
             <div class="row-actions-inner">
-              <a href="/records/{{ row.record.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+              <a href="/records/{{ row.record.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
               {% if can_delete %}
               <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
-                    onsubmit="return confirm('Delete this record?');">
+                    data-confirm="Delete this record?">
                 <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
               </form>
               {% endif %}

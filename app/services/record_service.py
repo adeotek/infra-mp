@@ -72,7 +72,9 @@ def update_record(
     raw: dict[str, Any],
     user_id: int | None = None,
 ) -> Record:
-    data, errors = validate_record_data(db, active_attributes(attributes), raw)
+    data, errors = validate_record_data(
+        db, active_attributes(attributes), raw, exclude_record_id=record.id
+    )
     if errors:
         raise RecordError("; ".join(errors))
     # Preserve values for inactive attributes (not submitted from the form).
@@ -99,12 +101,28 @@ def validate_record_data(
     db: Session,
     attributes: list[Attribute],
     raw: dict[str, Any],
+    exclude_record_id: int | None = None,
+    enforce_key: bool = True,
 ) -> tuple[dict[str, Any], list[str]]:
     """Validate raw form data against ``attributes``.
 
     Returns ``(canonical_data, errors)`` where ``canonical_data`` maps attribute
-    slug -> canonical value.
+    slug -> canonical value. ``exclude_record_id`` skips one record in the
+    uniqueness check (the record being edited).
     """
+    unique_attrs = [a for a in attributes if a.is_unique]
+    key_attrs = [a for a in attributes if a.is_key]
+    existing: list[Record] = []
+    if unique_attrs or key_attrs:
+        existing = list(
+            db.execute(
+                select(Record).where(
+                    Record.entity_id == attributes[0].entity_id,
+                    Record.deleted_at.is_(None),
+                )
+            ).scalars()
+        )
+
     data: dict[str, Any] = {}
     errors: list[str] = []
     for attr in attributes:
@@ -123,8 +141,41 @@ def validate_record_data(
                 data[attr.slug] = attr.default_value
             continue
 
+        if attr.is_unique and _duplicate_value(existing, attr, value, exclude_record_id):
+            errors.append(f"{attr.name} must be unique.")
+            continue
+
         data[attr.slug] = value
+
+    # Entity key: the combination of key-attribute values identifies a record
+    # and must be unique — including partial keys. Missing values compare as
+    # None: None == None (collides), None != any value (the string "empty"
+    # is a regular value, not an empty one). Callers that already resolved
+    # the key themselves (e.g. CSV import upserts) may skip the check.
+    if enforce_key and key_attrs and not errors:
+        key_values = tuple(data.get(a.slug) for a in key_attrs)
+        for other in existing:
+            if exclude_record_id is not None and other.id == exclude_record_id:
+                continue
+            if tuple(other.data.get(a.slug) for a in key_attrs) == key_values:
+                errors.append("The entity key values must be unique.")
+                break
     return data, errors
+
+
+def _duplicate_value(
+    existing: list[Record],
+    attr: Attribute,
+    value: Any,
+    exclude_record_id: int | None,
+) -> bool:
+    """True when another (non-excluded) record already holds this attribute value."""
+    for other in existing:
+        if exclude_record_id is not None and other.id == exclude_record_id:
+            continue
+        if other.data.get(attr.slug) == value:
+            return True
+    return False
 
 
 def coerce_attribute_value(attr: Attribute, raw_value: Any) -> Any:
@@ -192,16 +243,33 @@ def title_attribute(attributes: list[Attribute]) -> Attribute | None:
 
 
 def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
-    """Map record_id -> display title for every non-deleted record of an entity."""
+    """Map record_id -> display title for every non-deleted record of an entity.
+
+    When the entity defines a key (one or more ``is_key`` attributes, in
+    display order), the title is the joined key values — these identify the
+    record in reference selects and cells. Otherwise the first text
+    attribute is used, with ``#<id>`` as the last-resort fallback.
+    """
     entity = db.execute(
         select(Entity).options(selectinload(Entity.attributes)).where(Entity.id == entity_id)
     ).scalar_one_or_none()
     if entity is None:
         return {}
-    title_attr = title_attribute(entity.attributes)
+    key_attrs = [a for a in entity.attributes if a.is_key and a.is_active]
+    title_attr = None if key_attrs else title_attribute(entity.attributes)
     titles: dict[int, str] = {}
+    # Composite key parts are joined with " ^ " — keyboard-typable and
+    # practically absent from attribute data, so CSV reference cells stay
+    # unambiguous. "|" and ";" are reserved for many-reference separation.
     for record in list_records(db, entity_id):
-        if title_attr is not None and record.data.get(title_attr.slug):
+        if key_attrs:
+            parts = [
+                format_value(record.data.get(a.slug))
+                for a in key_attrs
+                if record.data.get(a.slug) is not None
+            ]
+            titles[record.id] = " ^ ".join(parts) or f"#{record.id}"
+        elif title_attr is not None and record.data.get(title_attr.slug):
             titles[record.id] = str(record.data[title_attr.slug])
         else:
             titles[record.id] = f"#{record.id}"

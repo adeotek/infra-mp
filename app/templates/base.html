@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <script>
     /* Apply persisted theme + sidebar state before paint to avoid a flash. */
@@ -13,6 +14,15 @@
         if (localStorage.getItem('inframp-sidebar') === 'collapsed') {
           document.documentElement.classList.add('sidebar-collapsed');
         }
+        // UI state: menu section toggles + data-grid sort/filter persistence.
+        var ui = JSON.parse(localStorage.getItem('inframp-ui-state') || 'null') || {};
+        window.__inframpUIState = ui;
+        var sections = ui.sections || {};
+        ['data', 'views', 'config'].forEach(function (s) {
+          if (sections[s] === false) {
+            document.documentElement.classList.add('sect-' + s + '-collapsed');
+          }
+        });
       } catch (e) { /* ignore */ }
     })();
   </script>
@@ -30,33 +40,83 @@
       <span class="brand-text">{{ app_name }}</span>
     </a>
     <nav class="side-nav">
-      <a href="/dashboard" class="nav-item{% if current_path in ('/dashboard', '/') %} active{% endif %}" title="Dashboard" aria-label="Dashboard">
-        <i class="fa-solid fa-gauge" aria-hidden="true"></i>
-        <span class="nav-label">Dashboard</span>
-      </a>
-      <a href="/entities" class="nav-item{% if current_path.startswith('/entities') or current_path.startswith('/records') or current_path.startswith('/attributes') %} active{% endif %}" title="Entities" aria-label="Entities">
-        <i class="fa-solid fa-database" aria-hidden="true"></i>
-        <span class="nav-label">Entities</span>
-      </a>
-      <a href="/views" class="nav-item{% if current_path.startswith('/views') %} active{% endif %}" title="Views" aria-label="Views">
-        <i class="fa-solid fa-list" aria-hidden="true"></i>
-        <span class="nav-label">Views</span>
-      </a>
-      {% if current_user.role == 'admin' %}
-      <a href="/users" class="nav-item{% if current_path.startswith('/users') %} active{% endif %}" title="Users" aria-label="Users">
-        <i class="fa-solid fa-users" aria-hidden="true"></i>
-        <span class="nav-label">Users</span>
-      </a>
-      <a href="/settings/backup" class="nav-item{% if current_path.startswith('/settings/backup') %} active{% endif %}" title="Backup" aria-label="Backup">
-        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
-        <span class="nav-label">Backup</span>
-      </a>
-      {% endif %}
+      <div class="nav-section">
+        <a href="/dashboard" class="nav-item{% if current_path in ('/dashboard', '/') %} active{% endif %}" title="Dashboard" aria-label="Dashboard">
+          <i class="fa-solid fa-gauge" aria-hidden="true"></i>
+          <span class="nav-label">Dashboard</span>
+        </a>
+      </div>
+
+      <div class="nav-section" id="nav-section-data">
+        <div class="nav-item nav-section-title" title="Data" data-section="data" role="button" tabindex="0" aria-expanded="true">
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+          <span class="nav-label">Data</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
+        </div>
+        <div class="nav-section-items">
+          {% for e in sidebar_entities %}
+          <a href="/entities/{{ e.id }}/records" class="nav-item nav-sub{% if current_path == '/entities/' ~ e.id ~ '/records' or current_path.startswith('/entities/' ~ e.id ~ '/records/') %} active{% endif %}" title="{{ e.name }}">
+            <i class="fa-solid {{ e.icon | icon_class }}" aria-hidden="true"></i>
+            <span class="nav-label">{{ e.name }}</span>
+          </a>
+          {% else %}
+          <span class="nav-item nav-sub muted">No entities yet</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="nav-section" id="nav-section-views">
+        <div class="nav-item nav-section-title" title="Views" data-section="views" role="button" tabindex="0" aria-expanded="true">
+          <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+          <span class="nav-label">Views</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
+        </div>
+        <div class="nav-section-items">
+          {% for v in sidebar_views %}
+          <a href="/views/{{ v.id }}" class="nav-item nav-sub{% if current_path == '/views/' ~ v.id %} active{% endif %}" title="{{ v.name }}">
+            <i class="fa-solid {{ v.icon | icon_class('fa-table') }}" aria-hidden="true"></i>
+            <span class="nav-label">{{ v.name }}</span>
+          </a>
+          {% else %}
+          <span class="nav-item nav-sub muted">No views yet</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="nav-section" id="nav-section-config">
+        <div class="nav-item nav-section-title" title="Configuration" data-section="config" role="button" tabindex="0" aria-expanded="true">
+          <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          <span class="nav-label">Configuration</span>
+          <i class="fa-solid fa-chevron-right section-chevron" aria-hidden="true"></i>
+        </div>
+        <div class="nav-section-items">
+          {% set on_entity_records = current_path.startswith('/entities/') and '/records' in current_path %}
+          <a href="/entities" class="nav-item nav-sub{% if current_path == '/entities' or (current_path.startswith('/entities/') and not on_entity_records) or current_path.startswith('/attributes') or current_path.startswith('/records') %} active{% endif %}" title="Entities" aria-label="Entities">
+            <i class="fa-solid fa-gears" aria-hidden="true"></i>
+            <span class="nav-label">Entities</span>
+          </a>
+          <a href="/views" class="nav-item nav-sub{% if current_path == '/views' or current_path == '/views/new' or (current_path.startswith('/views/') and current_path.endswith('/edit')) %} active{% endif %}" title="Views" aria-label="Views">
+            <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+            <span class="nav-label">Views</span>
+          </a>
+          {% if current_user.role == 'admin' %}
+          <a href="/users" class="nav-item nav-sub{% if current_path.startswith('/users') %} active{% endif %}" title="Users" aria-label="Users">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            <span class="nav-label">Users</span>
+          </a>
+          <a href="/settings/backup" class="nav-item nav-sub{% if current_path.startswith('/settings/backup') %} active{% endif %}" title="Backup" aria-label="Backup">
+            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+            <span class="nav-label">Backup</span>
+          </a>
+          {% endif %}
+        </div>
+      </div>
     </nav>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Collapse menu" aria-label="Collapse menu">
       <i class="fa-solid fa-angles-left" aria-hidden="true"></i>
       <span class="nav-label">Collapse</span>
     </button>
+    <div class="sidebar-version" title="InfraMP version">v{{ app_version }}</div>
   </aside>
 
   <div class="main">
@@ -82,7 +142,7 @@
       </div>
     </header>
 
-    <main class="content">
+    <main class="content {% block content_class %}{% endblock %}">
 {% else %}
 <main class="content content-standalone">
 {% endif %}
@@ -102,6 +162,18 @@
     <button type="button" class="modal-close" id="modal-close" aria-label="Close">&times;</button>
   </div>
   <div class="modal-body" id="modal-body"></div>
+</dialog>
+<dialog id="confirm-dialog" class="modal modal-confirm">
+  <div class="modal-header">
+    <button type="button" class="modal-close" id="confirm-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="modal-body">
+    <p class="confirm-message" id="confirm-message"></p>
+    <div class="form-actions">
+      <button type="button" class="btn" id="confirm-cancel">Cancel</button>
+      <button type="button" class="btn btn-danger" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
 </dialog>
 </body>
 </html>

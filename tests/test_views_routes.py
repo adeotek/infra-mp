@@ -79,6 +79,78 @@ def test_create_view(client, login):
     )
     assert resp.status_code == 303
     assert "/views/1" in resp.headers["location"]
+    # Legacy plain-slug sort is preserved.
+    assert '"slug": "cores"' in client.get("/views/1/edit").text
+
+
+def test_create_view_sort_by_base_column_encoding(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "1",
+            "col": ["base:name"],
+            "sort_col": "base:name",
+            "sort_dir": "desc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert '"slug": "name"' in client.get("/views/1/edit").text
+
+
+def test_create_view_sort_by_related_column(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "3",
+            "col": ["rel:up:rack:2:first→name"],
+            "sort_col": "rel:up:rack:2:first→name",
+            "sort_dir": "desc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1/edit").text
+    assert '"col"' in html
+    assert '"attr": "name"' in html
+    # The sorted view renders fine.
+    assert client.get("/views/1").status_code == 200
+
+
+def test_view_form_sort_select_is_column_driven(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'name="sort_col"' in html
+    assert 'name="sort_slug"' not in html
+
+
+def test_view_export_csv(client, login):
+    _seed_with_references(client, login)
+    client.post(
+        "/views",
+        data={
+            "name": "V",
+            "entity_id": "3",
+            "col": ["base:name", "rel:up:rack:2:first→name"],
+        },
+        follow_redirects=False,
+    )
+    resp = client.get("/views/1/export")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert 'attachment; filename="v.csv"' in resp.headers["content-disposition"]
+    body = resp.text.lstrip("\ufeff")
+    assert body.startswith("Name,Rack › Name")
+    assert "R1" in body
+
+
+def test_view_export_404(client, login):
+    login()
+    assert client.get("/views/9999/export").status_code == 404
 
 
 def test_create_view_requires_name(client, login):
@@ -142,3 +214,208 @@ def test_delete_view(client, login):
 def test_delete_view_404(client, login):
     _seed_server(client, login)
     assert client.post("/views/9999/delete", follow_redirects=False).status_code == 404
+
+
+def _seed_with_references(client, login):
+    """Site (1) <- Rack (2) <- Server (3); one record chain S1 <- R1 <- A."""
+    login()
+    for name in ["Site", "Rack", "Server"]:
+        assert (
+            client.post("/entities", data={"name": name}, follow_redirects=False).status_code == 303
+        )
+    assert (
+        client.post(
+            "/entities/1/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/attributes",
+            data={
+                "name": "Site",
+                "data_type": "reference",
+                "reference_entity_id": "1",
+                "cardinality": "one",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/attributes",
+            data={"name": "Name", "data_type": "text"},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/attributes",
+            data={
+                "name": "Rack",
+                "data_type": "reference",
+                "reference_entity_id": "2",
+                "cardinality": "one",
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
+    # Records: site #1, rack #2 (site=1), server #3 (rack=2).
+    assert (
+        client.post("/entities/1/records", data={"name": "S1"}, follow_redirects=False).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/2/records", data={"name": "R1", "site": "1"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+    assert (
+        client.post(
+            "/entities/3/records", data={"name": "A", "rack": "2"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+
+
+def test_create_view_with_related_columns(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={
+            "name": "Servers",
+            "entity_id": "3",
+            "col": ["base:name", "rel:up:rack:2:first→name"],
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1").text
+    assert "Rack › Name" in html
+    assert "<th>Name</th>" in html
+    assert "R1" in html
+
+
+def test_create_view_malformed_column_values_ignored(client, login):
+    _seed_with_references(client, login)
+    resp = client.post(
+        "/views",
+        data={"name": "V", "entity_id": "3", "col": ["garbage", "rel:up:nope:2:first→name"]},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    # No valid columns -> every attribute is shown.
+    assert "<th>Name</th>" in client.get("/views/1").text
+    assert "<th>Rack</th>" in client.get("/views/1").text
+
+
+def test_edit_view_page_embeds_graph_and_replays_columns(client, login):
+    _seed_with_references(client, login)
+    client.post(
+        "/views",
+        data={"name": "V", "entity_id": "3", "col": ["rel:up:rack:2:first→name"]},
+        follow_redirects=False,
+    )
+    html = client.get("/views/1/edit").text
+    assert '"base"' in html
+    assert '"entities"' in html
+    # Stored column config is embedded for the JS replay.
+    assert '"ref": "rack"' in html
+    assert '"many": "first"' in html
+
+
+def test_view_form_has_icon_text_input(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'name="icon"' in html
+    assert 'type="text" name="icon"' in html
+
+
+def test_create_view_with_icon_shows_in_sidebar(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "fa-bolt"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert "fa-bolt" in client.get("/dashboard").text
+
+
+def test_update_view_icon(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "fa-bolt"}, follow_redirects=False
+    )
+    client.post(
+        "/views/1/edit",
+        data={"name": "V", "entity_id": "1", "icon": "fa-cloud"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert "fa-cloud" in html
+    assert "fa-bolt" not in html
+
+
+def test_view_icon_accepts_free_text(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/views", data={"name": "V", "entity_id": "1", "icon": "bogus"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    html = client.get("/dashboard").text
+    assert "fa-bogus" in html  # normalised by the icon_class filter, as with entity icons
+
+
+def test_sidebar_sections_and_custom_views(client, login):
+    _seed_server(client, login)
+    client.post("/views", data={"name": "Servers View", "entity_id": "1"}, follow_redirects=False)
+    client.post(
+        "/views",
+        data={"name": "Cores View", "entity_id": "1", "icon": "fa-bolt"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    # Level-1: Dashboard link + three section titles (Data, Views, Configuration).
+    assert html.count("nav-section-title") == 3
+    assert ">Data</span>" in html
+    assert ">Configuration</span>" in html
+    assert "fa-layer-group" in html  # Data section icon
+    # Level-2: entities point at their records lists.
+    assert 'href="/entities/1/records"' in html
+    assert "fa-cube" in html  # fallback icon for the entity without one
+    # Level-2 custom views in the sidebar, ordered by name.
+    assert 'href="/views/1"' in html
+    assert 'href="/views/2"' in html
+    assert "Servers View" in html
+    assert "fa-table" in html  # fallback icon for the view without one
+    assert "fa-bolt" in html  # chosen icon
+    # Configuration items: admin sees Users and Backup.
+    assert 'aria-label="Users"' in html
+    assert 'aria-label="Backup"' in html
+    assert 'aria-label="Entities"' in html
+
+
+def test_sidebar_active_state_on_records_pages(client, login):
+    _seed_server(client, login)
+    html = client.get("/entities/1/records").text
+    # The Data child for the entity is active; the Configuration Entities
+    # item is not (records pages belong to Data).
+    assert 'href="/entities/1/records" class="nav-item nav-sub active"' in html
+    assert 'href="/entities" class="nav-item nav-sub"' in html
+    # Schema pages keep the Configuration Entities item active.
+    detail = client.get("/entities/1").text
+    assert 'href="/entities" class="nav-item nav-sub active"' in detail
+    assert 'href="/entities/1/records" class="nav-item nav-sub"' in detail

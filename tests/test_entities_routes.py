@@ -6,6 +6,38 @@ def test_entities_index(client, login):
     assert client.get("/entities").status_code == 200
 
 
+def test_entities_list_action_buttons(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities").text
+    assert ">Open<" not in html
+    # Edit first (schema managers only), then the records link.
+    assert 'hx-get="/entities/1/edit"' in html
+    assert 'title="Edit"' in html
+    assert 'href="/entities/1/records" class="action-btn"' in html
+    assert 'title="Records" aria-label="Records"' in html
+
+
+def test_attribute_form_has_key_checkbox(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    assert 'name="is_key"' in client.get("/entities/1/attributes/new").text
+
+
+def test_attribute_key_flag_shows_in_grid(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Name", "data_type": "text", "is_key": "on"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1").text
+    assert "<th>Key</th>" in html
+    # Name: Key=Yes and Active=Yes are the two Yes cells.
+    assert html.count("<td>Yes</td>") == 2
+
+
 def test_new_entity_page(client, login):
     login()
     assert client.get("/entities/new").status_code == 200
@@ -308,6 +340,25 @@ def test_entity_detail_has_drag_reorder_ui(client, login):
     assert 'draggable="true"' in html
 
 
+def test_entity_detail_shows_unique_column(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Cores", "data_type": "integer"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1").text
+    assert "<th>Unique</th>" in html
+    # Yes cells: Hostname (Unique + Active) and Cores (Active only).
+    assert html.count("<td>Yes</td>") == 3
+
+
 def test_edit_attribute_page_shows_enum_options(client, login):
     login()
     client.post("/entities", data={"name": "Server"}, follow_redirects=False)
@@ -337,3 +388,52 @@ def test_edit_attribute_page_shows_reference_cardinality(client, login):
     )
     html = client.get("/attributes/1/edit").text
     assert 'value="many" selected' in html
+
+
+def test_attribute_form_has_unique_field(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert 'name="is_unique"' in html
+
+
+def test_unique_attribute_rejects_duplicate_record(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    assert (
+        client.post(
+            "/entities/1/records", data={"hostname": "web1"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+    resp = client.post("/entities/1/records", data={"hostname": "web1"}, follow_redirects=False)
+    assert resp.status_code == 400
+    assert "must be unique" in resp.text
+
+
+def test_unique_attribute_rejects_duplicate_on_record_edit(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Hostname", "data_type": "text", "is_unique": "on"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"hostname": "web1"}, follow_redirects=False)
+    client.post("/entities/1/records", data={"hostname": "web2"}, follow_redirects=False)
+    # Editing record 2 to take record 1's value is rejected...
+    resp = client.post("/records/2/edit", data={"hostname": "web1"}, follow_redirects=False)
+    assert resp.status_code == 400
+    assert "must be unique" in resp.text
+    # ...but keeping its own value is fine.
+    assert (
+        client.post(
+            "/records/2/edit", data={"hostname": "web2"}, follow_redirects=False
+        ).status_code
+        == 303
+    )

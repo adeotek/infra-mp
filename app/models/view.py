@@ -24,8 +24,10 @@ class View(TimestampMixin, Base):
     entity_id: Mapped[int] = mapped_column(
         ForeignKey("entities.id", ondelete="CASCADE"), index=True
     )
-    # {"columns": ["slug", ...], "filters": [{"slug", "op", "value"}], "sort": {"slug", "dir"}}
+    # {"columns": [...], "filters": [{"slug", "op", "value"}], "sort": {"slug", "dir"}}
     config: Mapped[dict] = mapped_column(JSON, default=dict)
+    # FontAwesome class shown next to the view in the sidebar menu (menu only).
+    icon: Mapped[str] = mapped_column(String(64), default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     entity: Mapped[Entity] = relationship()

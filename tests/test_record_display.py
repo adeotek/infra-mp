@@ -57,6 +57,60 @@ def test_build_record_titles(db_session, racks_and_servers):
     assert titles[1] == "Rack A"
 
 
+def test_build_record_titles_uses_composite_entity_key(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Device"))
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT, is_key=True)
+    )
+    add_attribute(db_session, entity, AttributeCreate(name="Model", data_type=DataType.TEXT))
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Vendor", data_type=DataType.TEXT, is_key=True)
+    )
+    entity = get_entity_with_attributes(db_session, entity.id)
+    assert entity is not None
+    create_record(db_session, entity, entity.attributes, {"name": "NAS-01", "vendor": "Synology"})
+    titles = build_record_titles(db_session, entity.id)
+    # Key attributes joined in attribute display order with " ^ ".
+    assert titles[1] == "NAS-01 ^ Synology"
+
+
+def test_build_record_titles_key_partial_and_empty(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Device"))
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT, is_key=True)
+    )
+    add_attribute(
+        db_session, entity, AttributeCreate(name="Vendor", data_type=DataType.TEXT, is_key=True)
+    )
+    entity = get_entity_with_attributes(db_session, entity.id)
+    assert entity is not None
+    create_record(db_session, entity, entity.attributes, {"name": "NAS-01"})
+    create_record(db_session, entity, entity.attributes, {})
+    titles = build_record_titles(db_session, entity.id)
+    assert titles[1] == "NAS-01"  # partial key: only present values
+    assert titles[2] == "#2"  # no key values at all: id fallback
+
+
+def test_reference_options_use_entity_key(db_session):
+    site = create_entity(db_session, EntityCreate(name="Site"))
+    add_attribute(
+        db_session, site, AttributeCreate(name="Code", data_type=DataType.TEXT, is_key=True)
+    )
+    server = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(
+        db_session,
+        server,
+        AttributeCreate(name="Site", data_type=DataType.REFERENCE, reference_entity_id=site.id),
+    )
+    site = get_entity_with_attributes(db_session, site.id)
+    server = get_entity_with_attributes(db_session, server.id)
+    assert site is not None and server is not None
+    create_record(db_session, site, site.attributes, {"code": "HQ"})
+    options = reference_options(db_session, server)
+    # The reference select lists the key value, not the (absent) text attribute.
+    assert options["site"] == [(1, "HQ")]
+
+
 def test_format_value():
     assert format_value(None) == "—"
     assert format_value(True) == "Yes"

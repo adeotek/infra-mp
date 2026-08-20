@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
+from app import __version__
 from app.config import get_settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -22,6 +23,19 @@ def _datetime_display(value) -> str:
 
 
 templates.env.filters["datetime_display"] = _datetime_display
+
+
+def _icon_class(value, fallback: str = "fa-cube") -> str:
+    """Normalise a stored icon value into a FontAwesome solid class."""
+    value = (value or "").strip()
+    if not value:
+        return fallback
+    if value.startswith("fa-"):
+        return value
+    return f"fa-{value}"
+
+
+templates.env.filters["icon_class"] = _icon_class
 
 
 def is_htmx(request: Request) -> bool:
@@ -46,6 +60,7 @@ def render(
         "current_user": getattr(request.state, "current_user", None),
         "current_path": request.url.path,
         "app_name": get_settings().app_name,
+        "app_version": __version__,
         "flash": request.query_params.get("flash"),
         "flash_type": request.query_params.get("flash_type", "success"),
         "is_fragment": fragment,
@@ -53,4 +68,14 @@ def render(
     }
     if context:
         ctx.update(context)
+    # The sidebar lists every custom view and entity; skip the query for htmx fragments.
+    if not fragment and ctx["current_user"] is not None:
+        factory = getattr(request.app.state, "session_factory", None)
+        if factory is not None:
+            from app.services.schema_service import list_entities
+            from app.services.view_service import list_views
+
+            with factory() as session:
+                ctx["sidebar_views"] = list_views(session)
+                ctx["sidebar_entities"] = list_entities(session)
     return templates.TemplateResponse(request, template_name, ctx, status_code=status_code)

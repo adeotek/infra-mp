@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea for InfraMP
+title: "Feature: <short description>"
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to do that InfraMP does not support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: How would you expect this to work?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds or alternative approaches you have already considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, examples, links.

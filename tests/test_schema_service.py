@@ -177,6 +177,59 @@ def test_update_attribute_updates_hint(db_session):
     assert attr.hint == "Updated hint"
 
 
+def test_add_attribute_stores_unique(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Hostname", data_type=DataType.TEXT, is_unique=True),
+    )
+    assert attr.is_unique is True
+
+
+def test_update_attribute_updates_unique(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    assert attr.is_unique is False
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, is_unique=True),
+    )
+    assert attr.is_unique is True
+
+
+def test_add_attribute_stores_key(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Hostname", data_type=DataType.TEXT, is_key=True),
+    )
+    assert attr.is_key is True
+
+
+def test_update_attribute_flips_key(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, is_key=True),
+    )
+    assert attr.is_key is True
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, is_key=False),
+    )
+    assert attr.is_key is False
+
+
 def test_update_entity_slug_when_no_records(db_session):
     entity = create_entity(db_session, EntityCreate(name="Server"))
     update_entity(db_session, entity, EntityUpdate(name="Server", slug="server-renamed"))

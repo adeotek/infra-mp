@@ -5,8 +5,8 @@
   <h1>Users</h1>
   <a href="/users/new" class="btn btn-primary" hx-get="/users/new" hx-target="#modal-body">New user</a>
 </div>
-<table class="table">
-  <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+<table class="table" data-sortable data-grid-key="users">
+  <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Status</th><th class="no-sort"></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr>
@@ -16,10 +16,10 @@
       <td>{{ "Active" if u.is_active else "Inactive" }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
-          <a href="/users/{{ u.id }}/edit" hx-get="/users/{{ u.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <a href="/users/{{ u.id }}/edit" hx-get="/users/{{ u.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           {% if u.id != current_user_id %}
           <form method="post" action="/users/{{ u.id }}/delete" class="inline"
-                onsubmit="return confirm('Delete this user?');">
+                data-confirm="Delete this user?">
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
           {% endif %}

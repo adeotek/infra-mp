@@ -10,9 +10,9 @@
 <p class="muted">Entities define the structure of your data. Add attributes to each entity to describe what you want to track.</p>
 
 {% if entities %}
-<table class="table">
+<table class="table" data-sortable data-grid-key="entities">
   <thead>
-    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th></th></tr>
+    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th class="no-sort"></th></tr>
   </thead>
   <tbody>
   {% for e in entities %}
@@ -21,7 +21,15 @@
       <td class="muted">{{ e.slug }}</td>
       <td>{{ e.attributes|length }}</td>
       <td>{{ record_counts.get(e.id, 0) }}</td>
-      <td><a href="/entities/{{ e.id }}">Open</a></td>
+      <td class="row-actions">
+        <div class="row-actions-inner">
+          <a href="/entities/{{ e.id }}" class="action-btn" title="Attributes"><i class="fa-solid fa-list" aria-hidden="true"></i></a>
+          {% if can_manage_schema %}
+          <a href="/entities/{{ e.id }}/edit" hx-get="/entities/{{ e.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          {% endif %}
+          <a href="/entities/{{ e.id }}/records" class="action-btn" title="Records" aria-label="Records"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></a>
+        </div>
+      </td>
     </tr>
   {% endfor %}
   </tbody>

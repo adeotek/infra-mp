@@ -1,29 +1,31 @@
 {% extends "base.html" %}
 {% block title %}{{ view.name }} — {{ app_name }}{% endblock %}
+{% block content_class %}content-wide{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>{{ view.name }}</h1>
   <div class="actions">
     {% if can_manage_views %}
-    <a href="/views/{{ view.id }}/edit" class="btn">Edit view</a>
+    <a href="/views/{{ view.id }}/edit" class="btn btn-primary">Edit view</a>
     {% endif %}
+    <a href="/views/{{ view.id }}/export" class="btn btn-teal">Export CSV</a>
     <a href="/entities/{{ entity.id }}/records" class="btn">All {{ entity.name }} records</a>
   </div>
 </div>
 <p class="muted">{{ entity.name }} · {{ rows|length }} record(s)</p>
 
 <div class="table-wrap">
-  <table class="table">
+  <table class="table" data-sortable data-grid-key="view-{{ view.id }}">
     <thead>
       <tr>
-        {% for c in columns %}<th>{{ c.name }}</th>{% endfor %}
+        {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
       {% for row in rows %}
       <tr>
         {% for c in columns %}
-        <td>{{ row.cells[c.slug] }}</td>
+        <td>{{ row.cells[c.key] }}</td>
         {% endfor %}
       </tr>
       {% endfor %}

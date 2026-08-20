@@ -10,8 +10,8 @@
 <p class="muted">Views are saved, filtered, sorted windows into a single entity's data.</p>
 
 {% if views %}
-<table class="table">
-  <thead><tr><th>Name</th><th>Entity</th><th>Filters</th><th></th></tr></thead>
+<table class="table" data-sortable data-grid-key="views">
+  <thead><tr><th>Name</th><th>Entity</th><th>Filters</th><th class="no-sort"></th></tr></thead>
   <tbody>
   {% for v in views %}
     <tr>
@@ -21,9 +21,9 @@
       <td class="row-actions">
         {% if can_manage_views %}
         <div class="row-actions-inner">
-          <a href="/views/{{ v.id }}/edit" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <a href="/views/{{ v.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/views/{{ v.id }}/delete" class="inline"
-                onsubmit="return confirm('Delete this view?');">
+                data-confirm="Delete this view?">
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

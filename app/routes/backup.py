@@ -65,10 +65,17 @@ def download_backup(request: Request, user: User = Depends(require_admin)):
 @router.post("/settings/backup/restore")
 async def restore_backup(
     request: Request,
-    file: Annotated[UploadFile, File(...)],
+    file: Annotated[UploadFile | None, File()] = None,
     user: User = Depends(require_admin),
 ):
     """Replace the live database with the uploaded backup archive."""
+    if file is None or not (file.filename or "").strip():
+        return redirect_with_flash(
+            "/settings/backup",
+            "Restore aborted: no file selected.",
+            category="error",
+            request=request,
+        )
     content = await file.read()
     db_bytes = _extract_database(content)
     if db_bytes is None:

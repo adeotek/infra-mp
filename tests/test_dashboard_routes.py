@@ -113,3 +113,122 @@ def test_delete_widget(client, login):
 def test_delete_widget_404(client, login):
     login()
     assert client.post("/dashboard/widgets/9999/delete", follow_redirects=False).status_code == 404
+
+
+def test_create_widget_with_width(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "W",
+            "widget_type": "count",
+            "entity_id": "1",
+            "view_id": "",
+            "width": "full",
+        },
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert "widget-span-4" in html
+    assert "<td>Full</td>" in client.get("/dashboard/config").text
+
+
+def test_create_widget_defaults_to_half_width(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert "widget-span-2" in html
+    assert "widget-span-4" not in html
+
+
+def test_create_widget_invalid_width_defaults_to_half(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "W",
+            "widget_type": "count",
+            "entity_id": "1",
+            "view_id": "",
+            "width": "wacky",
+        },
+        follow_redirects=False,
+    )
+    assert "widget-span-2" in client.get("/dashboard").text
+
+
+def test_update_widget_width(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    resp = client.post(
+        "/dashboard/widgets/1/edit",
+        data={
+            "title": "W",
+            "widget_type": "count",
+            "entity_id": "1",
+            "view_id": "",
+            "width": "3/4",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "widget-span-3" in client.get("/dashboard").text
+
+
+def test_widget_title_links_to_entity_records(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "Servers", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert 'href="/entities/1/records" class="widget-title-link">Servers</a>' in html
+
+
+def test_widget_without_entity_title_is_not_a_link(client, login):
+    login()
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "No entity", "widget_type": "count", "entity_id": "", "view_id": ""},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    assert "No entity" in html
+    assert "widget-title-link" not in html
+
+
+def test_reorder_widgets(client, login):
+    _seed_server(client, login)
+    for title in ("W1", "W2"):
+        client.post(
+            "/dashboard/widgets",
+            data={"title": title, "widget_type": "count", "entity_id": "1", "view_id": ""},
+            follow_redirects=False,
+        )
+    html = client.get("/dashboard/config").text
+    assert html.find("<td>W1</td>") < html.find("<td>W2</td>")
+    resp = client.post("/dashboard/widgets/reorder", data={"order": "2,1"}, follow_redirects=False)
+    assert resp.status_code == 204
+    html = client.get("/dashboard/config").text
+    assert html.find("<td>W2</td>") < html.find("<td>W1</td>")
+
+
+def test_reorder_widgets_invalid_order(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    # Wrong permutation and non-numeric ids are rejected.
+    assert client.post("/dashboard/widgets/reorder", data={"order": "1,2"}).status_code == 400
+    assert client.post("/dashboard/widgets/reorder", data={"order": "x"}).status_code == 400

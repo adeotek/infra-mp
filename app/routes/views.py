@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
@@ -13,16 +14,20 @@ from app.form import parse_form, to_list
 from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
-from app.services.record_service import build_rows, list_records, resolve_reference_titles
+from app.services.csv_service import export_view_csv
+from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
     apply_config,
+    build_view_graph,
+    build_view_rows,
     create_view,
     delete_view,
     filter_op_label,
     get_view,
     list_views,
+    parse_column_spec,
     update_view,
 )
 from app.templates import render
@@ -30,9 +35,16 @@ from app.templates import render
 router = APIRouter()
 
 
-def _config_from_form(raw: dict) -> dict:
-    columns = to_list(raw.get("columns"))
-    sort_slug = raw.get("sort_slug")
+def _config_from_form(raw: dict, entity: Entity) -> dict:
+    column_specs = []
+    for value in to_list(raw.get("col")):
+        spec = parse_column_spec(value)
+        if spec is not None:
+            column_specs.append(spec)
+    if not column_specs:
+        # Legacy form: flat base-attribute slugs.
+        column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
+    sort_value = str(raw.get("sort_col", "") or raw.get("sort_slug", "") or "").strip()
     sort_dir = raw.get("sort_dir") if raw.get("sort_dir") in ("asc", "desc") else "asc"
 
     filters = []
@@ -50,10 +62,24 @@ def _config_from_form(raw: dict) -> dict:
             }
         )
 
-    config: dict = {"columns": columns, "filters": filters}
-    if sort_slug:
-        config["sort"] = {"slug": sort_slug, "dir": sort_dir}
+    config: dict = {"columns": column_specs, "filters": filters}
+    if sort_value:
+        # Any view column may be the sort column: the form submits the same
+        # encoding as the `col` fields. Legacy plain slugs still work.
+        spec = parse_column_spec(sort_value)
+        if isinstance(spec, str):
+            config["sort"] = {"slug": spec, "dir": sort_dir}
+        elif isinstance(spec, dict):
+            config["sort"] = {"col": spec, "dir": sort_dir}
+        elif sort_value in {a.slug for a in entity.attributes}:
+            config["sort"] = {"slug": sort_value, "dir": sort_dir}
     return config
+
+
+def _icon_from_form(raw: dict) -> str:
+    # Free text: any value is accepted and normalised to an `fa-*` class at
+    # render time by the `icon_class` Jinja filter (same as entity icons).
+    return str(raw.get("icon", "")).strip()
 
 
 def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
@@ -64,6 +90,7 @@ def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
         "filter_ops": FILTER_OPS,
         "filter_op_label": filter_op_label,
         "current_config": view.config if view else None,
+        "view_graph": build_view_graph(db, entity.id),
     }
 
 
@@ -123,7 +150,9 @@ async def create_view_post(
             {**_view_form_context(db, entity, None), "error": "Name is required."},
             status_code=400,
         )
-    view = create_view(db, entity, name, _config_from_form(raw), user_id=user.id)
+    view = create_view(
+        db, entity, name, _config_from_form(raw, entity), icon=_icon_from_form(raw), user_id=user.id
+    )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' created.")
 
 
@@ -138,10 +167,10 @@ def view_detail(
     if view is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
-    records, columns = apply_config(entity, list_records(db, view.entity_id), view.config)
-    titles = resolve_reference_titles(db, entity)
-    # build_rows needs the full entity attributes; filter to visible columns for display.
-    rows = build_rows(entity, records, titles)
+    records, columns = apply_config(
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+    )
+    rows = build_view_rows(db, entity, records, columns)
     return render(
         request,
         "views/detail.html",
@@ -152,6 +181,29 @@ def view_detail(
             "rows": rows,
             "can_manage_views": has_capability(user, MANAGE_VIEWS),
         },
+    )
+
+
+@router.get("/views/{view_id}/export")
+def export_view(
+    request: Request,
+    view_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    view = get_view(db, view_id)
+    if view is None:
+        raise HTTPException(status_code=404)
+    entity = get_entity_with_attributes(db, view.entity_id)
+    records, columns = apply_config(
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+    )
+    rows = build_view_rows(db, entity, records, columns)
+    csv_text = export_view_csv(columns, rows)
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{view.slug}.csv"'},
     )
 
 
@@ -189,7 +241,7 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
-    update_view(db, view, name, _config_from_form(raw))
+    update_view(db, view, name, _config_from_form(raw, entity), icon=_icon_from_form(raw))
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")
 
 

@@ -4,6 +4,52 @@
 
   var THEME_KEY = 'inframp-theme';
   var SIDEBAR_KEY = 'inframp-sidebar';
+  var UI_STATE_KEY = 'inframp-ui-state';
+  var MAX_GRID_ENTRIES = 60;
+
+  // --------------------------------------------------------------------------
+  // UI state: one JSON blob in localStorage, parsed once (the <head> script
+  // stashes it on window to avoid a second parse). Holds the menu section
+  // toggles and per-grid sort/filter state. Writes are debounced; the grid
+  // map is bounded so it cannot grow without limit.
+  // --------------------------------------------------------------------------
+  var uiState = window.__inframpUIState || (function () {
+    try { return JSON.parse(localStorage.getItem(UI_STATE_KEY) || 'null') || {}; } catch (e) { return {}; }
+  })();
+  if (!uiState.sections) uiState.sections = {};
+  if (!uiState.grids) uiState.grids = {};
+  var uiSaveTimer = null;
+
+  function saveUIState() {
+    if (uiSaveTimer) return;
+    uiSaveTimer = setTimeout(function () {
+      uiSaveTimer = null;
+      try { localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState)); } catch (e) { /* ignore */ }
+    }, 200);
+  }
+
+  function gridStateFor(key) {
+    return (uiState.grids && uiState.grids[key]) || null;
+  }
+
+  function updateGridState(key, patch) {
+    var entry = uiState.grids[key] || {};
+    var k;
+    for (k in patch) {
+      if (patch[k] === null || patch[k] === undefined) delete entry[k];
+      else entry[k] = patch[k];
+    }
+    var hasKeys = false;
+    for (k in entry) { hasKeys = true; break; }
+    if (!hasKeys) {
+      delete uiState.grids[key];
+    } else {
+      uiState.grids[key] = entry;
+      var keys = Object.keys(uiState.grids);
+      while (keys.length > MAX_GRID_ENTRIES) delete uiState.grids[keys.shift()];
+    }
+    saveUIState();
+  }
 
   // Theme toggle (dark is the default, applied early in <head>).
   var themeToggle = document.getElementById('theme-toggle');
@@ -31,8 +77,70 @@
       var collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
       try { localStorage.setItem(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded'); } catch (e) { /* ignore */ }
       updateToggleLabel();
+      closeAllOverlays();
     });
   }
+
+  // Sidebar section collapse: clicking a level-1 section title toggles its
+  // child items (expanded sidebar). State persists in the UI blob; the
+  // collapse itself is applied via html-level classes from the <head> script.
+  document.querySelectorAll('.nav-section-title[data-section]').forEach(function (title) {
+    var key = title.getAttribute('data-section');
+    var htmlClass = 'sect-' + key + '-collapsed';
+
+    function syncAria() {
+      title.setAttribute(
+        'aria-expanded',
+        document.documentElement.classList.contains(htmlClass) ? 'false' : 'true'
+      );
+    }
+    syncAria();
+
+    function toggleSection() {
+      var collapsed = document.documentElement.classList.toggle(htmlClass);
+      uiState.sections[key] = !collapsed;
+      saveUIState();
+      syncAria();
+    }
+
+    title.addEventListener('click', toggleSection);
+    title.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleSection();
+      }
+    });
+  });
+
+  // Collapsed sidebar: overlay menus for the level-1 sections. The overlays
+  // are position:fixed so they escape the scrollable .side-nav clipping
+  // context; coordinates are computed from the hovered section on open.
+  function openSectionOverlay(section) {
+    var overlay = section.querySelector('.nav-section-items');
+    if (!overlay || section.classList.contains('overlay-open')) return;
+    section.classList.add('overlay-open');
+    var rect = section.getBoundingClientRect();
+    overlay.style.left = rect.right + 'px';
+    var top = Math.min(rect.top, window.innerHeight - overlay.offsetHeight - 12);
+    overlay.style.top = Math.max(top, 8) + 'px';
+  }
+
+  function closeAllOverlays() {
+    document.querySelectorAll('.nav-section.overlay-open').forEach(function (section) {
+      section.classList.remove('overlay-open');
+    });
+  }
+
+  document.addEventListener('mouseover', function (e) {
+    var section = e.target.closest('.sidebar-collapsed .nav-section');
+    if (section) openSectionOverlay(section);
+  });
+  document.addEventListener('mouseout', function (e) {
+    var section = e.target.closest('.sidebar-collapsed .nav-section');
+    if (!section) return;
+    if (section.contains(e.relatedTarget)) return;
+    section.classList.remove('overlay-open');
+  });
 
   // User menu dropdown.
   var userMenu = document.getElementById('user-menu');
@@ -48,6 +156,47 @@
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') userMenu.classList.remove('open');
+    });
+  }
+
+  // Confirmation dialog: forms marked data-confirm open an in-page modal
+  // instead of the browser's confirm(). Cancel/Esc aborts; Confirm submits.
+  var confirmDialog = document.getElementById('confirm-dialog');
+  if (confirmDialog) {
+    var confirmMessage = document.getElementById('confirm-message');
+    var confirmOk = document.getElementById('confirm-ok');
+    var confirmCancel = document.getElementById('confirm-cancel');
+    var confirmClose = document.getElementById('confirm-close');
+    var pendingConfirmForm = null;
+
+    function closeConfirm() {
+      pendingConfirmForm = null;
+      confirmDialog.close();
+    }
+
+    document.body.addEventListener('submit', function (e) {
+      var form = e.target.closest('form[data-confirm]');
+      if (!form) return;
+      e.preventDefault();
+      pendingConfirmForm = form;
+      confirmMessage.textContent = form.getAttribute('data-confirm');
+      confirmDialog.showModal();
+      if (confirmCancel) confirmCancel.focus();
+    });
+
+    confirmOk.addEventListener('click', function () {
+      var form = pendingConfirmForm;
+      pendingConfirmForm = null;
+      confirmDialog.close();
+      // Programmatic submit does not re-fire the submit event, so the
+      // interceptor above cannot loop.
+      if (form) form.submit();
+    });
+    if (confirmCancel) confirmCancel.addEventListener('click', closeConfirm);
+    if (confirmClose) confirmClose.addEventListener('click', closeConfirm);
+    confirmDialog.addEventListener('cancel', function () {
+      // Esc closes the dialog without submitting anything.
+      pendingConfirmForm = null;
     });
   }
 
@@ -86,14 +235,14 @@
     });
   }
 
-  // Drag-and-drop attribute reordering (entity detail page). Rows are reordered
-  // live on dragover; the final order is persisted on dragend via fetch.
-  var attrTable = document.getElementById('attributes-table');
-  if (attrTable) {
+  // Drag-and-drop row reordering (any table with data-reorder-url: entity
+  // attributes, dashboard widgets). Rows are reordered live on dragover; the
+  // final order is persisted on dragend via fetch.
+  function initReorderTable(table) {
     var dragRow = null;
-    var reorderUrl = attrTable.getAttribute('data-reorder-url');
+    var reorderUrl = table.getAttribute('data-reorder-url');
 
-    attrTable.addEventListener('dragstart', function (e) {
+    table.addEventListener('dragstart', function (e) {
       var tr = e.target.closest('tr[draggable]');
       if (!tr) return;
       dragRow = tr;
@@ -105,7 +254,7 @@
       }
     });
 
-    attrTable.addEventListener('dragover', function (e) {
+    table.addEventListener('dragover', function (e) {
       if (!dragRow) return;
       e.preventDefault();
       var tr = e.target.closest('tr[draggable]');
@@ -119,15 +268,21 @@
       }
     });
 
-    attrTable.addEventListener('drop', function (e) { e.preventDefault(); });
+    table.addEventListener('drop', function (e) { e.preventDefault(); });
 
-    attrTable.addEventListener('dragend', function () {
+    table.addEventListener('dragend', function () {
       if (!dragRow) return;
       dragRow.classList.remove('dragging');
+      var rows = table.querySelectorAll('tr[draggable]');
       var ids = Array.prototype.map.call(
-        attrTable.querySelectorAll('tr[draggable]'),
+        rows,
         function (tr) { return tr.getAttribute('data-id'); }
       );
+      // Keep the sortable "restore original order" index in sync with the
+      // newly persisted order.
+      Array.prototype.forEach.call(rows, function (tr, index) {
+        tr.setAttribute('data-sort-index', String(index));
+      });
       dragRow = null;
       if (!reorderUrl) return;
       fetch(reorderUrl, {
@@ -139,6 +294,248 @@
       });
     });
   }
+
+  document.querySelectorAll('table[data-reorder-url]').forEach(initReorderTable);
+
+  // Sortable tables: clicking a header cycles None -> Ascending -> Descending
+  // -> None. Icons in the header show the active state. Headers marked
+  // "no-sort" (actions / drag-handle columns) are skipped.
+  function sortKey(text) {
+    var t = String(text == null ? '' : text).trim().replace(/\s+/g, ' ');
+    var m = t.match(/^(-?[\d][\d.,]*)(.*)$/);
+    if (m) {
+      var num = parseFloat(m[1].replace(/,/g, ''));
+      if (!isNaN(num) && (m[2] === '' || /^\s*\D/.test(m[2]))) {
+        return { num: num, text: t.toLowerCase() };
+      }
+    }
+    return { num: null, text: t.toLowerCase() };
+  }
+
+  function initSortableTable(table) {
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var gridKey = table.getAttribute('data-grid-key') || null;
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    // The initial DOM order is the "None" state.
+    rows.forEach(function (tr, index) {
+      tr.setAttribute('data-sort-index', String(index));
+    });
+    var headers = Array.prototype.slice.call(table.querySelectorAll('thead th'));
+
+    function moveRows(comparator) {
+      rows.slice().sort(comparator).forEach(function (tr) {
+        tbody.appendChild(tr);
+      });
+    }
+
+    function resetHeaders() {
+      headers.forEach(function (h) {
+        h.classList.remove('sorted-asc', 'sorted-desc');
+        h.removeAttribute('aria-sort');
+        var icon = h.querySelector('.sort-indicator i');
+        if (icon) icon.className = 'fa-solid fa-sort';
+      });
+    }
+
+    function comparatorFor(th, direction) {
+      var column = Array.prototype.indexOf.call(th.parentNode.children, th);
+      return function (a, b) {
+        var ka = sortKey(a.children[column] ? a.children[column].textContent : '');
+        var kb = sortKey(b.children[column] ? b.children[column].textContent : '');
+        var cmp;
+        if (ka.num !== null && kb.num !== null && ka.num !== kb.num) {
+          cmp = ka.num - kb.num;
+        } else {
+          cmp = ka.text < kb.text ? -1 : ka.text > kb.text ? 1 : 0;
+        }
+        if (cmp === 0) {
+          var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+          var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+          cmp = ia - ib;
+        }
+        return direction === 'desc' ? -cmp : cmp;
+      };
+    }
+
+    function applySort(th, direction) {
+      resetHeaders();
+      if (direction === 'none') {
+        moveRows(function (a, b) {
+          var ia = parseInt(a.getAttribute('data-sort-index'), 10);
+          var ib = parseInt(b.getAttribute('data-sort-index'), 10);
+          return ia - ib;
+        });
+        return;
+      }
+      th.classList.add(direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      th.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+      var icon = th.querySelector('.sort-indicator i');
+      if (icon) {
+        icon.className = 'fa-solid ' + (direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down');
+      }
+      moveRows(comparatorFor(th, direction));
+    }
+
+    headers.forEach(function (th) {
+      if (th.classList.contains('no-sort')) return;
+      th.classList.add('sortable');
+      var indicator = document.createElement('span');
+      indicator.className = 'sort-indicator';
+      indicator.innerHTML = '<i class="fa-solid fa-sort" aria-hidden="true"></i>';
+      th.appendChild(indicator);
+
+      th.addEventListener('click', function () {
+        var direction;
+        if (th.classList.contains('sorted-asc')) {
+          direction = 'desc';
+        } else if (th.classList.contains('sorted-desc')) {
+          direction = 'none';
+        } else {
+          direction = 'asc';
+        }
+        applySort(th, direction);
+        if (gridKey) {
+          updateGridState(
+            gridKey,
+            direction === 'none'
+              ? { label: null, dir: null }
+              : { label: th.textContent.trim(), dir: direction }
+          );
+        }
+      });
+    });
+
+    // Restore the persisted sort for this grid (read once on page load).
+    if (gridKey) {
+      var saved = gridStateFor(gridKey);
+      if (saved && saved.label && (saved.dir === 'asc' || saved.dir === 'desc')) {
+        for (var i = 0; i < headers.length; i++) {
+          if (headers[i].textContent.trim() === saved.label) {
+            applySort(headers[i], saved.dir);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
+
+  // Drag & drop upload zones (CSV import modal + backup restore). Delegated
+  // so zones also initialize after HTMX swaps a fragment into the modal.
+  var DROP_ACCEPTS = {
+    csv: { pattern: /\.csv$/i, mime: 'text/csv', label: 'Only CSV files are supported' },
+    zip: { pattern: /\.zip$/i, mime: 'application/zip', label: 'Only ZIP files are supported' }
+  };
+
+  function initDropZone(zone) {
+    if (!zone || zone.dataset.dzInit) return;
+    zone.dataset.dzInit = '1';
+    var spec = DROP_ACCEPTS[zone.dataset.accept || 'csv'] || DROP_ACCEPTS.csv;
+    var input = document.getElementById(zone.dataset.input || 'import-file');
+    var title = document.getElementById(zone.dataset.title || 'drop-zone-title');
+    if (!input || !title) return;
+
+    function showFile(name) {
+      title.textContent = name;
+      zone.classList.add('has-file');
+      zone.classList.remove('dz-error');
+    }
+    function setFiles(files) {
+      if (!files || !files.length) return;
+      var file = files[0];
+      if (!spec.pattern.test(file.name) && file.type !== spec.mime) {
+        zone.classList.remove('drag-over', 'has-file');
+        zone.classList.add('dz-error');
+        title.textContent = spec.label;
+        input.value = '';
+        return;
+      }
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      showFile(file.name);
+    }
+
+    zone.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () { setFiles(input.files); });
+    ['dragenter', 'dragover'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        zone.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      setFiles(e.dataTransfer && e.dataTransfer.files);
+    });
+  }
+
+  document.querySelectorAll('.drop-zone').forEach(initDropZone);
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var target = e.detail && e.detail.target;
+    if (target && target.id === 'modal-body') {
+      target.querySelectorAll('.drop-zone').forEach(initDropZone);
+    }
+  });
+
+  // Quick search: client-side row filter (records pages). A row matches when
+  // any of its cells contains the term (case-insensitive). Works alongside
+  // column sorting: hidden rows stay hidden through re-sorts.
+  document.querySelectorAll('.quick-search[data-filter-table]').forEach(function (box) {
+    var table = document.getElementById(box.getAttribute('data-filter-table'));
+    if (!table) return;
+    var gridKey = table.getAttribute('data-grid-key') || null;
+    var input = box.querySelector('input[type="text"]');
+    var applyBtn = box.querySelector('[data-apply]');
+    var clearBtn = box.querySelector('[data-clear]');
+    var countEl = box.querySelector('.quick-search-count');
+    var rows = table.querySelectorAll('tbody tr');
+
+    function applyFilter() {
+      var term = (input ? input.value : '').trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (tr) {
+        var match = !term || tr.textContent.toLowerCase().indexOf(term) !== -1;
+        tr.hidden = !match;
+        if (match) shown += 1;
+      });
+      if (countEl) countEl.textContent = term ? shown + ' of ' + rows.length + ' shown' : '';
+      if (clearBtn) clearBtn.classList.toggle('hidden', !term);
+      if (gridKey) updateGridState(gridKey, { filter: term || null });
+    }
+
+    if (applyBtn) applyBtn.addEventListener('click', applyFilter);
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        if (input) input.value = '';
+        applyFilter();
+      });
+    }
+    if (input) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applyFilter();
+        }
+      });
+    }
+
+    // Restore the persisted filter (read once on page load).
+    if (gridKey) {
+      var saved = gridStateFor(gridKey);
+      if (saved && saved.filter) {
+        if (input) input.value = saved.filter;
+        applyFilter();
+      }
+    }
+  });
 
   // Multi-value reference field: single select + "Add" + removable chip list.
   function appendRefChip(wrap, value, label) {
