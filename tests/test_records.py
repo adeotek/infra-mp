@@ -240,11 +240,20 @@ def test_key_missing_values_collide(db_session, keyed_entity):
 
 
 def test_key_empty_value_does_not_match_any_value(db_session, keyed_entity):
-    # empty != any value: (nas, None), (nas, "A") and (None, "B") all differ.
+    # None != any value: (nas, None), (nas, "A") and (None, "B") all differ.
     create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas"})
     create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "nas", "vendor": "A"})
     create_record(db_session, keyed_entity, keyed_entity.attributes, {"vendor": "B"})
     assert len(list_records(db_session, keyed_entity.id)) == 3
+
+
+def test_key_literal_empty_string_is_a_value(db_session, keyed_entity):
+    # Only None (missing/null) counts as empty — the string "empty" is a value.
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "empty"})
+    create_record(db_session, keyed_entity, keyed_entity.attributes, {"vendor": "A"})
+    with pytest.raises(RecordError, match="key values must be unique"):
+        create_record(db_session, keyed_entity, keyed_entity.attributes, {"name": "empty"})
+    assert len(list_records(db_session, keyed_entity.id)) == 2
 
 
 def test_key_update_to_duplicate_rejected(db_session, keyed_entity):
