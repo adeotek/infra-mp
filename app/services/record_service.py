@@ -256,6 +256,9 @@ def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
     key_attrs = [a for a in entity.attributes if a.is_key and a.is_active]
     title_attr = None if key_attrs else title_attribute(entity.attributes)
     titles: dict[int, str] = {}
+    # Composite key parts are joined with " ^ " — keyboard-typable and
+    # practically absent from attribute data, so CSV reference cells stay
+    # unambiguous. "|" and ";" are reserved for many-reference separation.
     for record in list_records(db, entity_id):
         if key_attrs:
             parts = [
@@ -263,7 +266,7 @@ def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
                 for a in key_attrs
                 if record.data.get(a.slug) is not None
             ]
-            titles[record.id] = " · ".join(parts) or f"#{record.id}"
+            titles[record.id] = " ^ ".join(parts) or f"#{record.id}"
         elif title_attr is not None and record.data.get(title_attr.slug):
             titles[record.id] = str(record.data[title_attr.slug])
         else:

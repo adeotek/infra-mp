@@ -70,8 +70,8 @@ def test_build_record_titles_uses_composite_entity_key(db_session):
     assert entity is not None
     create_record(db_session, entity, entity.attributes, {"name": "NAS-01", "vendor": "Synology"})
     titles = build_record_titles(db_session, entity.id)
-    # Key attributes joined in attribute display order (Name · Vendor).
-    assert titles[1] == "NAS-01 · Synology"
+    # Key attributes joined in attribute display order with " ^ ".
+    assert titles[1] == "NAS-01 ^ Synology"
 
 
 def test_build_record_titles_key_partial_and_empty(db_session):

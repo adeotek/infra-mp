@@ -231,3 +231,30 @@ def test_import_unique_duplicate_in_csv_rejected(csv_graph, db_session):
     assert imported == 0
     assert any("must be unique" in e for e in errors)
     assert list_records(db_session, server.id) == []
+
+
+def test_import_reference_by_composite_key_title(csv_graph, db_session):
+    # A reference cell carries the target's composite key ("A ^ B"); the
+    # import resolves it back through the title index.
+    server = csv_graph["server"]
+    site = get_entity_with_attributes(db_session, csv_graph["site"].id)
+    assert site is not None
+    for attr in site.attributes:
+        if attr.slug == "name":
+            attr.is_key = True
+    add_attribute(
+        db_session, site, AttributeCreate(name="Region", data_type=DataType.TEXT, is_key=True)
+    )
+    db_session.expire_all()
+    site = get_entity_with_attributes(db_session, site.id)
+    assert site is not None
+    s3 = create_record(db_session, site, site.attributes, {"name": "S3", "region": "EU"})
+
+    db_session.expire_all()
+    server = get_entity_with_attributes(db_session, server.id)
+    assert server is not None
+    rows = parse_csv_upload(b"Name,Site\nweb01,S3 ^ EU\n")
+    imported, errors = import_record_rows(db_session, server, rows)
+    assert (imported, errors) == (1, [])
+    by_name = {r.data["name"]: r for r in list_records(db_session, server.id)}
+    assert by_name["web01"].data["site"] == s3.id
