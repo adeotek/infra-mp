@@ -28,7 +28,7 @@
 {% if can_manage_schema and entity.attributes|length > 1 %}
 <p class="muted"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> Drag rows to reorder attributes.</p>
 {% endif %}
-<table class="table" id="attributes-table" data-sortable data-grid-key="attributes-{{ entity.id }}" data-reorder-url="/entities/{{ entity.id }}/attributes/reorder">
+<table class="table" id="attributes-table" data-reorder-url="/entities/{{ entity.id }}/attributes/reorder">
   <thead>
     <tr>
       {% if can_manage_schema %}<th class="no-sort drag-handle-col" aria-hidden="true"></th>{% endif %}

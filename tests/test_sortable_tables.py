@@ -1,7 +1,9 @@
 """Sortable data-grid markup tests.
 
-Every data grid renders with ``data-sortable`` so the vanilla-JS header-click
-sorting kicks in, and action/drag-handle columns are marked ``no-sort``.
+Data grids render with ``data-sortable`` so the vanilla-JS header-click
+sorting kicks in, and action columns are marked ``no-sort``. Grids that
+offer drag-and-drop reordering (attributes, dashboard widgets config)
+deliberately do NOT get header sorting.
 """
 
 
@@ -51,7 +53,7 @@ def test_records_list_is_sortable(client, login):
     assert ">Clear<" in html
 
 
-def test_attributes_grid_is_sortable_and_reorderable(client, login):
+def test_attributes_grid_reorderable_but_not_sortable(client, login):
     _seed_entity_with_record(client, login)
     client.post(
         "/entities/1/attributes",
@@ -59,10 +61,10 @@ def test_attributes_grid_is_sortable_and_reorderable(client, login):
         follow_redirects=False,
     )
     html = client.get("/entities/1").text
-    assert "data-sortable" in html
-    assert 'data-grid-key="attributes-1"' in html
+    # Drag-and-drop reorder grids get no header-click sorting.
+    assert "data-sortable" not in html
+    assert "data-grid-key" not in html
     assert 'data-reorder-url="/entities/1/attributes/reorder"' in html
-    assert "no-sort" in html  # grip + actions columns
 
 
 def test_view_detail_grid_is_sortable(client, login):
@@ -73,7 +75,7 @@ def test_view_detail_grid_is_sortable(client, login):
     assert 'data-grid-key="view-1"' in html
 
 
-def test_dashboard_config_table_is_sortable_and_reorderable(client, login):
+def test_dashboard_config_table_reorderable_but_not_sortable(client, login):
     _seed_entity_with_record(client, login)
     client.post(
         "/dashboard/widgets",
@@ -81,10 +83,10 @@ def test_dashboard_config_table_is_sortable_and_reorderable(client, login):
         follow_redirects=False,
     )
     html = client.get("/dashboard/config").text
-    assert "data-sortable" in html
-    assert 'data-grid-key="dashboard-config"' in html
+    # Drag-and-drop reorder grids get no header-click sorting.
+    assert "data-sortable" not in html
+    assert "data-grid-key" not in html
     assert 'data-reorder-url="/dashboard/widgets/reorder"' in html
-    assert "no-sort" in html  # grip + actions columns
 
 
 def test_dashboard_widget_tables_are_sortable(client, login):
