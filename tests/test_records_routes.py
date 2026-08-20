@@ -51,6 +51,47 @@ def test_records_import_page(client, login):
     assert client.get("/entities/1/records/import").status_code == 200
 
 
+def test_records_import_page_has_drop_zone(client, login):
+    _seed_server(client, login)
+    html = client.get("/entities/1/records/import").text
+    assert 'id="drop-zone"' in html
+    assert 'id="import-file"' in html
+    assert 'accept=".csv,text/csv"' in html
+    assert "Drag &amp; drop a CSV file here" in html
+    # The raw file input is hidden; the drop zone is the visible control.
+    assert 'class="hidden"' in html
+
+
+def test_records_import_without_file_flashes(client, login):
+    _seed_server(client, login)
+    resp = client.post("/entities/1/records/import", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "no file selected" in resp.text
+
+
+def test_records_import_upserts_when_entity_has_key(client, login):
+    _seed_server(client, login)
+    # Make the existing Name attribute (id 1) the entity key.
+    client.post(
+        "/attributes/1/edit",
+        data={"name": "Name", "data_type": "text", "is_key": "on"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"name": "web01", "cores": "4"}, follow_redirects=False)
+    resp = client.post(
+        "/entities/1/records/import",
+        files={"file": ("servers.csv", b"Name,Cores\nweb01,8\nweb02,16\n", "text/csv")},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert "Imported 1 record(s) and updated 1." in resp.text
+    # web01 was updated (cores 8), web02 created (cores 16).
+    assert "web01" in resp.text
+    assert "web02" in resp.text
+    assert "<td>8</td>" in resp.text
+    assert "<td>16</td>" in resp.text
+
+
 def test_records_import_success(client, login):
     _seed_server(client, login)
     resp = client.post(

@@ -102,6 +102,7 @@ def validate_record_data(
     attributes: list[Attribute],
     raw: dict[str, Any],
     exclude_record_id: int | None = None,
+    enforce_key: bool = True,
 ) -> tuple[dict[str, Any], list[str]]:
     """Validate raw form data against ``attributes``.
 
@@ -149,8 +150,9 @@ def validate_record_data(
     # Entity key: the combination of key-attribute values identifies a record
     # and must be unique — including partial keys. Missing values compare as
     # None: None == None (collides), None != any value (the string "empty"
-    # is a regular value, not an empty one).
-    if key_attrs and not errors:
+    # is a regular value, not an empty one). Callers that already resolved
+    # the key themselves (e.g. CSV import upserts) may skip the check.
+    if enforce_key and key_attrs and not errors:
         key_values = tuple(data.get(a.slug) for a in key_attrs)
         for other in existing:
             if exclude_record_id is not None and other.id == exclude_record_id:

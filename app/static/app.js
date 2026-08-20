@@ -422,6 +422,64 @@
 
   document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
 
+  // Drag & drop upload zone (CSV import modal). Delegated so it also
+  // initializes after HTMX swaps the fragment into the modal body.
+  function initDropZone(zone) {
+    if (!zone || zone.dataset.dzInit) return;
+    zone.dataset.dzInit = '1';
+    var input = document.getElementById('import-file');
+    var title = document.getElementById('drop-zone-title');
+    if (!input || !title) return;
+
+    function showFile(name) {
+      title.textContent = name;
+      zone.classList.add('has-file');
+      zone.classList.remove('dz-error');
+    }
+    function setFiles(files) {
+      if (!files || !files.length) return;
+      var file = files[0];
+      if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+        zone.classList.remove('drag-over', 'has-file');
+        zone.classList.add('dz-error');
+        title.textContent = 'Only CSV files are supported';
+        input.value = '';
+        return;
+      }
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      showFile(file.name);
+    }
+
+    zone.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () { setFiles(input.files); });
+    ['dragenter', 'dragover'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        zone.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+      });
+    });
+    zone.addEventListener('drop', function (e) {
+      setFiles(e.dataTransfer && e.dataTransfer.files);
+    });
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var target = e.detail && e.detail.target;
+    if (target && target.id === 'modal-body') {
+      var zone = document.getElementById('drop-zone');
+      if (zone) initDropZone(zone);
+    }
+  });
+  initDropZone(document.getElementById('drop-zone'));
+
   // Quick search: client-side row filter (records pages). A row matches when
   // any of its cells contains the term (case-insensitive). Works alongside
   // column sorting: hidden rows stay hidden through re-sorts.

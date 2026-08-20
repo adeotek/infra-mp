@@ -453,6 +453,36 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 .quick-search input[type="text"] { width: 16rem; margin-top: 0; }
 .quick-search-count { margin-left: auto; font-size: 0.85rem; }
 
+/* ------------------------------------------------------- Drop zone (import) */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 1.75rem 1rem;
+  margin-top: 0.75rem;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.drop-zone:hover,
+.drop-zone.drag-over {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface-2));
+  color: var(--text);
+}
+.drop-zone i { font-size: 1.6rem; }
+.drop-zone-title { font-weight: 600; color: var(--text); }
+.drop-zone-sub { font-size: 0.85em; }
+.drop-zone.has-file { border-style: solid; border-color: var(--success); }
+.drop-zone.dz-error { border-color: var(--danger); }
+.drop-zone.dz-error .drop-zone-title { color: var(--danger); }
+
 /* ---------------------------------------------------------- Empty states */
 .empty-state {
   padding: 2rem;

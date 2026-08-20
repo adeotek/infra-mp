@@ -107,7 +107,7 @@ def import_records_page(
 async def import_records_post(
     request: Request,
     entity_id: int,
-    file: Annotated[UploadFile, File(...)],
+    file: Annotated[UploadFile | None, File()] = None,
     user: User = Depends(require_capability(CREATE_RECORD)),
     db: Session = Depends(get_session),
 ):
@@ -115,6 +115,8 @@ async def import_records_post(
     if entity is None:
         raise HTTPException(status_code=404)
     target = f"/entities/{entity_id}/records"
+    if file is None or not (file.filename or "").strip():
+        return redirect_with_flash(target, "Import aborted: no file selected.", "error")
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_BYTES:
         return redirect_with_flash(target, "Import aborted: the file is larger than 5 MB.", "error")
@@ -124,7 +126,7 @@ async def import_records_post(
         return redirect_with_flash(
             target, "Import aborted: the file must be UTF-8 encoded CSV.", "error"
         )
-    imported, errors = import_record_rows(db, entity, rows, user_id=user.id)
+    created, updated, errors = import_record_rows(db, entity, rows, user_id=user.id)
     if errors:
         detail = "; ".join(errors[:5])
         if len(errors) > 5:
@@ -132,7 +134,11 @@ async def import_records_post(
         return redirect_with_flash(
             target, f"Import aborted — nothing was changed. {detail}", "error"
         )
-    return redirect_with_flash(target, f"Imported {imported} record(s).")
+    if updated:
+        message = f"Imported {created} record(s) and updated {updated}."
+    else:
+        message = f"Imported {created} record(s)."
+    return redirect_with_flash(target, message)
 
 
 @router.get("/entities/{entity_id}/records/new")

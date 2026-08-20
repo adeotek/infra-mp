@@ -6,6 +6,7 @@ import io
 import pytest
 
 from app.models.enums import DataType
+from app.models.record import Record
 from app.schemas.attribute import AttributeCreate
 from app.schemas.entity import EntityCreate
 from app.services.csv_service import (
@@ -146,8 +147,8 @@ def test_import_rows_creates_records(csv_graph, db_session):
     rows = parse_csv_upload(
         b"Name,Cores,Online,Status\nweb01,8,true,active\nweb02,16,false,retired\n"
     )
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (2, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (2, 0, [])
     names = sorted(r.data["name"] for r in list_records(db_session, server.id))
     assert names == ["web01", "web02"]
 
@@ -155,8 +156,8 @@ def test_import_rows_creates_records(csv_graph, db_session):
 def test_import_matches_columns_by_name_and_slug(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"name,CORES,online\nweb01,8,true\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (1, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (1, 0, [])
     record = list_records(db_session, server.id)[0]
     assert record.data["cores"] == 8
     assert record.data["online"] is True
@@ -165,8 +166,8 @@ def test_import_matches_columns_by_name_and_slug(csv_graph, db_session):
 def test_import_references_by_title_and_id(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Name,Site,NICs\nweb01,S2,10.0.0.1|10.0.0.2\nweb02,1,\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (2, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (2, 0, [])
     by_name = {r.data["name"]: r for r in list_records(db_session, server.id)}
     assert by_name["web01"].data["site"] == csv_graph["s2"].id
     assert by_name["web01"].data["nics"] == [csv_graph["n1"].id, csv_graph["n2"].id]
@@ -178,8 +179,8 @@ def test_import_references_by_title_and_id(csv_graph, db_session):
 def test_import_all_or_nothing_on_row_error(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Name,Cores\nweb01,8\nweb02,notanumber\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert imported == 0
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated) == (0, 0)
     assert len(errors) == 1
     assert "Row 3" in errors[0]
     assert "Cores" in errors[0]
@@ -189,31 +190,31 @@ def test_import_all_or_nothing_on_row_error(csv_graph, db_session):
 def test_import_missing_required_column(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Cores\n8\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert imported == 0
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated) == (0, 0)
     assert any("Name" in e for e in errors)
 
 
 def test_import_unknown_reference_rejected(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Name,Site\nweb01,Nope\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert imported == 0
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated) == (0, 0)
     assert any("unknown reference 'Nope'" in e for e in errors)
 
 
 def test_import_unknown_columns_ignored(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Name,Extra Column\nweb01,whatever\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (1, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (1, 0, [])
 
 
 def test_import_empty_rows_skipped(csv_graph, db_session):
     server = csv_graph["server"]
     rows = parse_csv_upload(b"Name\n\nweb01\n,\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (1, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (1, 0, [])
 
 
 def test_import_unique_duplicate_in_csv_rejected(csv_graph, db_session):
@@ -227,8 +228,8 @@ def test_import_unique_duplicate_in_csv_rejected(csv_graph, db_session):
     server = get_entity_with_attributes(db_session, server.id)
     assert server is not None
     rows = parse_csv_upload(b"Name,Serial\nweb01,SN1\nweb02,SN1\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert imported == 0
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated) == (0, 0)
     assert any("must be unique" in e for e in errors)
     assert list_records(db_session, server.id) == []
 
@@ -254,7 +255,94 @@ def test_import_reference_by_composite_key_title(csv_graph, db_session):
     server = get_entity_with_attributes(db_session, server.id)
     assert server is not None
     rows = parse_csv_upload(b"Name,Site\nweb01,S3 ^ EU\n")
-    imported, errors = import_record_rows(db_session, server, rows)
-    assert (imported, errors) == (1, [])
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (1, 0, [])
     by_name = {r.data["name"]: r for r in list_records(db_session, server.id)}
     assert by_name["web01"].data["site"] == s3.id
+
+
+# --------------------------------------------------------------------------- #
+# Upsert: the entity key decides create vs. update
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def keyed_server(csv_graph, db_session):
+    server = csv_graph["server"]
+    for attr in server.attributes:
+        if attr.slug == "name":
+            attr.is_key = True
+    db_session.commit()
+    db_session.expire_all()
+    server = get_entity_with_attributes(db_session, server.id)
+    assert server is not None
+    return server
+
+
+def test_import_updates_existing_record_by_key(db_session, keyed_server):
+    create_record(db_session, keyed_server, keyed_server.attributes, {"name": "web01", "cores": 4})
+    rows = parse_csv_upload(b"Name,Cores\nweb01,8\nweb02,16\n")
+    created, updated, errors = import_record_rows(db_session, keyed_server, rows)
+    assert (created, updated, errors) == (1, 1, [])
+    by_name = {r.data["name"]: r for r in list_records(db_session, keyed_server.id)}
+    assert by_name["web01"].data["cores"] == 8
+    assert by_name["web02"].data["cores"] == 16
+
+
+def test_import_update_preserves_unmapped_attributes(db_session, keyed_server):
+    create_record(
+        db_session,
+        keyed_server,
+        keyed_server.attributes,
+        {"name": "web01", "cores": 4, "status": "active"},
+    )
+    rows = parse_csv_upload(b"Name,Cores\nweb01,8\n")
+    created, updated, errors = import_record_rows(db_session, keyed_server, rows)
+    assert (created, updated, errors) == (0, 1, [])
+    record = list_records(db_session, keyed_server.id)[0]
+    assert record.data["cores"] == 8
+    # Columns absent from the CSV keep their existing values.
+    assert record.data["status"] == "active"
+    assert record.data["name"] == "web01"
+
+
+def test_import_update_empty_cell_clears_value(db_session, keyed_server):
+    create_record(db_session, keyed_server, keyed_server.attributes, {"name": "web01", "cores": 4})
+    rows = parse_csv_upload(b"Name,Cores\nweb01,\n")
+    created, updated, errors = import_record_rows(db_session, keyed_server, rows)
+    assert (created, updated, errors) == (0, 1, [])
+    record = list_records(db_session, keyed_server.id)[0]
+    assert record.data.get("cores") is None
+
+
+def test_import_duplicate_key_rows_in_file_update_sequentially(db_session, keyed_server):
+    rows = parse_csv_upload(b"Name,Cores\nweb01,8\nweb01,16\n")
+    created, updated, errors = import_record_rows(db_session, keyed_server, rows)
+    # First row creates; the second row updates the record it just created.
+    assert (created, updated, errors) == (1, 1, [])
+    record = list_records(db_session, keyed_server.id)[0]
+    assert record.data["cores"] == 16
+
+
+def test_import_legacy_duplicate_keys_update_newest(db_session, csv_graph):
+    # Legacy data may hold several records with the same (empty) key;
+    # the newest one is updated. Cores is the (non-required) key here.
+    server = csv_graph["server"]
+    for attr in server.attributes:
+        if attr.slug == "cores":
+            attr.is_key = True
+    db_session.commit()
+    db_session.expire_all()
+    server = get_entity_with_attributes(db_session, server.id)
+    assert server is not None
+    first = Record(entity_id=server.id, data={"name": "legacy1"})
+    second = Record(entity_id=server.id, data={"name": "legacy2"})
+    db_session.add_all([first, second])
+    db_session.commit()
+    assert first.id < second.id
+    rows = parse_csv_upload(b"Name,Cores\nlegacy-x,\n")
+    created, updated, errors = import_record_rows(db_session, server, rows)
+    assert (created, updated, errors) == (0, 1, [])
+    db_session.expire_all()
+    assert second.data["name"] == "legacy-x"
+    assert first.data["name"] == "legacy1"

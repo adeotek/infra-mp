@@ -16,8 +16,10 @@ from app.models.record import Record
 from app.services.record_service import (
     active_attributes,
     build_record_titles,
+    list_records,
     validate_record_data,
 )
+from app.services.validation import ValidationError, coerce_value
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
@@ -115,14 +117,22 @@ def import_record_rows(
     entity: Entity,
     csv_rows: list[list[str]],
     user_id: int | None = None,
-) -> tuple[int, list[str]]:
+) -> tuple[int, int, list[str]]:
     """Import CSV rows into an entity, all-or-nothing.
 
-    Returns ``(imported_count, errors)``. Any row error rolls back every
-    pending insert; errors carry the CSV row number (header = row 1).
+    When the entity has key attributes, the key decides whether a row
+    creates a record or updates the existing one with the same key: only
+    the columns present in the CSV are written — other attributes keep
+    their values, and an empty cell clears the column's value. When several
+    existing records share a key (legacy data), the newest one is updated.
+    Entities without a key always create.
+
+    Returns ``(created_count, updated_count, errors)``. Any row error rolls
+    back every pending change; errors carry the CSV row number (header =
+    row 1).
     """
     if not csv_rows or not any((cell or "").strip() for cell in csv_rows[0]):
-        return 0, ["The CSV file has no header row."]
+        return 0, 0, ["The CSV file has no header row."]
     header = csv_rows[0]
     attributes = active_attributes(entity.attributes)
 
@@ -151,7 +161,7 @@ def import_record_rows(
 
     missing_required = [a.name for a in attributes if a.is_required and a.slug not in used]
     if missing_required:
-        return 0, [f"Missing required column(s): {', '.join(missing_required)}"]
+        return 0, 0, [f"Missing required column(s): {', '.join(missing_required)}"]
 
     ref_maps: dict[int, tuple[dict[str, list[int]], set[int]]] = {}
     for attr in attributes:
@@ -160,8 +170,17 @@ def import_record_rows(
             if target_id is not None and target_id not in ref_maps:
                 ref_maps[target_id] = _title_index(db, target_id)
 
+    # Upsert lookup: key tuple -> existing record (newest kept for legacy
+    # duplicates). list_records returns newest first, setdefault keeps it.
+    key_attrs = [a for a in attributes if a.is_key]
+    records_by_key: dict[tuple[Any, ...], Record] = {}
+    if key_attrs:
+        for record in list_records(db, entity.id):
+            records_by_key.setdefault(tuple(record.data.get(a.slug) for a in key_attrs), record)
+
     errors: list[str] = []
     created = 0
+    updated = 0
     try:
         for row_number, row in enumerate(csv_rows[1:], start=2):
             if not any((cell or "").strip() for cell in row):
@@ -180,29 +199,67 @@ def import_record_rows(
             if row_errors:
                 errors.append(f"Row {row_number}: {'; '.join(row_errors)}")
                 continue
-            data, validation_errors = validate_record_data(db, attributes, raw)
-            if validation_errors:
-                errors.append(f"Row {row_number}: {'; '.join(validation_errors)}")
-                continue
-            db.add(
-                Record(
+
+            # Coerce the row's key values (canonical form) to find a match.
+            existing: Record | None = None
+            if key_attrs:
+                key_values: list[Any] = []
+                key_error: str | None = None
+                for attr in key_attrs:
+                    try:
+                        key_values.append(coerce_value(attr.data_type_enum, raw.get(attr.slug)))
+                    except ValidationError as exc:
+                        key_error = f"{attr.name}: {exc}"
+                        break
+                if key_error:
+                    errors.append(f"Row {row_number}: {key_error}")
+                    continue
+                existing = records_by_key.get(tuple(key_values))
+
+            if existing is None:
+                data, validation_errors = validate_record_data(db, attributes, raw)
+                if validation_errors:
+                    errors.append(f"Row {row_number}: {'; '.join(validation_errors)}")
+                    continue
+                record = Record(
                     entity_id=entity.id,
                     data=data,
                     created_by=user_id,
                     updated_by=user_id,
                 )
-            )
-            db.flush()
-            created += 1
+                db.add(record)
+                db.flush()
+                records_by_key.setdefault(tuple(data.get(a.slug) for a in key_attrs), record)
+                created += 1
+            else:
+                # Update: merge the CSV columns over the existing values so
+                # attributes absent from the file are preserved. Validate the
+                # merged state (self excluded; key check handled by lookup).
+                merged_raw = {a.slug: existing.data.get(a.slug) for a in attributes}
+                merged_raw.update(raw)
+                data, validation_errors = validate_record_data(
+                    db,
+                    attributes,
+                    merged_raw,
+                    exclude_record_id=existing.id,
+                    enforce_key=False,
+                )
+                if validation_errors:
+                    errors.append(f"Row {row_number}: {'; '.join(validation_errors)}")
+                    continue
+                existing.data = data
+                existing.updated_by = user_id
+                db.flush()
+                updated += 1
     except Exception:
         db.rollback()
-        return 0, ["Import failed unexpectedly; nothing was imported."]
+        return 0, 0, ["Import failed unexpectedly; nothing was imported."]
 
     if errors:
         db.rollback()
-        return 0, errors
+        return 0, 0, errors
     db.commit()
-    return created, []
+    return created, updated, []
 
 
 def _title_index(db: Session, target_id: int) -> tuple[dict[str, list[int]], set[int]]:
