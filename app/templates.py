@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
+from app import __version__
 from app.config import get_settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -59,6 +60,7 @@ def render(
         "current_user": getattr(request.state, "current_user", None),
         "current_path": request.url.path,
         "app_name": get_settings().app_name,
+        "app_version": __version__,
         "flash": request.query_params.get("flash"),
         "flash_type": request.query_params.get("flash_type", "success"),
         "is_fragment": fragment,

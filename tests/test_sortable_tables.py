@@ -117,3 +117,12 @@ def test_sidebar_sections_are_collapsible(client, login):
         assert f'id="nav-section-{section}"' in html
     assert html.count("section-chevron") == 3
     assert 'aria-expanded="true"' in html
+
+
+def test_sidebar_shows_app_version(client, login):
+    from app import __version__
+
+    login()
+    html = client.get("/dashboard").text
+    assert f"v{__version__}" in html
+    assert 'class="sidebar-version"' in html

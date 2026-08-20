@@ -209,6 +209,15 @@ html.sect-config-collapsed #nav-section-config .section-chevron {
 }
 .sidebar-toggle:hover { color: var(--text); }
 
+.sidebar-version {
+  padding: 0.1rem 0.75rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+  user-select: none;
+}
+.sidebar-collapsed .sidebar-version { display: none; }
+
 /* Collapsed: hide labels */
 .sidebar-collapsed .brand-text,
 .sidebar-collapsed .nav-label { display: none; }
