@@ -75,6 +75,17 @@ def test_view_detail_grid_is_sortable(client, login):
     assert 'data-grid-key="view-1"' in html
 
 
+def test_records_and_view_detail_grids_are_full_width(client, login):
+    _seed_entity_with_record(client, login)
+    client.post("/views", data={"name": "V", "entity_id": "1"}, follow_redirects=False)
+    for url in ("/entities/1/records", "/views/1"):
+        html = client.get(url).text
+        assert "content content-wide" in html
+    # Other pages keep the capped width.
+    assert "content content-wide" not in client.get("/entities").text
+    assert "content content-wide" not in client.get("/users").text
+
+
 def test_dashboard_config_table_reorderable_but_not_sortable(client, login):
     _seed_entity_with_record(client, login)
     client.post(

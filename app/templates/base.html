@@ -142,7 +142,7 @@
       </div>
     </header>
 
-    <main class="content">
+    <main class="content {% block content_class %}{% endblock %}">
 {% else %}
 <main class="content content-standalone">
 {% endif %}
