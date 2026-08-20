@@ -8,7 +8,7 @@
     {% if can_manage_schema %}
     <a href="/entities/{{ entity.id }}/edit" class="btn btn-teal" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
     <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
-          onsubmit="return confirm('Delete this entity and all its records? This cannot be undone.');">
+          data-confirm="Delete this entity and all its records? This cannot be undone.">
       <button type="submit" class="btn btn-danger">Delete</button>
     </form>
     {% endif %}
@@ -52,7 +52,7 @@
         <div class="row-actions-inner">
           <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
-                onsubmit="return confirm('Delete this attribute and remove its value from all records? This cannot be undone.');">
+                data-confirm="Delete this attribute and remove its value from all records? This cannot be undone.">
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

@@ -659,3 +659,5 @@ code {
 .modal-close:hover { color: var(--text); }
 .modal-body { padding: 0 1.25rem 1.25rem; }
 .modal-body h1 { font-size: 1.25rem; margin-top: 0; }
+.modal-confirm { width: 26rem; max-width: calc(100vw - 2rem); }
+.confirm-message { margin: 0 0 1rem; }

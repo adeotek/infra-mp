@@ -17,7 +17,7 @@
   <h2>Restore from backup</h2>
   <p class="muted">Upload a backup archive to replace the current database. This cannot be undone.</p>
   <form method="post" action="/settings/backup/restore" enctype="multipart/form-data"
-        onsubmit="return confirm('Replace the current database with the uploaded backup? This cannot be undone.');">
+        data-confirm="Replace the current database with the uploaded backup? This cannot be undone.">
     <label>Backup archive (.zip)
       <input type="file" name="file" accept=".zip,application/zip" required>
     </label>

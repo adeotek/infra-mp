@@ -19,7 +19,7 @@
           <a href="/users/{{ u.id }}/edit" hx-get="/users/{{ u.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           {% if u.id != current_user_id %}
           <form method="post" action="/users/{{ u.id }}/delete" class="inline"
-                onsubmit="return confirm('Delete this user?');">
+                data-confirm="Delete this user?">
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
           {% endif %}

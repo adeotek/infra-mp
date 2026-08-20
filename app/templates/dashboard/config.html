@@ -64,7 +64,7 @@
         <div class="row-actions-inner">
           <a href="/dashboard/widgets/{{ w.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/dashboard/widgets/{{ w.id }}/delete" class="inline"
-                onsubmit="return confirm('Remove this widget?');">
+                data-confirm="Remove this widget?">
             <button type="submit" class="action-btn action-btn-danger" title="Remove" aria-label="Remove"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

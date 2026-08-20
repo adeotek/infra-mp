@@ -159,6 +159,47 @@
     });
   }
 
+  // Confirmation dialog: forms marked data-confirm open an in-page modal
+  // instead of the browser's confirm(). Cancel/Esc aborts; Confirm submits.
+  var confirmDialog = document.getElementById('confirm-dialog');
+  if (confirmDialog) {
+    var confirmMessage = document.getElementById('confirm-message');
+    var confirmOk = document.getElementById('confirm-ok');
+    var confirmCancel = document.getElementById('confirm-cancel');
+    var confirmClose = document.getElementById('confirm-close');
+    var pendingConfirmForm = null;
+
+    function closeConfirm() {
+      pendingConfirmForm = null;
+      confirmDialog.close();
+    }
+
+    document.body.addEventListener('submit', function (e) {
+      var form = e.target.closest('form[data-confirm]');
+      if (!form) return;
+      e.preventDefault();
+      pendingConfirmForm = form;
+      confirmMessage.textContent = form.getAttribute('data-confirm');
+      confirmDialog.showModal();
+      if (confirmCancel) confirmCancel.focus();
+    });
+
+    confirmOk.addEventListener('click', function () {
+      var form = pendingConfirmForm;
+      pendingConfirmForm = null;
+      confirmDialog.close();
+      // Programmatic submit does not re-fire the submit event, so the
+      // interceptor above cannot loop.
+      if (form) form.submit();
+    });
+    if (confirmCancel) confirmCancel.addEventListener('click', closeConfirm);
+    if (confirmClose) confirmClose.addEventListener('click', closeConfirm);
+    confirmDialog.addEventListener('cancel', function () {
+      // Esc closes the dialog without submitting anything.
+      pendingConfirmForm = null;
+    });
+  }
+
   // Modal dialog: opens when HTMX swaps a form fragment into #modal-body.
   var modal = document.getElementById('modal');
   if (modal) {
