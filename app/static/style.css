@@ -555,13 +555,31 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 /* --------------------------------------- Advanced filters (view detail) */
 .advanced-filter { margin: 0 0 1rem; }
 .af-builder { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.af-builder select, .af-builder input { max-width: 16rem; }
+.af-builder select, .af-builder input { margin-top: 0; width: 16rem; }
+.af-builder select.af-op { width: auto; min-width: 3.5rem; }
 .af-active { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
 .af-row { display: flex; align-items: center; gap: 0.5rem; }
+.af-label {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  padding: 0.05rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
 .af-text code { background: var(--hover); padding: 0.05rem 0.4rem; border-radius: 4px; }
 .af-remove {
-  border: none; background: transparent; color: var(--danger);
-  font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0.1rem 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
   border-radius: 4px;
 }
 .af-remove:hover { background: var(--danger-bg); }

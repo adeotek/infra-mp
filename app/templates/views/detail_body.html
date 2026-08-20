@@ -19,7 +19,7 @@
       <option value="quick" data-type="text">Quick filter</option>
       {% for o in filter_options %}
       <option value="{{ o.value }}" data-type="{{ o.type }}" data-many="{{ '1' if o.many else '0' }}"
-              data-choices="{{ o.choices | tojson }}">{{ o.label }}</option>
+              data-choices='{{ o.choices | tojson }}'>{{ o.label }}</option>
       {% endfor %}
     </select>
     <select name="op" id="af-op" aria-label="Comparison"></select>
@@ -32,7 +32,7 @@
   <div class="af-active">
     {% for f in active_filters %}
     <div class="af-row">
-      <span class="af-text">{{ f.label }} {{ filter_op_label(f.op) }} <code>{{ f.value }}</code></span>
+      <span class="af-text"><span class="af-label">{{ f.label }}</span> {{ filter_op_label(f.op) }} <code>{{ f.value }}</code></span>
       <button type="button" class="af-remove" title="Remove filter"
               hx-post="/views/{{ view.id }}/filters"
               hx-vals='{"action": "remove", "index": {{ loop.index0 }}}'

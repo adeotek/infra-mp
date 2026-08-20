@@ -483,7 +483,14 @@
     if (target && target.id === 'modal-body') {
       target.querySelectorAll('.drop-zone').forEach(initDropZone);
     }
+  });
+  // The view body re-inits on afterSettle, NOT afterSwap: htmx's settle phase
+  // (~20ms after the swap) reconciles attributes between swapped elements
+  // with matching ids, stripping inline styles set during afterSwap.
+  document.body.addEventListener('htmx:afterSettle', function (e) {
+    var target = e.detail && e.detail.target;
     if (target && target.id === 'view-detail-body') {
+      target.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
       initAdvancedFilter(target);
     }
   });

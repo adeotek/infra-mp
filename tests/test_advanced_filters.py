@@ -347,3 +347,36 @@ def test_edit_form_renders_checkbox_state(client, login):
     assert 'id="advanced-filter-toggle"' in html
     assert "checked" in html
     assert 'id="filters-section"' in html
+    # The checkbox uses the aligned checkbox-label layout (same line).
+    assert 'class="checkbox-label"' in html
+
+
+def test_enum_option_choices_are_single_quoted(client, login):
+    # tojson emits raw double quotes, which break double-quoted attributes;
+    # the builder uses single quotes so browsers can parse the choices JSON.
+    _seed(client, login)
+    _advanced_view(client)
+    html = client.get("/views/1").text
+    assert 'data-choices=\'["active", "retired"]\'' in html
+
+
+def test_active_filter_row_has_label_badge(client, login):
+    _seed(client, login)
+    _advanced_view(client)
+    client.post(
+        "/views/1/filters",
+        data={"action": "add", "col": "base:name", "op": "eq", "value": "alpha"},
+        headers={"HX-Request": "true"},
+    )
+    html = client.get("/views/1").text
+    assert 'class="af-label"' in html
+
+
+def test_view_body_reinits_on_after_settle_css_and_js(client, login):
+    _seed(client, login)
+    _advanced_view(client)
+    js = client.get("/static/app.js").text
+    css = client.get("/static/style.css").text
+    assert "htmx:afterSettle" in js
+    assert ".af-builder select.af-op" in css
+    assert ".af-label" in css
