@@ -194,6 +194,7 @@ html.sect-config-collapsed #nav-section-config .section-chevron {
 .sidebar-toggle {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.7rem;
   padding: 0.6rem 0.75rem;
   margin: 0 0.5rem;
@@ -257,6 +258,9 @@ html.sect-config-collapsed #nav-section-config .section-chevron {
   cursor: pointer;
 }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
+
+/* Theme toggle glyph matches the compact height of the role pill. */
+.theme-toggle i { font-size: 16px; }
 
 /* Theme toggle shows the icon for the theme you'd switch TO */
 [data-theme="dark"] .icon-sun { display: block; }
@@ -536,11 +540,15 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 }
 .action-btn:hover { background: var(--hover); color: var(--primary); text-decoration: none; }
 .action-btn-edit:hover {
-  background: color-mix(in srgb, var(--teal) 12%, transparent);
-  color: var(--teal);
+  background: var(--hover);
+  color: var(--primary);
 }
 .action-btn-danger:hover { background: var(--danger-bg); color: var(--danger); }
 .table-wrap { overflow-x: auto; }
+/* Grids inside a scroll wrapper keep one-line cells so wide content
+   overflows horizontally instead of squeezing the columns. */
+.table-wrap .table th,
+.table-wrap .table td { white-space: nowrap; }
 .muted code { color: var(--muted); }
 
 /* --------------------------------------- Drag-and-drop attribute reorder */

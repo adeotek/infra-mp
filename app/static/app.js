@@ -422,13 +422,19 @@
 
   document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
 
-  // Drag & drop upload zone (CSV import modal). Delegated so it also
-  // initializes after HTMX swaps the fragment into the modal body.
+  // Drag & drop upload zones (CSV import modal + backup restore). Delegated
+  // so zones also initialize after HTMX swaps a fragment into the modal.
+  var DROP_ACCEPTS = {
+    csv: { pattern: /\.csv$/i, mime: 'text/csv', label: 'Only CSV files are supported' },
+    zip: { pattern: /\.zip$/i, mime: 'application/zip', label: 'Only ZIP files are supported' }
+  };
+
   function initDropZone(zone) {
     if (!zone || zone.dataset.dzInit) return;
     zone.dataset.dzInit = '1';
-    var input = document.getElementById('import-file');
-    var title = document.getElementById('drop-zone-title');
+    var spec = DROP_ACCEPTS[zone.dataset.accept || 'csv'] || DROP_ACCEPTS.csv;
+    var input = document.getElementById(zone.dataset.input || 'import-file');
+    var title = document.getElementById(zone.dataset.title || 'drop-zone-title');
     if (!input || !title) return;
 
     function showFile(name) {
@@ -439,10 +445,10 @@
     function setFiles(files) {
       if (!files || !files.length) return;
       var file = files[0];
-      if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+      if (!spec.pattern.test(file.name) && file.type !== spec.mime) {
         zone.classList.remove('drag-over', 'has-file');
         zone.classList.add('dz-error');
-        title.textContent = 'Only CSV files are supported';
+        title.textContent = spec.label;
         input.value = '';
         return;
       }
@@ -471,14 +477,13 @@
     });
   }
 
+  document.querySelectorAll('.drop-zone').forEach(initDropZone);
   document.body.addEventListener('htmx:afterSwap', function (e) {
     var target = e.detail && e.detail.target;
     if (target && target.id === 'modal-body') {
-      var zone = document.getElementById('drop-zone');
-      if (zone) initDropZone(zone);
+      target.querySelectorAll('.drop-zone').forEach(initDropZone);
     }
   });
-  initDropZone(document.getElementById('drop-zone'));
 
   // Quick search: client-side row filter (records pages). A row matches when
   // any of its cells contains the term (case-insensitive). Works alongside

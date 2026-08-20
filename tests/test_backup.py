@@ -38,6 +38,25 @@ def test_backup_page(client, login):
     assert client.get("/settings/backup").status_code == 200
 
 
+def test_backup_page_has_drop_zone(client, login):
+    login()
+    html = client.get("/settings/backup").text
+    assert 'id="restore-zone"' in html
+    assert 'data-accept="zip"' in html
+    assert 'id="restore-file"' in html
+    assert 'accept=".zip,application/zip"' in html
+    assert "Drag &amp; drop a backup archive here" in html
+    # The raw file input is hidden; the drop zone is the visible control.
+    assert 'class="hidden"' in html
+
+
+def test_restore_without_file_flashes(client, login):
+    login()
+    resp = client.post("/settings/backup/restore", follow_redirects=True)
+    assert resp.status_code == 200
+    assert "no file selected" in resp.text
+
+
 def test_backup_download_returns_zip(client, login):
     login()
     client.post("/entities", data={"name": "Server"}, follow_redirects=False)

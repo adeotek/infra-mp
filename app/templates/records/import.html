@@ -4,7 +4,8 @@
 <h1>Import CSV <span class="muted">into {{ entity.name }}</span></h1>
 <form method="post" action="/entities/{{ entity.id }}/records/import" enctype="multipart/form-data" id="import-form">
   <input type="file" name="file" id="import-file" accept=".csv,text/csv" class="hidden">
-  <button type="button" class="drop-zone" id="drop-zone" aria-describedby="import-help">
+  <button type="button" class="drop-zone" id="drop-zone" data-input="import-file"
+          data-title="drop-zone-title" data-accept="csv" aria-describedby="import-help">
     <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
     <span class="drop-zone-title" id="drop-zone-title">Drag &amp; drop a CSV file here</span>
     <span class="drop-zone-sub">or click to browse</span>
@@ -21,7 +22,7 @@
     reported with row numbers.
   </p>
   <div class="form-actions">
-    <button type="submit" class="btn btn-teal">Import</button>
+    <button type="submit" class="btn btn-primary">Import</button>
     <a href="/entities/{{ entity.id }}/records" class="btn" data-modal-close>Cancel</a>
   </div>
 </form>
