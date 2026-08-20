@@ -16,7 +16,7 @@
       <td>{{ "Active" if u.is_active else "Inactive" }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
-          <a href="/users/{{ u.id }}/edit" hx-get="/users/{{ u.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <a href="/users/{{ u.id }}/edit" hx-get="/users/{{ u.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           {% if u.id != current_user_id %}
           <form method="post" action="/users/{{ u.id }}/delete" class="inline"
                 onsubmit="return confirm('Delete this user?');">

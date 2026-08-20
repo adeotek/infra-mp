@@ -25,7 +25,7 @@
         <div class="row-actions-inner">
           <a href="/entities/{{ e.id }}" class="action-btn" title="Attributes"><i class="fa-solid fa-list" aria-hidden="true"></i></a>
           {% if can_manage_schema %}
-          <a href="/entities/{{ e.id }}/edit" hx-get="/entities/{{ e.id }}/edit" hx-target="#modal-body" class="action-btn" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+          <a href="/entities/{{ e.id }}/edit" hx-get="/entities/{{ e.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           {% endif %}
           <a href="/entities/{{ e.id }}/records" class="action-btn" title="Records" aria-label="Records"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></a>
         </div>
