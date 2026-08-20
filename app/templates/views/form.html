@@ -44,8 +44,16 @@
       added above — the list updates as you edit the columns.</p>
   </fieldset>
 
-  <fieldset class="form-section">
-    <legend>Filters</legend>
+  <label class="checkbox">
+    <input type="checkbox" name="advanced_filter" id="advanced-filter-toggle"
+           {% if cfg.get('advanced_filter') %}checked{% endif %}>
+    Advanced filters
+  </label>
+  <p class="muted">Show the interactive filter bar on the view page instead of the
+    standard filter rows below. Each filter is applied as soon as it is added.</p>
+
+  <fieldset class="form-section" id="filters-section">
+    <legend>Standard filters</legend>
     <div id="filters">
       {% set existing_filters = cfg.get('filters', []) %}
       {% for f in existing_filters %}
@@ -384,6 +392,18 @@
         e.target.closest('.filter-row').remove();
       }
     });
+
+    // Advanced filters checkbox disables the standard filter rows (disabled
+    // fields are not submitted, and the server preserves bar-managed filters).
+    var afToggle = document.getElementById('advanced-filter-toggle');
+    var filtersSection = document.getElementById('filters-section');
+    function syncAdvancedFilters() {
+      var on = afToggle.checked;
+      filtersSection.disabled = on;
+      filtersSection.classList.toggle('section-disabled', on);
+    }
+    afToggle.addEventListener('change', syncAdvancedFilters);
+    syncAdvancedFilters();
   })();
 </script>
 {% endblock %}

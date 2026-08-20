@@ -551,6 +551,21 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
    overflows horizontally instead of squeezing the columns. */
 .table-wrap .table th,
 .table-wrap .table td { white-space: nowrap; }
+
+/* --------------------------------------- Advanced filters (view detail) */
+.advanced-filter { margin: 0 0 1rem; }
+.af-builder { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.af-builder select, .af-builder input { max-width: 16rem; }
+.af-active { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.af-row { display: flex; align-items: center; gap: 0.5rem; }
+.af-text code { background: var(--hover); padding: 0.05rem 0.4rem; border-radius: 4px; }
+.af-remove {
+  border: none; background: transparent; color: var(--danger);
+  font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+}
+.af-remove:hover { background: var(--danger-bg); }
+.section-disabled { opacity: 0.45; }
 .muted code { color: var(--muted); }
 
 /* --------------------------------------- Drag-and-drop attribute reorder */

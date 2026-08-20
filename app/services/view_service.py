@@ -24,12 +24,24 @@ from app.services.schema_service import list_entities
 from app.services.slugs import unique_slug
 from app.services.validation import ValidationError, coerce_value
 
-FILTER_OPS = ["eq", "neq", "contains", "gt", "gte", "lt", "lte", "is_null", "not_null"]
+FILTER_OPS = [
+    "eq",
+    "neq",
+    "contains",
+    "not_contains",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "is_null",
+    "not_null",
+]
 
 _FILTER_OP_LABELS = {
     "eq": "equals",
     "neq": "does not equal",
     "contains": "contains",
+    "not_contains": "does not contain",
     "gt": "greater than",
     "gte": "greater or equal",
     "lt": "less than",
@@ -108,36 +120,138 @@ def apply_config(
 
     ``entities`` (all entities with their attributes loaded) is required to
     resolve related-entity columns; without it those columns are skipped.
-    ``db`` is required to sort by a related column (its values live in other
-    entities' records); without it a related sort is skipped.
+    ``db`` is required to filter/sort by a related column (its values live in
+    other entities' records); without it related filters and sorts are skipped.
     """
     attrs_by_slug = {a.slug: a for a in entity.attributes}
-    filtered = _apply_filters(records, attrs_by_slug, config.get("filters", []))
-    filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db)
     columns = _resolve_columns(entity, config.get("columns"), entities)
+    filters = config.get("filters", [])
+    entities_by_id = {e.id: e for e in entities or []}
+    # The related context must cover filter columns too, not just the visible
+    # view columns — otherwise filters on undisplayed related columns resolve
+    # against an empty record set.
+    context_columns = columns + _filter_columns(entity, filters, entities_by_id)
+    context = _related_context(db, entity, context_columns, records) if db and filters else None
+    base_titles = resolve_reference_titles(db, entity) if db else {}
+    filtered = _apply_filters(
+        records,
+        entity,
+        attrs_by_slug,
+        filters,
+        columns,
+        context,
+        entities_by_id,
+        base_titles,
+        config.get("filter_op", "and"),
+    )
+    filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db)
     return filtered, columns
+
+
+def _filter_columns(
+    entity: Entity, filters: list[dict], entities_by_id: dict[int, Entity]
+) -> list[ViewColumn]:
+    """Resolved related columns referenced by filters (for the shared context)."""
+    resolved = []
+    for spec in filters:
+        col = spec.get("col")
+        if col is None:
+            col = spec.get("slug")
+        if isinstance(col, dict):
+            column = _resolve_related_column(entity, col, entities_by_id)
+            if column is not None:
+                resolved.append(column)
+    return resolved
 
 
 def _apply_filters(
     records: list[Record],
+    entity: Entity,
     attrs_by_slug: dict[str, Attribute],
     filters: list[dict],
+    columns: list[ViewColumn],
+    context: Any | None,
+    entities_by_id: dict[int, Entity],
+    base_titles: dict[int, dict[int, str]],
+    filter_op: str = "and",
 ) -> list[Record]:
-    result: list[Record] = []
-    for record in records:
-        if all(_match(record, attrs_by_slug, f) for f in filters):
-            result.append(record)
-    return result
+    """Apply filter specs; all rows are combined with the global ``filter_op``.
+
+    Each spec is ``{"col": <"quick" | base slug | rel spec dict>, "op", "value"}``;
+    legacy rows carry ``slug`` instead of ``col``. Unknown columns are no-ops.
+    """
+    if not filters:
+        return records
+    columns_by_key = {c.key: c for c in columns}
+    resolved: list[tuple[dict, Any, ViewColumn | None]] = []
+    for spec in filters:
+        col = spec.get("col")
+        if col is None:
+            col = spec.get("slug")  # legacy: base attribute slug
+        column = (
+            _resolve_related_column(entity, col, entities_by_id) if isinstance(col, dict) else None
+        )
+        resolved.append((spec, col, column))
+
+    def passes(record: Record) -> bool:
+        outcomes = (
+            _match(record, attrs_by_slug, spec, col, column, columns_by_key, context, base_titles)
+            for spec, col, column in resolved
+        )
+        return all(outcomes) if filter_op != "or" else any(outcomes)
+
+    return [record for record in records if passes(record)]
 
 
-def _match(record: Record, attrs_by_slug: dict[str, Attribute], spec: dict) -> bool:
-    attr = attrs_by_slug.get(spec.get("slug") or "")
-    if attr is None:
-        return True  # unknown attribute -> no-op filter
+def _match(
+    record: Record,
+    attrs_by_slug: dict[str, Attribute],
+    spec: dict,
+    col: Any,
+    column: ViewColumn | None,
+    columns_by_key: dict[str, ViewColumn],
+    context: Any | None,
+    base_titles: dict[int, dict[int, str]],
+) -> bool:
     op = spec.get("op", "eq")
     raw_target = spec.get("value")
-    value = record.data.get(attr.slug)
+    if raw_target is None:
+        raw_target = ""
+    if col == "quick":
+        return _quick_match(
+            record, attrs_by_slug, str(raw_target), columns_by_key, context, base_titles
+        )
+    if isinstance(col, str):
+        attr = attrs_by_slug.get(col)
+        if attr is None:
+            return True  # unknown attribute -> no-op filter
+        return _match_scalar(record.data.get(col), attr, raw_target, op, base_titles)
+    if column is None:
+        return True  # unresolvable related column -> no-op filter
+    if not context:
+        return True  # no db context -> related filters are skipped
+    values = _related_filter_values(record, column, context)
+    if op == "is_null":
+        return not values
+    if op == "not_null":
+        return bool(values)
+    if not values:
+        return False
+    outcomes = [_match_scalar(v, column.attr, raw_target, op, base_titles) for v in values]
+    # Positive ops match when ANY related value matches; negated ops (neq /
+    # not_contains) require ALL values to fail so the row is excluded.
+    if op in ("neq", "not_contains"):
+        return all(outcomes)
+    return any(outcomes)
 
+
+def _match_scalar(
+    value: Any,
+    attr: Attribute,
+    raw_target: Any,
+    op: str,
+    base_titles: dict[int, dict[int, str]],
+) -> bool:
     if op == "is_null":
         return value is None
     if op == "not_null":
@@ -145,12 +259,17 @@ def _match(record: Record, attrs_by_slug: dict[str, Attribute], spec: dict) -> b
     if value is None:
         return False
 
-    if op == "contains" and isinstance(value, list):
-        target = _coerce_filter_target(attr, raw_target)
-        return target in value
+    # Reference values: match by numeric id or by record title.
+    if attr.data_type == DataType.REFERENCE.value:
+        return _match_reference(value, attr, raw_target, base_titles, op)
 
-    if op == "contains":
-        return str(raw_target).lower() in str(value).lower()
+    if op in ("contains", "not_contains"):
+        if isinstance(value, list):
+            target = _coerce_filter_target(attr, raw_target)
+            hit = target in value
+        else:
+            hit = str(raw_target).lower() in str(value).lower()
+        return hit if op == "contains" else not hit
 
     target = _coerce_filter_target(attr, raw_target)
     if op == "eq":
@@ -170,6 +289,105 @@ def _match(record: Record, attrs_by_slug: dict[str, Attribute], spec: dict) -> b
         except TypeError:
             return False
     return True
+
+
+def _related_filter_values(record: Record, column: ViewColumn, context: Any) -> list[Any]:
+    """All terminal values of a related column (empty list when unresolved).
+
+    Unlike the sort key (first value only), filters see every reached value,
+    so a many-reference column matches when ANY of its values matches.
+    """
+    records_by_entity, reverse_index, terminal_titles = context
+    current: list[Record] = [record]
+    for hop in column.path or []:
+        reached: list[Record] = []
+        for rec in current:
+            reached.extend(_follow_hop(rec, hop, records_by_entity, reverse_index))
+        current = reached
+        if not current:
+            return []
+    attr = column.attr
+    values: list[Any] = []
+    for rec in current:
+        value = rec.data.get(attr.slug)
+        if value is None:
+            continue
+        ids = value if isinstance(value, list) else [value]
+        if attr.data_type == DataType.REFERENCE.value:
+            titles = terminal_titles.get(attr.reference_entity_id or -1, {})
+            values.extend(titles.get(i, f"#{i}") for i in ids)
+        else:
+            values.extend(ids)
+    return values
+
+
+def _match_reference(
+    value: Any,
+    attr: Attribute,
+    raw_target: str,
+    base_titles: dict[int, dict[int, str]],
+    op: str,
+) -> bool:
+    """Match a reference value: numeric id comparison or (case-insensitive) title."""
+    target = _coerce_filter_target(attr, raw_target)
+    titles = base_titles.get(attr.config.get("reference_entity_id"), {})
+
+    def title_of(item: Any) -> str:
+        return titles.get(item, str(item))
+
+    if op in ("eq", "neq"):
+        if isinstance(target, int):
+            hit = value == target
+        else:
+            hit = title_of(value).lower() == str(raw_target).lower()
+        return hit if op == "eq" else not hit
+    # contains / not_contains over the referenced title(s).
+    if isinstance(value, list):
+        hit = any(str(raw_target).lower() in title_of(v).lower() for v in value)
+    else:
+        hit = str(raw_target).lower() in title_of(value).lower()
+    return hit if op == "contains" else not hit
+
+
+def _quick_match(
+    record: Record,
+    attrs_by_slug: dict[str, Attribute],
+    term: str,
+    columns_by_key: dict[str, ViewColumn],
+    context: Any | None,
+    base_titles: dict[int, dict[int, str]],
+) -> bool:
+    """True when any cell (base attribute or related column) contains ``term``."""
+    if not term:
+        return True
+    term = term.lower()
+    for slug, value in record.data.items():
+        if value is None:
+            continue
+        attr = attrs_by_slug.get(slug)
+        if attr is not None and attr.data_type == DataType.REFERENCE.value:
+            titles = base_titles.get(attr.config.get("reference_entity_id"), {})
+            if isinstance(value, list):
+                hay = [titles.get(v, str(v)) for v in value]
+            else:
+                hay = [titles.get(value, str(value))]
+        elif isinstance(value, list):
+            hay = [str(v) for v in value]
+        else:
+            hay = [str(value)]
+        if any(term in str(part).lower() for part in hay):
+            return True
+    if context:
+        for column in columns_by_key.values():
+            if column.path is None:
+                continue
+            value = _resolve_related_sort_value(record, column, context)
+            if value is None:
+                continue
+            hay = value if isinstance(value, list) else [value]
+            if any(term in str(part).lower() for part in hay):
+                return True
+    return False
 
 
 def _coerce_filter_target(attr: Attribute, raw_target: Any) -> Any:
@@ -250,6 +468,14 @@ class ViewColumn:
     def slug(self) -> str:
         """Compatibility alias (base columns key by attribute slug)."""
         return self.key
+
+
+def column_spec_string(column: ViewColumn) -> str:
+    """Encode a resolved column as a form-style spec (``parse_column_spec``-compatible)."""
+    if column.path is None:
+        return f"base:{column.key}"
+    hops = "/".join(f"{h['dir']}:{h['ref']}:{h['to']}:{h['many']}" for h in column.path)
+    return f"rel:{hops}→{column.attr.slug}"
 
 
 def parse_column_spec(value: str) -> str | dict | None:

@@ -483,7 +483,98 @@
     if (target && target.id === 'modal-body') {
       target.querySelectorAll('.drop-zone').forEach(initDropZone);
     }
+    if (target && target.id === 'view-detail-body') {
+      initAdvancedFilter(target);
+    }
   });
+
+  // Advanced filter builder (view detail): the column select drives the
+  // comparison options and the value widget, based on the column type.
+  var OP_LABELS = {
+    eq: 'equals',
+    neq: 'does not equal',
+    contains: 'contains',
+    not_contains: 'does not contain',
+    gt: 'greater than',
+    gte: 'greater or equal',
+    lt: 'less than',
+    lte: 'less or equal'
+  };
+  var OPS_BY_TYPE = {
+    text: ['eq', 'neq', 'contains', 'not_contains'],
+    integer: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
+    float: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
+    date: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
+    datetime: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
+    boolean: ['eq', 'neq'],
+    enum: ['eq', 'neq'],
+    reference: ['eq', 'neq', 'contains', 'not_contains']
+  };
+
+  function initAdvancedFilter(scope) {
+    var col = scope.querySelector('#af-col');
+    var op = scope.querySelector('#af-op');
+    var value = scope.querySelector('#af-value');
+    if (!col || !op || !value) return;
+
+    function rebuild() {
+      var selected = col.options[col.selectedIndex];
+      var type = selected ? (selected.getAttribute('data-type') || 'text') : 'text';
+      var isQuick = col.value === 'quick';
+      var many = selected && selected.getAttribute('data-many') === '1';
+
+      if (isQuick) {
+        op.style.display = 'none';
+      } else {
+        var ops = OPS_BY_TYPE[type] || OPS_BY_TYPE.text;
+        if (type === 'reference' && many) ops = ['contains', 'not_contains'];
+        op.innerHTML = '';
+        ops.forEach(function (o) {
+          var el = document.createElement('option');
+          el.value = o;
+          el.textContent = OP_LABELS[o] || o;
+          op.appendChild(el);
+        });
+        op.style.display = '';
+      }
+
+      var next;
+      if (type === 'boolean') {
+        next = document.createElement('select');
+        [['true', 'Yes'], ['false', 'No']].forEach(function (pair) {
+          var el = document.createElement('option');
+          el.value = pair[0];
+          el.textContent = pair[1];
+          next.appendChild(el);
+        });
+      } else if (type === 'enum') {
+        next = document.createElement('select');
+        var choices = [];
+        try { choices = JSON.parse(selected.getAttribute('data-choices') || '[]'); } catch (e) {}
+        choices.forEach(function (c) {
+          var el = document.createElement('option');
+          el.value = c;
+          el.textContent = c;
+          next.appendChild(el);
+        });
+      } else {
+        next = document.createElement('input');
+        if (type === 'integer' || type === 'float') next.type = 'number';
+        else if (type === 'date') next.type = 'date';
+        else next.type = 'text';
+        next.placeholder = 'filter value';
+      }
+      next.name = 'value';
+      next.id = 'af-value';
+      next.autocomplete = 'off';
+      value.replaceWith(next);
+      value = next;
+    }
+
+    col.addEventListener('change', rebuild);
+    rebuild();
+  }
+  initAdvancedFilter(document);
 
   // Quick search: client-side row filter (records pages). A row matches when
   // any of its cells contains the term (case-insensitive). Works alongside
