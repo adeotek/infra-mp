@@ -12,7 +12,9 @@
   <p class="muted" id="import-help">
     The first row must be a header naming the columns — attribute names or slugs both work.
     Reference values may be record titles or numeric IDs; multiple references in one cell are
-    separated by <code>|</code>. Empty cells are ignored on create and clear the value on update.
+    separated by <code>|</code>. For entities with a composite key, titles join their key parts
+    with <code> ^ </code> (e.g. <code>NAS-01 ^ Synology</code>). Empty cells are ignored on
+    create and clear the value on update.
     {% if entity.attributes | selectattr('is_key') | list %}The entity has a key: rows whose key
     matches an existing record update it instead of creating a duplicate.{% endif %}
     The import is all-or-nothing: if any row is invalid, nothing is changed and the errors are

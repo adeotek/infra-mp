@@ -60,6 +60,8 @@ def test_records_import_page_has_drop_zone(client, login):
     assert "Drag &amp; drop a CSV file here" in html
     # The raw file input is hidden; the drop zone is the visible control.
     assert 'class="hidden"' in html
+    # Help text documents the composite key separator.
+    assert "NAS-01 ^ Synology" in html
 
 
 def test_records_import_without_file_flashes(client, login):
