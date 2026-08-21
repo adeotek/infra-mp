@@ -240,6 +240,15 @@ def test_revoke_rejects_unknown_return_to(client, login, db_session):
 # --------------------------------------------------------------------------- #
 
 
+def test_token_filter_select_is_styled_like_form_controls(client, login):
+    login()
+    css = client.get("/static/style.css").text
+    # The toolbar select participates in the shared styled-controls rule (it is
+    # not inside a <form>, so it needs an explicit selector there).
+    assert ".token-toolbar select {" in css
+    assert ".token-toolbar select:focus {" in css
+
+
 def test_nav_links(client, login):
     # Admin: sidebar link + header user-menu link.
     login()
