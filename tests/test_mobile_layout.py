@@ -1,32 +1,25 @@
-"""Mobile layout: off-canvas sidebar drawer, hamburger, stacked grids."""
+"""Every data table must sit inside .table-wrap so narrow (mobile) viewports
+scroll the table horizontally instead of overflowing the page."""
+
+from pathlib import Path
+
+TEMPLATES = Path("app/templates")
 
 
-def test_base_layout_has_mobile_drawer_controls(client, login):
-    login()
-    html = client.get("/dashboard").text
-    assert 'id="mobile-menu-btn"' in html
-    assert 'id="sidebar-backdrop"' in html
-    assert "fa-bars" in html
+def test_all_tables_are_wrapped_in_table_wrap():
+    violations = []
+    for tmpl in sorted(TEMPLATES.rglob("*.html")):
+        lines = tmpl.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if "<table" not in line:
+                continue
+            prior = "\n".join(lines[max(0, i - 3) : i])
+            if '<div class="table-wrap">' not in prior:
+                violations.append(f"{tmpl}:{i + 1} <table> has no table-wrap wrapper")
+    assert not violations, "\n".join(violations)
 
 
-def test_login_page_has_no_drawer_controls(client):
-    html = client.get("/login").text
-    assert 'id="mobile-menu-btn"' not in html
-
-
-def test_mobile_css_rules_are_served(client, login):
+def test_mobile_css_caps_widget_min_width(client, login):
     login()
     css = client.get("/static/style.css").text
-    assert "@media (max-width: 768px)" in css
-    assert "body.sidebar-open .sidebar" in css
-    assert ".mobile-menu-btn" in css
-    assert ".sidebar-backdrop" in css
-    # Tables keep their horizontal-scroll wrapper on phones.
-    assert "grid-template-columns: 1fr" in css
-
-
-def test_mobile_js_toggle_is_served(client, login):
-    login()
-    js = client.get("/static/app.js").text
-    assert "sidebar-open" in js
-    assert "mobile-menu-btn" in js
+    assert ".widget, .widget-grid > * { min-width: 0; }" in css

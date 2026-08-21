@@ -27,6 +27,7 @@
 {% if can_manage_schema and entity.attributes|length > 1 %}
 <p class="muted"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> Drag rows to reorder attributes.</p>
 {% endif %}
+<div class="table-wrap">
 <table class="table" id="attributes-table" data-reorder-url="/entities/{{ entity.id }}/attributes/reorder">
   <thead>
     <tr>
@@ -62,6 +63,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <div class="empty-state"><p>No attributes yet. Add attributes to define what this entity stores.</p></div>
 {% endif %}

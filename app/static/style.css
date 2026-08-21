@@ -707,6 +707,11 @@ code {
 }
 
 /* --------------------------------------------------------------- Responsive */
+/* Mobile-only elements are hidden on desktop (rules before the media query
+   so the query's display rules win on phones). */
+.mobile-menu-btn { display: none; }
+.sidebar-backdrop { display: none; }
+
 /* Smartphone layout: the sidebar becomes an off-canvas drawer opened by a
    hamburger button in the topbar; grids and forms stack; tables keep their
    horizontal scroll inside .table-wrap. */
@@ -724,6 +729,8 @@ code {
   /* The desktop icon-rail is meaningless on a phone: always show labels. */
   .sidebar-collapsed .sidebar { width: min(280px, 85vw); }
   .brand-text, .nav-label { display: inline; }
+  .sidebar-collapsed .brand-text, .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-section-items .nav-label { display: inline; }
   .sidebar-brand, .nav-item, .sidebar-toggle {
     justify-content: flex-start;
     padding-left: 0.75rem;
@@ -756,6 +763,12 @@ code {
 
   /* Stacked form grids. */
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  /* Wide form controls (long select options, values) must not force the
+     grid — and any dialog containing it — wider than the viewport. */
+  .grid-2 > *, .grid-3 > * { min-width: 0; }
+  input, select, textarea { max-width: 100%; }
+  /* Dashboard widgets must not propagate table min-content to the page. */
+  .widget, .widget-grid > * { min-width: 0; }
 
   /* Tighter tables. */
   .table th, .table td { padding: 0.5rem 0.6rem; font-size: 0.95em; }
@@ -771,9 +784,6 @@ code {
   /* Login card. */
   .login-card { margin: 2rem auto; width: calc(100vw - 2rem); }
 }
-
-.mobile-menu-btn { display: none; }
-.sidebar-backdrop { display: none; }
 
 /* -------------------------------------------------------------------- Modal */
 .modal {
