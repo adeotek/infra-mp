@@ -583,6 +583,38 @@
   }
   initAdvancedFilter(document);
 
+  // Copy buttons (API token reveal): write the target element's text to the
+  // clipboard, with a fallback for browsers without the async clipboard API.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var target = document.getElementById(btn.getAttribute('data-copy-target'));
+    if (!target) return;
+    var text = target.textContent.trim();
+    function done() {
+      btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Copied';
+      btn.classList.add('copied');
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        done();
+      } catch (err) { /* ignore */ }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  });
+
   // Mobile sidebar drawer: hamburger toggles the off-canvas menu; the
   // backdrop click or any sidebar link closes it.
   var mobileMenuBtn = document.getElementById('mobile-menu-btn');
