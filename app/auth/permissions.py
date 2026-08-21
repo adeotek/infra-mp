@@ -43,6 +43,11 @@ _CAPABILITIES: dict[Role, frozenset[str]] = {
 }
 
 
+def capabilities_for(role: Role) -> frozenset[str]:
+    """The capability set granted to ``role``."""
+    return _CAPABILITIES.get(role, frozenset())
+
+
 def has_capability(user: User, capability: str) -> bool:
     """Return True if ``user`` has ``capability``."""
     return capability in _CAPABILITIES.get(user.role_enum, frozenset())

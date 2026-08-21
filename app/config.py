@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     admin_password: str = ""
     admin_display_name: str = "Administrator"
     debug: bool = False
+    mcp_enabled: bool = True
+    base_url: str = "http://localhost:8000"
 
     @property
     def database_url(self) -> str:

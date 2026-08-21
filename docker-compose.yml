@@ -10,12 +10,22 @@ services:
     volumes:
       - infra-mp-data:/data
     environment:
+      INFRAMP_APP_NAME: ${INFRAMP_APP_NAME:-InfraMP}
       INFRAMP_DATA_DIR: /data
       INFRAMP_SECRET_KEY: ${INFRAMP_SECRET_KEY:-change-me-to-a-long-random-string}
+      INFRAMP_SESSION_COOKIE_NAME: ${INFRAMP_SESSION_COOKIE_NAME:-infra_mp_session}
+      INFRAMP_SESSION_TTL_DAYS: ${INFRAMP_SESSION_TTL_DAYS:-7}
       INFRAMP_ADMIN_USERNAME: ${INFRAMP_ADMIN_USERNAME:-admin}
       # Set this (e.g. in a .env file) to pin the initial admin password;
       # otherwise a random one is generated and printed on first start.
       INFRAMP_ADMIN_PASSWORD: ${INFRAMP_ADMIN_PASSWORD:-}
+      INFRAMP_ADMIN_DISPLAY_NAME: ${INFRAMP_ADMIN_DISPLAY_NAME:-Administrator}
+      INFRAMP_DEBUG: ${INFRAMP_DEBUG:-false}
+      # Embedded MCP server (agents access /mcp with UI-generated API tokens).
+      INFRAMP_MCP_ENABLED: ${INFRAMP_MCP_ENABLED:-true}
+      # Public base URL advertised in the MCP authentication metadata; set to
+      # the externally reachable URL when clients connect from other machines.
+      INFRAMP_BASE_URL: ${INFRAMP_BASE_URL:-http://localhost:8000}
     restart: unless-stopped
 
 volumes:

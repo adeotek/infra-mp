@@ -42,6 +42,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "pydantic-settings>=2.3",
     "alembic>=1.13",
+    "mcp>=2.0,<3",
 ]
 
 [project.urls]

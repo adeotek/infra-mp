@@ -61,6 +61,7 @@ def render(
         "current_path": request.url.path,
         "app_name": get_settings().app_name,
         "app_version": __version__,
+        "base_url": get_settings().base_url,
         "flash": request.query_params.get("flash"),
         "flash_type": request.query_params.get("flash_type", "success"),
         "is_fragment": fragment,

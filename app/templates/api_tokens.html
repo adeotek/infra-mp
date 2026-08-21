@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}API Tokens · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>API Tokens</h1>
+</div>
+<p class="muted">
+  API tokens let agents (MCP clients) access InfraMP data over the
+  <code>/mcp</code> endpoint. Each token carries <strong>its user's</strong>
+  role: viewer tokens are read-only, maintainer tokens can manage records and
+  views, admin tokens have full access. Guard them like passwords.
+</p>
+
+{% if new_token %}
+<div class="token-reveal" id="token-reveal">
+  <div class="token-reveal-head">
+    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+    <strong>Token "{{ new_token_name }}" created — copy it now, it won't be shown again.</strong>
+  </div>
+  <div class="token-reveal-row">
+    <code id="new-token-value">{{ new_token }}</code>
+    <button type="button" class="btn btn-teal copy-btn" data-copy-target="new-token-value">
+      <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy
+    </button>
+  </div>
+  <p class="muted">Use it as <code>Authorization: Bearer &lt;token&gt;</code> against <code>{{ base_url }}/mcp</code>.</p>
+</div>
+{% endif %}
+
+{% if form_error %}
+<div class="flash flash-error">{{ form_error }}</div>
+{% endif %}
+
+<form method="post" action="/settings/api-tokens" class="token-create-form">
+  <input type="text" name="name" placeholder="Token name (e.g. Hermes agent)" maxlength="80" required>
+  <button type="submit" class="btn btn-primary">
+    <i class="fa-solid fa-plus" aria-hidden="true"></i> Generate token
+  </button>
+</form>
+
+{% if tokens %}
+<div class="token-toolbar">
+  <label class="token-filter-label" for="token-user-filter">User</label>
+  <select id="token-user-filter" data-filter-table="tokens-table">
+    <option value="">All users</option>
+    {% for u in users %}
+    <option value="{{ u.id }}">{{ u.username }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="table-wrap">
+  <table class="table" id="tokens-table" data-user-filter>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>User</th>
+        <th>Token</th>
+        <th>Created</th>
+        <th>Last used</th>
+        <th class="no-sort"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for token, token_user in tokens %}
+      <tr data-user-id="{{ token.user_id }}">
+        <td>{{ token.name }}{% if not token.is_active %} <span class="muted">(revoked)</span>{% endif %}</td>
+        <td>{{ token_user.username }}</td>
+        <td><code>{{ token.token_prefix }}…</code></td>
+        <td>{{ token.created_at | datetime_display }}</td>
+        <td>{{ token.last_used_at | datetime_display if token.last_used_at else '—' }}</td>
+        <td class="row-actions">
+          {% if token.is_active %}
+          <form method="post" action="/settings/api-tokens/{{ token.id }}/revoke" data-confirm="Revoke token '{{ token.name }}'? Clients using it will lose access immediately.">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <button type="submit" class="action-btn action-btn-danger" title="Revoke" aria-label="Revoke token">
+              <i class="fa-solid fa-ban" aria-hidden="true"></i>
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state"><p>No API tokens yet. Generate one to give an agent access.</p></div>
+{% endif %}
+{% endblock %}

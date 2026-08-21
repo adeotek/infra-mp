@@ -105,6 +105,10 @@
             <i class="fa-solid fa-users" aria-hidden="true"></i>
             <span class="nav-label">Users</span>
           </a>
+          <a href="/settings/api-tokens" class="nav-item nav-sub{% if current_path.startswith('/settings/api-tokens') %} active{% endif %}" title="API Tokens" aria-label="API Tokens">
+            <i class="fa-solid fa-ticket" aria-hidden="true"></i>
+            <span class="nav-label">API Tokens</span>
+          </a>
           <a href="/settings/backup" class="nav-item nav-sub{% if current_path.startswith('/settings/backup') %} active{% endif %}" title="Backup" aria-label="Backup">
             <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
             <span class="nav-label">Backup</span>
@@ -138,6 +142,7 @@
           </button>
           <div class="user-menu-dropdown" role="menu">
             <a href="/settings/password" class="dropdown-item" role="menuitem" hx-get="/settings/password" hx-target="#modal-body"><i class="fa-solid fa-key" aria-hidden="true"></i> Change Password</a>
+            <a href="/settings/my-tokens" class="dropdown-item" role="menuitem"><i class="fa-solid fa-ticket" aria-hidden="true"></i> API Tokens</a>
             <form method="post" action="/logout">
               <button type="submit" class="dropdown-item" role="menuitem"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Log out</button>
             </form>

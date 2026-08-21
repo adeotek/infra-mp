@@ -90,6 +90,8 @@ descriptions. The essentials:
 | `INFRAMP_DATA_DIR` | Where the SQLite database is stored (default `./data`). |
 | `INFRAMP_SESSION_TTL_DAYS` | Session lifetime in days. |
 | `INFRAMP_DEBUG` | FastAPI debug mode — never enable in production. |
+| `INFRAMP_MCP_ENABLED` | Enable the embedded MCP server at `/mcp` (default `true`). |
+| `INFRAMP_BASE_URL` | Public base URL, advertised in the MCP auth metadata (default `http://localhost:8000`). |
 
 ## Usage overview
 
@@ -101,6 +103,40 @@ descriptions. The essentials:
    model relations such as *server → rack* or *certificate → servers*.
 4. **Organise** — build dashboard widgets and save filtered/sorted views for the
    things you look at often.
+
+## MCP server (agent access)
+
+InfraMP embeds a [Model Context Protocol](https://modelcontextprotocol.io) server
+at `/mcp` (streamable HTTP), so agents such as Claude Code, OpenCode or Hermes can
+query and manage your data with **exactly the same permissions as the web UI**.
+
+1. Log in to the web UI, open **Configuration → API Tokens** and generate a
+   token. The token is shown once — copy it immediately.
+2. Point your MCP client at `http(s)://<host>:<port>/mcp` with the header
+   `Authorization: Bearer <token>`.
+
+The token's user determines what the agent may do: **viewer** tokens are
+read-only, **maintainer** tokens can manage records and views, **admin** tokens
+can manage schema, views, users and dashboard widgets. Revoke a token in the
+same UI page (access is dropped on the next request).
+
+Available tools (22): `list_entities`, `get_entity`, `list_records`, `get_record`,
+`create_record`, `update_record`, `delete_record`, `create_entity`, `update_entity`,
+`delete_entity`, `create_attribute`, `update_attribute`, `delete_attribute`,
+`list_views`, `get_view`, `view_records`, `create_view`, `update_view`,
+`delete_view`, `dashboard_stats`, `list_users`, `list_dashboard_widgets`.
+
+Example (Hermes):
+
+```yaml
+mcp_servers:
+  inframp:
+    url: "http://localhost:8000/mcp"
+    headers:
+      Authorization: "Bearer imp_…"
+```
+
+The endpoint can be disabled entirely with `INFRAMP_MCP_ENABLED=false`.
 
 ## Stack
 

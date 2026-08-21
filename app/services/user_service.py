@@ -37,6 +37,10 @@ def create_user(
     password: str,
 ) -> User:
     username = username.strip()
+    if not username:
+        raise UserError("Username is required.")
+    if len(username) < 2:
+        raise UserError("Username must be at least 2 characters.")
     if username_exists(db, username):
         raise UserError(f"Username '{username}' is already taken.")
     user = User(
@@ -58,7 +62,19 @@ def update_user(
     role: Role,
     is_active: bool,
     password: str | None = None,
+    username: str | None = None,
 ) -> User:
+    # The username is only changed when provided (the web form always sends
+    # it; older API-style callers may omit it to keep the current value).
+    if username is not None:
+        username = username.strip()
+        if not username:
+            raise UserError("Username is required.")
+        if len(username) < 2:
+            raise UserError("Username must be at least 2 characters.")
+        if username_exists(db, username, exclude_id=user.id):
+            raise UserError(f"Username '{username}' is already taken.")
+        user.username = username
     user.display_name = display_name.strip()
     user.role = role.value
     user.is_active = is_active

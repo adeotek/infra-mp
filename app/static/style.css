@@ -372,7 +372,8 @@ h2 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; }
 
 form label { display: block; margin-bottom: 1rem; font-weight: 500; }
 form input, form select, form textarea,
-.quick-search input {
+.quick-search input,
+.token-toolbar select {
   display: block;
   width: 100%;
   margin-top: 0.35rem;
@@ -385,7 +386,8 @@ form input, form select, form textarea,
   color: var(--text);
 }
 form input:focus, form select:focus, form textarea:focus,
-.quick-search input:focus {
+.quick-search input:focus,
+.token-toolbar select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
@@ -817,3 +819,34 @@ code {
 .modal-body h1 { font-size: 1.25rem; margin-top: 0; }
 .modal-confirm { width: 26rem; max-width: calc(100vw - 2rem); }
 .confirm-message { margin: 0 0 1rem; }
+
+/* ------------------------------------------------------------- API tokens */
+.token-create-form { display: flex; gap: 0.5rem; margin: 1rem 0 1.25rem; }
+.token-create-form input { flex: 1; margin-top: 0; }
+.token-reveal {
+  border: 1px solid var(--success-border);
+  background: var(--success-bg);
+  color: var(--success-text);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin: 1rem 0 1.25rem;
+}
+.token-reveal-head { display: flex; align-items: center; gap: 0.5rem; }
+.token-reveal-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
+.token-reveal-row code {
+  flex: 1;
+  background: var(--code-bg);
+  color: var(--text);
+  padding: 0.45rem 0.7rem;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+}
+.token-reveal .muted { color: inherit; opacity: 0.75; }
+.token-toolbar { display: flex; align-items: center; gap: 0.5rem; margin: 1rem 0; }
+.token-toolbar select { width: auto; margin-top: 0; }
+.token-filter-label { color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 768px) {
+  .token-create-form { flex-direction: column; }
+  .token-reveal-row { flex-direction: column; align-items: stretch; }
+}
