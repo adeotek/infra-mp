@@ -707,12 +707,73 @@ code {
 }
 
 /* --------------------------------------------------------------- Responsive */
-@media (max-width: 720px) {
-  .sidebar { width: 60px; }
-  .brand-text, .nav-label { display: none; }
-  .sidebar-brand, .nav-item, .sidebar-toggle { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Smartphone layout: the sidebar becomes an off-canvas drawer opened by a
+   hamburger button in the topbar; grids and forms stack; tables keep their
+   horizontal scroll inside .table-wrap. */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: min(280px, 85vw);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  body.sidebar-open .sidebar { transform: translateX(0); }
+  /* The desktop icon-rail is meaningless on a phone: always show labels. */
+  .sidebar-collapsed .sidebar { width: min(280px, 85vw); }
+  .brand-text, .nav-label { display: inline; }
+  .sidebar-brand, .nav-item, .sidebar-toggle {
+    justify-content: flex-start;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  .sidebar-collapsed .sidebar-toggle { justify-content: flex-start; padding-left: 0.75rem; padding-right: 0.75rem; }
+  .nav-item { padding-top: 0.65rem; padding-bottom: 0.65rem; }
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  body.sidebar-open .sidebar-backdrop { display: block; }
+
+  /* Topbar: hamburger on the left, theme + user on the right. */
+  .topbar { justify-content: flex-start; padding: 0 0.5rem; }
+  .mobile-menu-btn { display: inline-flex; margin-right: auto; }
+  .topbar-right { gap: 0.5rem; }
+  .user-name { display: none; }
+
+  /* Content and page head. */
+  .content { padding: 1rem 0.75rem 2.5rem; }
+  .page-head { flex-direction: column; align-items: stretch; gap: 0.6rem; }
+  .page-head h1 { font-size: 1.3rem; }
+  .actions { flex-wrap: wrap; }
+  .actions .btn, .form-actions .btn { flex: 1 1 auto; text-align: center; }
+  .form-actions { flex-wrap: wrap; }
+
+  /* Stacked form grids. */
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
+
+  /* Tighter tables. */
+  .table th, .table td { padding: 0.5rem 0.6rem; font-size: 0.95em; }
+
+  /* Advanced filter bar: full-width controls, buttons share a row. */
+  .af-builder select, .af-builder input { width: 100%; }
+  .af-builder .btn { flex: 1 1 auto; }
+
+  /* Quick search full width. */
+  .quick-search { flex-wrap: wrap; }
+  .quick-search input[type="text"] { width: 100%; }
+
+  /* Login card. */
+  .login-card { margin: 2rem auto; width: calc(100vw - 2rem); }
 }
+
+.mobile-menu-btn { display: none; }
+.sidebar-backdrop { display: none; }
 
 /* -------------------------------------------------------------------- Modal */
 .modal {
@@ -723,6 +784,7 @@ code {
   padding: 0;
   max-width: 520px;
   width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
   box-shadow: var(--shadow);
 }
 .modal::backdrop { background: rgba(0, 0, 0, 0.55); }
@@ -741,7 +803,7 @@ code {
   padding: 0.2rem 0.35rem;
 }
 .modal-close:hover { color: var(--text); }
-.modal-body { padding: 0 1.25rem 1.25rem; }
+.modal-body { padding: 0 1.25rem 1.25rem; max-height: calc(100dvh - 6rem); overflow-y: auto; }
 .modal-body h1 { font-size: 1.25rem; margin-top: 0; }
 .modal-confirm { width: 26rem; max-width: calc(100vw - 2rem); }
 .confirm-message { margin: 0 0 1rem; }
