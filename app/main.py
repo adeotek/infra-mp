@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Route
 
 from app.auth.seed import seed_admin
 from app.config import Settings, get_settings
@@ -30,7 +31,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # not run mounted-app lifespans, so its lifespan (which starts the
     # streamable-HTTP session manager) is nested into the FastAPI lifespan.
     mcp_starlette = None
-    mcp_asgi = None
     if settings.mcp_enabled:
         from mcp.server.transport_security import TransportSecuritySettings
 
@@ -44,29 +44,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # DNS-rebinding guard would reject every non-loopback Host header.
             transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
         )
-
-        class _MCPPathNormalizer:
-            """Make ``GET/POST /mcp`` hit the inner ``Route("/")`` directly.
-
-            For an exact mount match Starlette hands the sub-app an empty
-            route path, which misses the SDK's ``Route("/")`` and triggers a
-            redirect-slashes 307 hop to ``/mcp/``. Appending the slash lets
-            ``get_route_path`` resolve the child path to ``/``.
-            """
-
-            def __init__(self, app):
-                self.app = app
-
-            async def __call__(self, scope, receive, send):
-                if (
-                    scope["type"] == "http"
-                    and scope.get("root_path") == "/mcp"
-                    and scope["path"] == "/mcp"
-                ):
-                    scope["path"] = "/mcp/"
-                await self.app(scope, receive, send)
-
-        mcp_asgi = _MCPPathNormalizer(mcp_starlette)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -84,8 +61,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-    if mcp_asgi is not None:
-        app.mount("/mcp", mcp_asgi, name="mcp")
+    if mcp_starlette is not None:
+
+        class _MCPPassthrough:
+            """Serve ``/mcp`` (no trailing slash) without a redirect hop.
+
+            Starlette's Mount regex requires the trailing slash, so a request
+            to exactly ``/mcp`` misses the mount and falls through to a
+            redirect-slashes 307. This route rewrites the path (and root_path,
+            taking over the mount's prefix stripping) and invokes the MCP app
+            directly. The mount below still serves ``/mcp/`` and any subpaths.
+            """
+
+            def __init__(self, app):
+                self.app = app
+
+            async def __call__(self, scope, receive, send):
+                if scope["type"] == "http":
+                    scope["path"] = "/mcp/"
+                    scope["root_path"] = scope.get("root_path", "") + "/mcp"
+                await self.app(scope, receive, send)
+
+        app.router.routes.insert(
+            0,
+            Route(
+                "/mcp",
+                endpoint=_MCPPassthrough(mcp_starlette),
+                methods=["GET", "POST", "DELETE"],
+            ),
+        )
+        app.mount("/mcp", mcp_starlette, name="mcp")
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
