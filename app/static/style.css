@@ -841,6 +841,9 @@ code {
   font-size: 0.95rem;
 }
 .token-reveal .muted { color: inherit; opacity: 0.75; }
+.token-toolbar { display: flex; align-items: center; gap: 0.5rem; margin: 1rem 0; }
+.token-toolbar select { width: auto; margin-top: 0; }
+.token-filter-label { color: var(--muted); font-size: 0.85rem; }
 @media (max-width: 768px) {
   .token-create-form { flex-direction: column; }
   .token-reveal-row { flex-direction: column; align-items: stretch; }
