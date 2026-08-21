@@ -1,0 +1,66 @@
+{% if advanced_filter %}
+<div class="advanced-filter">
+  <form id="af-builder" class="af-builder"
+        hx-post="/views/{{ view.id }}/filters"
+        hx-target="#view-detail-body" hx-swap="innerHTML">
+    <select name="col" id="af-col" aria-label="Filter column">
+      <option value="quick" data-type="text">Quick filter</option>
+      {% for o in filter_options %}
+      <option value="{{ o.value }}" data-type="{{ o.type }}" data-many="{{ '1' if o.many else '0' }}"
+              data-choices='{{ o.choices | tojson }}'>{{ o.label }}</option>
+      {% endfor %}
+    </select>
+    <select name="op" id="af-op" aria-label="Comparison"></select>
+    <input type="text" name="value" id="af-value" placeholder="filter value" autocomplete="off">
+    <button type="submit" name="action" value="add" class="btn btn-primary">Add</button>
+    <button type="submit" name="action" value="clear" class="btn"
+            {% if not active_filters %}disabled{% endif %}>Clear</button>
+    {% if active_filters %}
+    <select name="filter_op" class="af-op"
+            hx-post="/views/{{ view.id }}/filters"
+            hx-trigger="change"
+            hx-include="#af-builder"
+            hx-target="#view-detail-body" hx-swap="innerHTML"
+            hx-vals='{"action": "set_op"}'
+            aria-label="Combine filters with">
+      <option value="and" {% if filter_op == 'and' %}selected{% endif %}>and</option>
+      <option value="or" {% if filter_op == 'or' %}selected{% endif %}>or</option>
+    </select>
+    {% endif %}
+  </form>
+  {% if active_filters %}
+  <div class="af-active">
+    {% for f in active_filters %}
+    <div class="af-row">
+      <span class="af-text"><span class="af-label">{{ f.label }}</span> {{ filter_op_label(f.op) }} <code>{{ f.value }}</code></span>
+      <button type="button" class="af-remove" title="Remove filter"
+              hx-post="/views/{{ view.id }}/filters"
+              hx-vals='{"action": "remove", "index": {{ loop.index0 }}}'
+              hx-target="#view-detail-body" hx-swap="innerHTML"
+              aria-label="Remove filter">×</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+<p class="muted">{{ entity.name }} · {{ rows|length }} record(s)</p>
+
+<div class="table-wrap">
+  <table class="table" data-sortable data-grid-key="view-{{ view.id }}">
+    <thead>
+      <tr>
+        {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        {% for c in columns %}
+        <td>{{ row.cells[c.key] }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

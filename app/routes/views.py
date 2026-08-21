@@ -22,6 +22,7 @@ from app.services.view_service import (
     apply_config,
     build_view_graph,
     build_view_rows,
+    column_spec_string,
     create_view,
     delete_view,
     filter_op_label,
@@ -62,7 +63,12 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
             }
         )
 
-    config: dict = {"columns": column_specs, "filters": filters}
+    config: dict = {
+        "columns": column_specs,
+        "filters": filters,
+        "advanced_filter": str(raw.get("advanced_filter", "")).lower()
+        in ("on", "true", "1", "yes"),
+    }
     if sort_value:
         # Any view column may be the sort column: the form submits the same
         # encoding as the `col` fields. Legacy plain slugs still work.
@@ -80,6 +86,82 @@ def _icon_from_form(raw: dict) -> str:
     # Free text: any value is accepted and normalised to an `fa-*` class at
     # render time by the `icon_class` Jinja filter (same as entity icons).
     return str(raw.get("icon", "")).strip()
+
+
+def _merged_config(previous: dict | None, new: dict) -> dict:
+    """Keep bar-managed filters when the Advanced filters checkbox is on."""
+    if new.get("advanced_filter") and previous:
+        new["filters"] = list(previous.get("filters", []))
+        new["filter_op"] = previous.get("filter_op", "and")
+    else:
+        new.setdefault("filter_op", "and")
+    return new
+
+
+def _rel_key(spec: dict) -> str:
+    """The ViewColumn.key for a related-column spec (matches the resolver)."""
+    hops = "/".join(f"{h['dir']}:{h['ref']}:{h['to']}:{h['many']}" for h in spec.get("path", []))
+    return f"rel:{hops}→{spec.get('attr', '')}"
+
+
+def _filter_options(columns: list) -> list[dict]:
+    """Metadata for the advanced filter column select (type drives ops/values)."""
+    options = []
+    for column in columns:
+        attr = column.attr
+        options.append(
+            {
+                "value": column_spec_string(column),
+                "label": column.label,
+                "type": attr.data_type,
+                "many": attr.data_type == "reference" and attr.config.get("cardinality") == "many",
+                "choices": attr.options if attr.data_type == "enum" else [],
+            }
+        )
+    return options
+
+
+def _describe_filters(filters: list[dict], columns: list) -> list[dict]:
+    """Human-readable rows for the active filter box."""
+    described = []
+    columns_by_key = {c.key: c for c in columns}
+    for spec in filters:
+        col = spec.get("col")
+        if col is None:
+            col = spec.get("slug")
+        if col == "quick":
+            label = "Quick filter"
+        elif isinstance(col, str):
+            label = columns_by_key[col].label if col in columns_by_key else col
+        elif isinstance(col, dict):
+            key = _rel_key(col)
+            label = columns_by_key[key].label if key in columns_by_key else "Column"
+        else:
+            continue
+        described.append(
+            {"label": label, "op": spec.get("op", "eq"), "value": spec.get("value", "")}
+        )
+    return described
+
+
+def _view_detail_context(db: Session, view: View, entity: Entity, can_manage_views: bool) -> dict:
+    records, columns = apply_config(
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+    )
+    rows = build_view_rows(db, entity, records, columns)
+    config = view.config or {}
+    return {
+        "view": view,
+        "entity": entity,
+        "columns": columns,
+        "rows": rows,
+        "can_manage_views": can_manage_views,
+        "advanced_filter": bool(config.get("advanced_filter")),
+        "filter_op": config.get("filter_op", "and"),
+        "filter_op_label": filter_op_label,
+        "active_filters": _describe_filters(config.get("filters", []), columns),
+        "filter_options": _filter_options(columns),
+    }
 
 
 def _view_form_context(db: Session, entity: Entity, view: View | None) -> dict:
@@ -151,7 +233,12 @@ async def create_view_post(
             status_code=400,
         )
     view = create_view(
-        db, entity, name, _config_from_form(raw, entity), icon=_icon_from_form(raw), user_id=user.id
+        db,
+        entity,
+        name,
+        _merged_config(None, _config_from_form(raw, entity)),
+        icon=_icon_from_form(raw),
+        user_id=user.id,
     )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' created.")
 
@@ -167,21 +254,88 @@ def view_detail(
     if view is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
-    records, columns = apply_config(
-        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
-    )
-    rows = build_view_rows(db, entity, records, columns)
     return render(
         request,
         "views/detail.html",
-        {
-            "view": view,
-            "entity": entity,
-            "columns": columns,
-            "rows": rows,
-            "can_manage_views": has_capability(user, MANAGE_VIEWS),
-        },
+        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS)),
     )
+
+
+@router.post("/views/{view_id}/filters")
+async def view_filters_post(
+    request: Request,
+    view_id: int,
+    user: User = Depends(require_capability(MANAGE_VIEWS)),
+    db: Session = Depends(get_session),
+):
+    """Add/remove/clear advanced filters or change the global operator.
+
+    Every mutation is applied immediately: the response re-renders the view
+    body (filter bar + active box + table) for an HTMX swap.
+    """
+    view = get_view(db, view_id)
+    if view is None:
+        raise HTTPException(status_code=404)
+    entity = get_entity_with_attributes(db, view.entity_id)
+    raw = await parse_form(request)
+    config = dict(view.config or {})
+    config.setdefault("advanced_filter", False)
+    config.setdefault("filter_op", "and")
+    filters = list(config.get("filters", []))
+    action = str(raw.get("action", ""))
+
+    if action == "add":
+        col_raw = str(raw.get("col", "")).strip()
+        value = str(raw.get("value", "")).strip()
+        if not col_raw:
+            return redirect_with_flash(
+                f"/views/{view.id}",
+                "Choose a filter column first.",
+                category="error",
+                request=request,
+            )
+        if not value:
+            return redirect_with_flash(
+                f"/views/{view.id}",
+                "Enter a filter value first.",
+                category="error",
+                request=request,
+            )
+        spec: str | dict | None = "quick" if col_raw == "quick" else parse_column_spec(col_raw)
+        if spec is None:
+            return redirect_with_flash(
+                f"/views/{view.id}", "Unknown filter column.", category="error", request=request
+            )
+        op = str(raw.get("op", "")).strip()
+        if op not in FILTER_OPS:
+            op = "eq"
+        if spec == "quick":
+            op = "contains"
+        filters.append({"col": spec, "op": op, "value": value})
+    elif action == "remove":
+        try:
+            index = int(raw.get("index", -1))
+        except (TypeError, ValueError):
+            index = -1
+        if 0 <= index < len(filters):
+            filters.pop(index)
+    elif action == "clear":
+        filters = []
+    elif action == "set_op":
+        config["filter_op"] = "or" if str(raw.get("filter_op", "")) == "or" else "and"
+    else:
+        return redirect_with_flash(
+            f"/views/{view.id}", "Unknown filter action.", category="error", request=request
+        )
+
+    config["filters"] = filters
+    update_view(db, view, view.name, config, icon=view.icon or "")
+
+    if request.headers.get("HX-Request"):
+        return render(
+            request, "views/detail_body.html", _view_detail_context(db, view, entity, True)
+        )
+    return redirect_with_flash(f"/views/{view.id}", "Filters updated.")
 
 
 @router.get("/views/{view_id}/export")
@@ -241,7 +395,13 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
-    update_view(db, view, name, _config_from_form(raw, entity), icon=_icon_from_form(raw))
+    update_view(
+        db,
+        view,
+        name,
+        _merged_config(view.config, _config_from_form(raw, entity)),
+        icon=_icon_from_form(raw),
+    )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")
 
 
