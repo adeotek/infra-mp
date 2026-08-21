@@ -583,6 +583,27 @@
   }
   initAdvancedFilter(document);
 
+  // Mobile sidebar drawer: hamburger toggles the off-canvas menu; the
+  // backdrop click or any sidebar link closes it.
+  var mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  var sidebarBackdrop = document.getElementById('sidebar-backdrop');
+  function closeMobileSidebar() {
+    document.body.classList.remove('sidebar-open');
+  }
+  if (mobileMenuBtn) {
+    mobileMenuBtn.addEventListener('click', function () {
+      document.body.classList.toggle('sidebar-open');
+    });
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+  }
+  document.addEventListener('click', function (e) {
+    if (!document.body.classList.contains('sidebar-open')) return;
+    var link = e.target.closest && e.target.closest('.sidebar a');
+    if (link) closeMobileSidebar();
+  });
+
   // Quick search: client-side row filter (records pages). A row matches when
   // any of its cells contains the term (case-insensitive). Works alongside
   // column sorting: hidden rows stay hidden through re-sorts.

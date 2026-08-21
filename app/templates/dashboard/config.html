@@ -50,6 +50,7 @@
 {% if widgets|length > 1 %}
 <p class="muted"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i> Drag rows to reorder widgets.</p>
 {% endif %}
+<div class="table-wrap">
 <table class="table" id="widgets-table" data-reorder-url="/dashboard/widgets/reorder">
   <thead><tr><th class="no-sort drag-handle-col" aria-hidden="true"></th><th>Title</th><th>Type</th><th>Entity</th><th>Width</th><th class="no-sort"></th></tr></thead>
   <tbody>
@@ -73,6 +74,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="muted">No widgets yet.</p>
 {% endif %}

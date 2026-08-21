@@ -10,6 +10,7 @@
 <p class="muted">Entities define the structure of your data. Add attributes to each entity to describe what you want to track.</p>
 
 {% if entities %}
+<div class="table-wrap">
 <table class="table" data-sortable data-grid-key="entities">
   <thead>
     <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th class="no-sort"></th></tr>
@@ -34,6 +35,7 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <div class="empty-state">
   <p>No entities yet. Create your first entity to start modelling your environment.</p>
