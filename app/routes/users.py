@@ -110,14 +110,35 @@ async def update_user_post(
     if target is None:
         raise HTTPException(status_code=404)
     raw = await parse_form(request)
-    update_user(
-        db,
-        target,
-        str(raw.get("display_name", "")),
-        _coerce_role(str(raw.get("role", "viewer"))),
-        "is_active" in raw,
-        str(raw.get("password", "")) or None,
-    )
+    raw_username = str(raw.get("username", ""))
+    username = raw_username.strip() if "username" in raw else None
+    try:
+        update_user(
+            db,
+            target,
+            str(raw.get("display_name", "")),
+            _coerce_role(str(raw.get("role", "viewer"))),
+            "is_active" in raw,
+            str(raw.get("password", "")) or None,
+            username=username,
+        )
+    except UserError as exc:
+        return render(
+            request,
+            "users/form.html",
+            {
+                "target_user": target,
+                "roles": list(Role),
+                "error": str(exc),
+                "form": {
+                    "username": username if username is not None else target.username,
+                    "display_name": raw.get("display_name", ""),
+                    "role": str(raw.get("role", "viewer")),
+                    "is_active": "is_active" in raw,
+                },
+            },
+            status_code=400,
+        )
     return redirect_with_flash("/users", f"User '{target.username}' updated.", request=request)
 
 

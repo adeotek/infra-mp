@@ -15,6 +15,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=64)
     display_name: str = Field(default="", max_length=128)
     role: Role = Role.VIEWER
     is_active: bool = True

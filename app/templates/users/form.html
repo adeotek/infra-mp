@@ -5,25 +5,22 @@
 <h1>{{ "Edit user" if target_user else "New user" }}</h1>
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 <form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
-  {% if target_user %}
-  <label>Username
-    <input type="text" value="{{ target_user.username }}" disabled>
-  </label>
-  {% else %}
   <label>Username <span class="req">*</span>
-    <input type="text" name="username" required value="{{ form.username if form else '' }}" autofocus>
+    <input type="text" name="username" required
+      value="{{ form.username if form else (target_user.username if target_user else '') }}"
+      {% if not target_user %}autofocus{% endif %}>
   </label>
-  {% endif %}
 
   <label>Display name
-    <input type="text" name="display_name" value="{{ target_user.display_name if target_user else (form.display_name if form else '') }}">
+    <input type="text" name="display_name"
+      value="{{ form.display_name if form else (target_user.display_name if target_user else '') }}">
   </label>
 
   <label>Role
     <select name="role">
       {% for r in roles %}
       <option value="{{ r.value }}"
-        {% if (target_user and target_user.role == r.value) or (form and form.role == r.value) %}selected{% endif %}>{{ r.value }}</option>
+        {% if (form and form.role == r.value) or (not form and target_user and target_user.role == r.value) %}selected{% endif %}>{{ r.value }}</option>
       {% endfor %}
     </select>
   </label>
@@ -33,7 +30,8 @@
     <input type="password" name="password" autocomplete="new-password">
   </label>
   <label class="checkbox-label">
-    <input type="checkbox" name="is_active" {% if target_user.is_active %}checked{% endif %}>
+    <input type="checkbox" name="is_active"
+      {% if (form and form.is_active) or (not form and target_user.is_active) %}checked{% endif %}>
     Active
   </label>
   {% else %}
