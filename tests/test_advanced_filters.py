@@ -380,3 +380,17 @@ def test_view_body_reinits_on_after_settle_css_and_js(client, login):
     assert "htmx:afterSettle" in js
     assert ".af-builder select.af-op" in css
     assert ".af-label" in css
+
+
+def test_operator_select_comes_last_in_builder(client, login):
+    _seed(client, login)
+    _advanced_view(client)
+    client.post(
+        "/views/1/filters",
+        data={"action": "add", "col": "quick", "value": "x"},
+        headers={"HX-Request": "true"},
+    )
+    html = client.get("/views/1").text
+    assert 'name="filter_op"' in html
+    # The and/or select sits after every other builder control.
+    assert html.index('name="filter_op"') > html.index('value="clear"')

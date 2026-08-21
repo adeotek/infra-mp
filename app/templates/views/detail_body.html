@@ -3,18 +3,6 @@
   <form id="af-builder" class="af-builder"
         hx-post="/views/{{ view.id }}/filters"
         hx-target="#view-detail-body" hx-swap="innerHTML">
-    {% if active_filters %}
-    <select name="filter_op" class="af-op"
-            hx-post="/views/{{ view.id }}/filters"
-            hx-trigger="change"
-            hx-include="#af-builder"
-            hx-target="#view-detail-body" hx-swap="innerHTML"
-            hx-vals='{"action": "set_op"}'
-            aria-label="Combine filters with">
-      <option value="and" {% if filter_op == 'and' %}selected{% endif %}>and</option>
-      <option value="or" {% if filter_op == 'or' %}selected{% endif %}>or</option>
-    </select>
-    {% endif %}
     <select name="col" id="af-col" aria-label="Filter column">
       <option value="quick" data-type="text">Quick filter</option>
       {% for o in filter_options %}
@@ -27,6 +15,18 @@
     <button type="submit" name="action" value="add" class="btn btn-primary">Add</button>
     <button type="submit" name="action" value="clear" class="btn"
             {% if not active_filters %}disabled{% endif %}>Clear</button>
+    {% if active_filters %}
+    <select name="filter_op" class="af-op"
+            hx-post="/views/{{ view.id }}/filters"
+            hx-trigger="change"
+            hx-include="#af-builder"
+            hx-target="#view-detail-body" hx-swap="innerHTML"
+            hx-vals='{"action": "set_op"}'
+            aria-label="Combine filters with">
+      <option value="and" {% if filter_op == 'and' %}selected{% endif %}>and</option>
+      <option value="or" {% if filter_op == 'or' %}selected{% endif %}>or</option>
+    </select>
+    {% endif %}
   </form>
   {% if active_filters %}
   <div class="af-active">
