@@ -32,6 +32,61 @@
     return (uiState.grids && uiState.grids[key]) || null;
   }
 
+  // Transient toast (bottom-right), used for async failures.
+  function showToast(message) {
+    var toast = document.getElementById('toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'toast';
+      toast.className = 'toast';
+      toast.setAttribute('role', 'status');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function () {
+      toast.classList.remove('show');
+    }, 4000);
+  }
+
+  function csrfHeader() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+  }
+
+  // Every HTMX request carries the CSRF token header (fragments have no
+  // <head>, so the token comes from the hosting document's meta tag).
+  document.body.addEventListener('htmx:configRequest', function (e) {
+    var token = csrfHeader();
+    if (token) e.detail.headers['X-CSRF-Token'] = token;
+  });
+
+  // Modal/entity forms return 400 + error fragments; htmx 2 discards 4xx
+  // responses by default, which made validation errors invisible. Allow
+  // 4xx swaps into fragment targets.
+  document.body.addEventListener('htmx:beforeSwap', function (e) {
+    if (e.detail.xhr && e.detail.xhr.status >= 400 && e.detail.xhr.status < 500) {
+      e.detail.shouldSwap = true;
+    }
+  });
+
+  // 5xx responses are not swapped; surface them instead of failing silently.
+  document.body.addEventListener('htmx:responseError', function () {
+    showToast('Something went wrong. Please try again.');
+  });
+
+  // Global busy indicator: a progress hairline under the topbar.
+  var busyCount = 0;
+  document.body.addEventListener('htmx:beforeRequest', function () {
+    busyCount += 1;
+    document.body.classList.add('htmx-busy');
+  });
+  document.body.addEventListener('htmx:afterRequest', function () {
+    busyCount = Math.max(0, busyCount - 1);
+    if (!busyCount) document.body.classList.remove('htmx-busy');
+  });
+
   function updateGridState(key, patch) {
     var entry = uiState.grids[key] || {};
     var k;
@@ -146,16 +201,40 @@
   var userMenu = document.getElementById('user-menu');
   var userMenuBtn = document.getElementById('user-menu-btn');
   if (userMenu && userMenuBtn) {
+    function setMenuOpen(open) {
+      userMenu.classList.toggle('open', open);
+      userMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
     userMenuBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      userMenu.classList.toggle('open');
+      setMenuOpen(!userMenu.classList.contains('open'));
     });
     document.addEventListener('click', function (e) {
-      if (!userMenu.contains(e.target)) userMenu.classList.remove('open');
-      if (e.target.closest('.dropdown-item')) userMenu.classList.remove('open');
+      if (!userMenu.contains(e.target)) setMenuOpen(false);
+      if (e.target.closest('.dropdown-item')) setMenuOpen(false);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') userMenu.classList.remove('open');
+      if (e.key === 'Escape') setMenuOpen(false);
+    });
+    // Arrow-key navigation inside the menu (role="menu").
+    userMenu.addEventListener('keydown', function (e) {
+      if (!userMenu.classList.contains('open')) return;
+      var items = Array.prototype.filter.call(
+        userMenu.querySelectorAll('[role="menuitem"]'),
+        function (el) { return !el.disabled; }
+      );
+      if (!items.length) return;
+      var index = items.indexOf(document.activeElement);
+      var next = null;
+      if (e.key === 'ArrowDown') next = items[(index + 1) % items.length];
+      else if (e.key === 'ArrowUp') next = items[(index - 1 + items.length) % items.length];
+      else if (e.key === 'Home') next = items[0];
+      else if (e.key === 'End') next = items[items.length - 1];
+      else if (e.key === 'Tab') setMenuOpen(false);
+      if (next) {
+        e.preventDefault();
+        next.focus();
+      }
     });
   }
 
@@ -209,15 +288,22 @@
       if (e.detail.target && e.detail.target.id === 'modal-body' && !modal.open) {
         modal.showModal();
       }
+      // Point the dialog's accessible name at the fragment's heading.
+      if (e.detail.target && e.detail.target.id === 'modal-body') {
+        var heading = modalBody.querySelector('h1');
+        if (heading) {
+          if (!heading.id) heading.id = 'modal-title';
+          modal.setAttribute('aria-labelledby', 'modal-title');
+        } else {
+          modal.removeAttribute('aria-labelledby');
+        }
+      }
     });
 
     var closeBtn = document.getElementById('modal-close');
     if (closeBtn) closeBtn.addEventListener('click', function () { modal.close(); });
 
-    // Keep the modal open on Escape (and any native cancel request).
-    modal.addEventListener('cancel', function (e) {
-      e.preventDefault();
-    });
+    // Escape closes the modal (native cancel).
 
     // Any element marked data-modal-close (e.g. a Cancel link) closes the modal;
     // on a full page with no open modal it behaves like a normal link/button.
@@ -237,7 +323,32 @@
 
   // Drag-and-drop row reordering (any table with data-reorder-url: entity
   // attributes, dashboard widgets). Rows are reordered live on dragover; the
-  // final order is persisted on dragend via fetch.
+  // final order is persisted on dragend via fetch. ▲/▼ buttons in the handle
+  // column provide a keyboard-accessible alternative.
+  function postReorder(table, ids) {
+    var reorderUrl = table.getAttribute('data-reorder-url');
+    if (!reorderUrl) return;
+    fetch(reorderUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRF-Token': csrfHeader()
+      },
+      body: 'order=' + encodeURIComponent(ids.join(','))
+    }).then(function (resp) {
+      if (!resp.ok) {
+        showToast('Reordering failed — the previous order was restored.');
+        // Restore the DOM to the data-sort-index order.
+        var rows = Array.prototype.slice.call(table.querySelectorAll('tr[draggable]'));
+        rows.sort(function (a, b) {
+          return parseInt(a.getAttribute('data-sort-index'), 10)
+            - parseInt(b.getAttribute('data-sort-index'), 10);
+        });
+        rows.forEach(function (tr) { tr.parentNode.appendChild(tr); });
+      }
+    });
+  }
+
   function initReorderTable(table) {
     var dragRow = null;
     var reorderUrl = table.getAttribute('data-reorder-url');
@@ -285,13 +396,27 @@
       });
       dragRow = null;
       if (!reorderUrl) return;
-      fetch(reorderUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'order=' + encodeURIComponent(ids.join(','))
-      }).then(function (resp) {
-        if (!resp.ok) window.location.reload();
-      });
+      postReorder(table, ids);
+    });
+
+    // Keyboard reordering: ▲/▼ buttons move a row one position and persist.
+    table.addEventListener('click', function (e) {
+      var btn = e.target.closest('.row-move');
+      if (!btn) return;
+      var tr = btn.closest('tr[draggable]');
+      if (!tr) return;
+      var sibling = btn.getAttribute('data-move') === 'up'
+        ? tr.previousElementSibling
+        : tr.nextElementSibling;
+      if (!sibling || !sibling.hasAttribute('draggable')) return;
+      if (btn.getAttribute('data-move') === 'up') {
+        tr.parentNode.insertBefore(tr, sibling);
+      } else {
+        tr.parentNode.insertBefore(sibling, tr);
+      }
+      var rows = table.querySelectorAll('tr[draggable]');
+      var ids = Array.prototype.map.call(rows, function (r) { return r.getAttribute('data-id'); });
+      postReorder(table, ids);
     });
   }
 
@@ -380,12 +505,14 @@
     headers.forEach(function (th) {
       if (th.classList.contains('no-sort')) return;
       th.classList.add('sortable');
+      th.setAttribute('tabindex', '0');
+      th.setAttribute('role', 'button');
       var indicator = document.createElement('span');
       indicator.className = 'sort-indicator';
       indicator.innerHTML = '<i class="fa-solid fa-sort" aria-hidden="true"></i>';
       th.appendChild(indicator);
 
-      th.addEventListener('click', function () {
+      function toggleSort() {
         var direction;
         if (th.classList.contains('sorted-asc')) {
           direction = 'desc';
@@ -402,6 +529,15 @@
               ? { label: null, dir: null }
               : { label: th.textContent.trim(), dir: direction }
           );
+        }
+      }
+
+      th.addEventListener('click', toggleSort);
+      // Keyboard: Enter/Space cycles like the mouse.
+      th.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggleSort();
         }
       });
     });
@@ -458,7 +594,15 @@
       showFile(file.name);
     }
 
-    zone.addEventListener('click', function () { input.click(); });
+    // The zone is a <label for="file-input">: the native picker opens without
+    // JS, so no click handler here (a JS click would open the dialog twice).
+    // Enter/Space emulate the label click for keyboard users.
+    zone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        input.click();
+      }
+    });
     input.addEventListener('change', function () { setFiles(input.files); });
     ['dragenter', 'dragover'].forEach(function (eventName) {
       zone.addEventListener(eventName, function (e) {
@@ -645,24 +789,41 @@
   });
 
   // Mobile sidebar drawer: hamburger toggles the off-canvas menu; the
-  // backdrop click or any sidebar link closes it.
+  // backdrop click or any sidebar link closes it. Escape closes it and
+  // returns focus to the hamburger.
   var mobileMenuBtn = document.getElementById('mobile-menu-btn');
   var sidebarBackdrop = document.getElementById('sidebar-backdrop');
-  function closeMobileSidebar() {
-    document.body.classList.remove('sidebar-open');
+  function setMobileSidebar(open) {
+    document.body.classList.toggle('sidebar-open', open);
+    if (mobileMenuBtn) {
+      mobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      mobileMenuBtn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      mobileMenuBtn.setAttribute('title', open ? 'Close menu' : 'Open menu');
+    }
+    if (open) {
+      var firstLink = document.querySelector('.sidebar a[href]');
+      if (firstLink) firstLink.focus();
+    } else if (mobileMenuBtn) {
+      mobileMenuBtn.focus();
+    }
   }
   if (mobileMenuBtn) {
     mobileMenuBtn.addEventListener('click', function () {
-      document.body.classList.toggle('sidebar-open');
+      setMobileSidebar(!document.body.classList.contains('sidebar-open'));
     });
   }
   if (sidebarBackdrop) {
-    sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+    sidebarBackdrop.addEventListener('click', function () { setMobileSidebar(false); });
   }
   document.addEventListener('click', function (e) {
     if (!document.body.classList.contains('sidebar-open')) return;
     var link = e.target.closest && e.target.closest('.sidebar a');
-    if (link) closeMobileSidebar();
+    if (link) setMobileSidebar(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+      setMobileSidebar(false);
+    }
   });
 
   // Quick search: client-side row filter (records pages). A row matches when
@@ -757,6 +918,8 @@
       if (opt && opt.value) {
         appendRefChip(wrap, opt.value, opt.textContent);
         opt.remove();
+        // Reset the select so its (named) value never double-submits.
+        select.selectedIndex = 0;
       }
       return;
     }
@@ -773,4 +936,17 @@
       chip.remove();
     }
   });
+
+  // Flash messages: dismiss button and URL cleanup (the ?flash= query param
+  // is stripped so reloads don't re-show stale messages).
+  document.addEventListener('click', function (e) {
+    var closeBtn = e.target.closest('.flash-close');
+    if (closeBtn) {
+      closeBtn.closest('.flash').remove();
+    }
+  });
+  if (window.location.search.indexOf('flash=') !== -1) {
+    var cleanUrl = window.location.pathname;
+    try { window.history.replaceState(null, '', cleanUrl); } catch (err) { /* ignore */ }
+  }
 })();

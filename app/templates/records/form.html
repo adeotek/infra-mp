@@ -5,10 +5,12 @@
   <h1>{{ "Edit record" if record else "New record" }} <span class="muted">in {{ entity.name }}</span></h1>
   <a href="/entities/{{ entity.id }}/records" class="btn">Back to records</a>
 </div>
-{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+{% if error and not field_errors %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+{% if error and field_errors and field_errors.get(none) %}<div class="flash flash-error">{{ field_errors.get(none) }}</div>{% endif %}
 
 {% if entity.attributes %}
 <form method="post" action="{{ action_url }}">
+  {% include "_csrf.html" %}
   {% if record %}
   <fieldset class="form-section">
     <legend>Record metadata</legend>
@@ -32,21 +34,29 @@
   {% for attr in entity.attributes if attr.is_active %}
   {% set val = current.get(attr.slug) if current else none %}
   {% if val is none %}{% set val = attr.default_value %}{% endif %}
-  <label>{{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
+  {% set field_error = field_errors.get(attr.slug) if field_errors else none %}
+  <label class="form-field{% if field_error %} has-error{% endif %}">
+    {{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
     {% if attr.data_type == 'textarea' %}
-    <textarea name="{{ attr.slug }}" rows="4">{{ val if val is not none else '' }}</textarea>
+    <textarea name="{{ attr.slug }}" rows="4" {% if attr.is_required %}required{% endif %}
+      {% if field_error %}aria-invalid="true"{% endif %}>{{ val if val is not none else '' }}</textarea>
     {% elif attr.data_type == 'boolean' %}
     <input type="checkbox" name="{{ attr.slug }}" {% if val %}checked{% endif %}>
     {% elif attr.data_type == 'integer' %}
-    <input type="number" step="1" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    <input type="number" step="1" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% elif attr.data_type == 'decimal' %}
-    <input type="number" step="any" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    <input type="number" step="any" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% elif attr.data_type == 'date' %}
-    <input type="date" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    <input type="date" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% elif attr.data_type == 'datetime' %}
-    <input type="datetime-local" name="{{ attr.slug }}" value="{{ val | datetime_local }}">
+    <input type="datetime-local" name="{{ attr.slug }}" value="{{ val | datetime_local }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% elif attr.data_type == 'enum' %}
-    <select name="{{ attr.slug }}">
+    <select name="{{ attr.slug }}" {% if attr.is_required %}required{% endif %}
+      {% if field_error %}aria-invalid="true"{% endif %}>
       <option value="">—</option>
       {% for opt in attr.config.get('options', []) %}
       <option value="{{ opt }}" {% if val == opt %}selected{% endif %}>{{ opt }}</option>
@@ -58,7 +68,11 @@
       {% set selected_ids = val if val else [] %}
       <div class="multi-ref" data-field="{{ attr.slug }}">
         <div class="multi-ref-control">
-          <select data-source>
+          {# The source select carries the field name so the no-JS path
+             submits a single value natively; JS turns it into a chip adder
+             and resets the select after each Add. No native `required`: the
+             chips satisfy the value and would trip browser validation. #}
+          <select name="{{ attr.slug }}" data-source>
             <option value="">—</option>
             {% for rid, title in opts if rid not in selected_ids %}
             <option value="{{ rid }}">{{ title }}</option>
@@ -75,9 +89,11 @@
           </li>
           {% endfor %}
         </ul>
+        <noscript><span class="hint">Select one value and save; repeat to add more.</span></noscript>
       </div>
       {% else %}
-      <select name="{{ attr.slug }}">
+      <select name="{{ attr.slug }}" {% if attr.is_required %}required{% endif %}
+        {% if field_error %}aria-invalid="true"{% endif %}>
         <option value="">—</option>
         {% for rid, title in ref_options.get(attr.slug, []) %}
         <option value="{{ rid }}" {% if val == rid %}selected{% endif %}>{{ title }}</option>
@@ -85,9 +101,11 @@
       </select>
       {% endif %}
     {% else %}
-    <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}">
+    <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% endif %}
-    {% if attr.hint %}<span class="hint">{{ attr.hint }}</span>{% endif %}
+    {% if attr.hint %}<span class="hint" id="hint-{{ attr.slug }}">{{ attr.hint }}</span>{% endif %}
+    {% if field_error %}<span class="field-error" role="alert">{{ field_error }}</span>{% endif %}
   </label>
   {% endfor %}
   <div class="form-actions">

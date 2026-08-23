@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import require_capability
 from app.auth.permissions import MANAGE_USERS
 from app.db import get_session
 from app.flash import redirect_with_flash
-from app.form import parse_form
 from app.models.enums import Role
 from app.models.user import User
 from app.services.user_service import (
@@ -51,22 +50,18 @@ def new_user_page(request: Request, user: User = Depends(require_capability(MANA
 
 
 @router.post("/users")
-async def create_user_post(
+def create_user_post(
     request: Request,
     user: User = Depends(require_capability(MANAGE_USERS)),
     db: Session = Depends(get_session),
+    username: str = Form(""),
+    display_name: str = Form(""),
+    role: str = Form("viewer"),
+    password: str = Form(""),
 ):
-    raw = await parse_form(request)
-    username = str(raw.get("username", "")).strip()
-    password = str(raw.get("password", ""))
+    username = username.strip()
     try:
-        create_user(
-            db,
-            username,
-            str(raw.get("display_name", "")),
-            _coerce_role(str(raw.get("role", "viewer"))),
-            password,
-        )
+        create_user(db, username, display_name, _coerce_role(role), password)
     except UserError as exc:
         return render(
             request,
@@ -77,8 +72,8 @@ async def create_user_post(
                 "error": str(exc),
                 "form": {
                     "username": username,
-                    "display_name": raw.get("display_name", ""),
-                    "role": raw.get("role", "viewer"),
+                    "display_name": display_name,
+                    "role": role,
                 },
             },
             status_code=400,
@@ -100,27 +95,30 @@ def edit_user_page(
 
 
 @router.post("/users/{user_id}/edit")
-async def update_user_post(
+def update_user_post(
     request: Request,
     user_id: int,
     user: User = Depends(require_capability(MANAGE_USERS)),
     db: Session = Depends(get_session),
+    username: str | None = Form(None),
+    display_name: str = Form(""),
+    role: str = Form("viewer"),
+    password: str = Form(""),
+    is_active: bool | None = Form(None),
 ):
     target = get_user(db, user_id)
     if target is None:
         raise HTTPException(status_code=404)
-    raw = await parse_form(request)
-    raw_username = str(raw.get("username", ""))
-    username = raw_username.strip() if "username" in raw else None
+    username_clean = username.strip() if username is not None else None
     try:
         update_user(
             db,
             target,
-            str(raw.get("display_name", "")),
-            _coerce_role(str(raw.get("role", "viewer"))),
-            "is_active" in raw,
-            str(raw.get("password", "")) or None,
-            username=username,
+            display_name,
+            _coerce_role(role),
+            is_active is not None and bool(is_active),
+            password or None,
+            username=username_clean,
         )
     except UserError as exc:
         return render(
@@ -131,10 +129,10 @@ async def update_user_post(
                 "roles": list(Role),
                 "error": str(exc),
                 "form": {
-                    "username": username if username is not None else target.username,
-                    "display_name": raw.get("display_name", ""),
-                    "role": str(raw.get("role", "viewer")),
-                    "is_active": "is_active" in raw,
+                    "username": username_clean if username_clean is not None else target.username,
+                    "display_name": display_name,
+                    "role": role,
+                    "is_active": is_active is not None,
                 },
             },
             status_code=400,

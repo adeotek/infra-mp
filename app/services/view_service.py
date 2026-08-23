@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -115,6 +116,7 @@ def apply_config(
     config: dict,
     entities: list[Entity] | None = None,
     db: Session | None = None,
+    cache: dict | None = None,
 ) -> tuple[list[Record], list[ViewColumn]]:
     """Filter and sort records; return ``(records, visible_columns)``.
 
@@ -122,6 +124,8 @@ def apply_config(
     resolve related-entity columns; without it those columns are skipped.
     ``db`` is required to filter/sort by a related column (its values live in
     other entities' records); without it related filters and sorts are skipped.
+    ``cache`` is an optional per-request dict shared across render calls so
+    referenced entities' records are loaded once, not per column.
     """
     attrs_by_slug = {a.slug: a for a in entity.attributes}
     columns = _resolve_columns(entity, config.get("columns"), entities)
@@ -131,8 +135,10 @@ def apply_config(
     # view columns — otherwise filters on undisplayed related columns resolve
     # against an empty record set.
     context_columns = columns + _filter_columns(entity, filters, entities_by_id)
-    context = _related_context(db, entity, context_columns, records) if db and filters else None
-    base_titles = resolve_reference_titles(db, entity) if db else {}
+    context = (
+        _related_context(db, entity, context_columns, records, cache) if db and filters else None
+    )
+    base_titles = resolve_reference_titles(db, entity, cache=cache) if db else {}
     filtered = _apply_filters(
         records,
         entity,
@@ -144,7 +150,7 @@ def apply_config(
         base_titles,
         config.get("filter_op", "and"),
     )
-    filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db)
+    filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db, cache)
     return filtered, columns
 
 
@@ -405,6 +411,7 @@ def _apply_sort(
     sort_spec: dict | None,
     entities: list[Entity] | None,
     db: Session | None,
+    cache: dict | None = None,
 ) -> list[Record]:
     """Sort by any view column: base attribute (``sort.slug`` / ``sort.col``
     string, legacy compatible) or related column (``sort.col`` dict spec).
@@ -433,25 +440,46 @@ def _apply_sort(
     if column.path is None:
         with_value = [r for r in records if r.data.get(column.attr.slug) is not None]
         without_value = [r for r in records if r.data.get(column.attr.slug) is None]
-        with_value.sort(key=lambda r: _sortable(r.data[column.attr.slug]), reverse=reverse)
+        with_value.sort(key=lambda r: sort_value(r.data[column.attr.slug]), reverse=reverse)
         return with_value + without_value
 
     if db is None:
         return records  # related sort values live in other entities' records
-    context = _related_context(db, entity, [column], records)
+    context = _related_context(db, entity, [column], records, cache)
     values = {r.id: _resolve_related_sort_value(r, column, context) for r in records}
     with_value = [r for r in records if values[r.id] is not None]
     without_value = [r for r in records if values[r.id] is None]
-    with_value.sort(key=lambda r: values[r.id], reverse=reverse)
+    with_value.sort(key=lambda r: sort_value(values[r.id]), reverse=reverse)
     return with_value + without_value
 
 
-def _sortable(value: Any) -> Any:
+def sort_value(value: Any) -> tuple[int, Any, str]:
+    """Type-tagged sort key: bools < numbers < text; mixed types never collide.
+
+    Numeric strings compare numerically ("10" after "2"), and legacy float
+    decimals sort against canonical decimal strings via ``Decimal``.
+    Non-finite values (NaN, Infinity — reachable from pre-v0.7.1 rows and
+    from plain text attributes) cannot be ordered, so they sort as text
+    instead of crashing the comparison.
+    """
     if isinstance(value, bool):
-        return int(value)
+        return (0, int(value), "")
+    if isinstance(value, (int, float)):
+        decimal_value = Decimal(str(value))
+        if not decimal_value.is_finite():
+            return (2, 0, str(value).lower())
+        return (1, decimal_value, "")
     if isinstance(value, list):
-        return str(value)
-    return value
+        return (2, 0, str(value).lower())
+    if isinstance(value, str):
+        try:
+            decimal_value = Decimal(value)
+        except InvalidOperation:
+            return (2, 0, value.lower())
+        if not decimal_value.is_finite():
+            return (2, 0, value.lower())
+        return (1, decimal_value, "")
+    return (2, 0, str(value).lower())
 
 
 @dataclass(frozen=True)
@@ -664,12 +692,13 @@ def build_view_rows(
     entity: Entity,
     records: list[Record],
     columns: list[ViewColumn],
+    cache: dict | None = None,
 ) -> list[dict[str, Any]]:
     """Build display rows for a view, resolving related-entity columns."""
-    base_titles = resolve_reference_titles(db, entity)
+    base_titles = resolve_reference_titles(db, entity, cache=cache)
     related = [c for c in columns if c.path is not None]
     records_by_entity, reverse_index, terminal_titles = _related_context(
-        db, entity, related, records
+        db, entity, related, records, cache
     )
 
     rows: list[dict[str, Any]] = []
@@ -693,6 +722,7 @@ def _related_context(
     entity: Entity,
     columns: list[ViewColumn],
     records: list[Record],
+    cache: dict | None = None,
 ) -> tuple[
     dict[int, dict[int, Record]],
     dict[tuple[int, str], dict[int, list[int]]],
@@ -702,12 +732,13 @@ def _related_context(
 
     Returns ``(records_by_entity, reverse_index, terminal_titles)`` — the
     three maps needed to walk reference hops and format terminal values.
+    ``cache`` (per-request) memoises per-entity record loads.
     """
     entity_ids = {entity.id}
     for column in columns:
         for hop in column.path or []:
             entity_ids.add(hop["to"])
-    records_by_entity = {eid: {r.id: r for r in list_records(db, eid)} for eid in entity_ids}
+    records_by_entity = {eid: _cached_entity_records(db, eid, cache) for eid in entity_ids}
 
     reverse_index: dict[tuple[int, str], dict[int, list[int]]] = {}
     for column in columns:
@@ -725,9 +756,19 @@ def _related_context(
         if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
             target_id = attr.reference_entity_id
             if target_id not in terminal_titles:
-                terminal_titles[target_id] = build_record_titles(db, target_id)
+                terminal_titles[target_id] = build_record_titles(db, target_id, cache=cache)
 
     return records_by_entity, reverse_index, terminal_titles
+
+
+def _cached_entity_records(db: Session, entity_id: int, cache: dict | None) -> dict[int, Record]:
+    key = ("records", entity_id)
+    if cache is not None and key in cache:
+        return cache[key]
+    by_id = {r.id: r for r in list_records(db, entity_id)}
+    if cache is not None:
+        cache[key] = by_id
+    return by_id
 
 
 def _build_reverse_index(records_by_id: dict[int, Record], ref: str) -> dict[int, list[int]]:

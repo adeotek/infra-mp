@@ -1,8 +1,20 @@
 """Authentication tests via HTTP."""
 
+from app.routes.auth import _safe_next
 
-def test_healthz_is_open(client):
-    assert client.get("/healthz").status_code == 200
+
+def test_safe_next_accepts_relative_paths():
+    assert _safe_next("/dashboard") == "/dashboard"
+    assert _safe_next("/entities/1/records") == "/entities/1/records"
+    assert _safe_next("") == "/"
+    assert _safe_next(None) == "/"
+
+
+def test_safe_next_rejects_open_redirect_payloads():
+    assert _safe_next("//evil.com") == "/"
+    assert _safe_next("/\\evil.com") == "/"
+    assert _safe_next("https://evil.com") == "/"
+    assert _safe_next("evil.com") == "/"
 
 
 def test_login_page_renders(client):

@@ -41,6 +41,14 @@ advisory.
 
 ## Deployment notes
 
-- **Always set a strong `INFRAMP_SECRET_KEY`** (see `.env.example`).
+- **Always set a strong `INFRAMP_SECRET_KEY`** (see `.env.example`) — it signs
+  the CSRF tokens every state-changing request validates.
 - Never expose the instance to the internet without a reverse proxy with TLS.
 - Never enable `INFRAMP_DEBUG=true` in production.
+- Set `INFRAMP_ALLOWED_HOSTS` to your real hostnames when running behind a
+  reverse proxy; enable `INFRAMP_HSTS_ENABLED` only when TLS terminates there.
+- When `INFRAMP_ADMIN_PASSWORD` is empty, the seeded admin's random password is
+  printed to stdout once — it is visible in container logs (and any log
+  collector). Change it immediately after first login.
+- The container runs as non-root uid 10001; on upgrades from pre-0.7.0 images,
+  chown the data volume once (see README).

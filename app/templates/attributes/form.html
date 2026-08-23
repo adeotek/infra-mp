@@ -6,6 +6,7 @@
 
 {% set fd = form_data or attribute %}
 <form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
+  {% include "_csrf.html" %}
   <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
   </label>
@@ -24,6 +25,9 @@
     </select>
   </label>
 
+  {# The conditional groups are hidden only when JS is available (the .js
+     class is set in base.html); without JS they stay visible so enum and
+     reference attributes remain fully configurable. #}
   <div id="enum_fields" class="conditional">
     <label>Options (one per line)
       <textarea name="options" rows="4">{% if fd and fd.options %}{{ fd.options | join('\n') }}{% endif %}</textarea>

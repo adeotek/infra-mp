@@ -192,18 +192,32 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     _validate_definition(data, db)
     has_records = entity_has_records(db, attribute.entity_id)
 
-    attribute.name = data.name.strip()
-    attribute.data_type = data.data_type.value
-    attribute.is_required = data.is_required
-    attribute.is_unique = data.is_unique
-    attribute.is_key = data.is_key
-    attribute.default_value = coerce_value(data.data_type, data.default_value)
-    attribute.hint = data.hint.strip() if data.hint else None
-    attribute.config = _build_config(data)
-
     if has_records:
+        # Structural changes would leave existing values un-revalidated
+        # (e.g. INTEGER->BOOLEAN leaves 8 in the JSON); refuse them while the
+        # entity has data. Display-only and default-value edits stay allowed.
+        if data.data_type != attribute.data_type_enum:
+            raise SchemaError("The data type can only be changed while the entity has no records.")
+        if data.is_unique != attribute.is_unique:
+            raise SchemaError(
+                "The unique flag can only be changed while the entity has no records."
+            )
+        if data.is_key != attribute.is_key:
+            raise SchemaError("The key flag can only be changed while the entity has no records.")
         if data.slug and slugify(data.slug) != attribute.slug:
             raise SchemaError("The slug can only be changed while the entity has no records.")
+        if attribute.data_type_enum == DataType.REFERENCE:
+            # Existing records store ids into the current target entity;
+            # repointing (or flipping one<->many) would silently reinterpret
+            # every stored value against a different record set.
+            if data.reference_entity_id != attribute.reference_entity_id:
+                raise SchemaError(
+                    "The reference target can only be changed while the entity has no records."
+                )
+            if data.cardinality != attribute.cardinality:
+                raise SchemaError(
+                    "The reference cardinality can only be changed while the entity has no records."
+                )
         # is_active is locked while the entity has records.
     else:
         if data.slug:
@@ -217,6 +231,15 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
                     exclude_id=attribute.id,
                 )
         attribute.is_active = True if data.is_required else data.is_active
+
+    attribute.name = data.name.strip()
+    attribute.data_type = data.data_type.value
+    attribute.is_required = data.is_required
+    attribute.is_unique = data.is_unique
+    attribute.is_key = data.is_key
+    attribute.default_value = coerce_value(data.data_type, data.default_value)
+    attribute.hint = data.hint.strip() if data.hint else None
+    attribute.config = _build_config(data)
 
     db.commit()
     return attribute
