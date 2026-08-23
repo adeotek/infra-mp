@@ -16,6 +16,7 @@ acting on. The **Already solid** section at the end calls out patterns worth
 ## Security
 
 ### 🟠 Medium — No brute-force protection on `/login`
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — login is rate-limited (per-IP + per-username window/cooldown, `INFRAMP_LOGIN_*` settings) and unknown-username attempts burn the same Argon2 cost.
 `app/routes/auth.py:35-63` has no rate limiting, lockout, or backoff. Any
 client can attempt unlimited username/password combinations. Argon2id makes
 offline cracking expensive, but online guessing against common/weak passwords
@@ -27,6 +28,7 @@ fine for a single-process SQLite app) with exponential backoff or a hard cap
 + cooldown after N failures.
 
 ### 🟠 Medium — `INFRAMP_SECRET_KEY` is documented but unused
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — the key now signs every CSRF token (session-bound HMAC); README/.env.example/SECURITY.md describe its real role.
 `app/config.py:22` declares `secret_key`, and it's called out as **required**
 in `README.md:88`, `.env.example:10-12`, `docker-compose.yml:15`, and
 `SECURITY.md:44` ("Secret used to sign session cookies... **Must** be a long
@@ -45,6 +47,7 @@ Given the current design already stores only a token hash, removing the dead
 config is the simpler, more honest fix.
 
 ### 🟡 Low — No security response headers
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — middleware sets CSP (self-only, inline script/style for the no-build frontend), X-Content-Type-Options, X-Frame-Options, Referrer-Policy; HSTS is opt-in (`INFRAMP_HSTS_ENABLED`) since TLS terminates at the proxy.
 No CSP, `X-Content-Type-Options`, `X-Frame-Options`/`frame-ancestors`,
 `Referrer-Policy`, or HSTS anywhere in `app/main.py`. For an admin panel that
 manages infrastructure inventory and issues API tokens, clickjacking and
@@ -58,6 +61,7 @@ HSTS should be conditional/documented since TLS is expected to terminate at
 a reverse proxy, not in-app.
 
 ### 🟡 Low — No CSRF token; relying solely on `SameSite=Lax`
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — full CSRF middleware: HMAC token bound to the session cookie, accepted as `X-CSRF-Token` header (HTMX/fetch) or `csrf_token` form field (no-JS path); `/mcp` (API-token auth) and `/login` exempt. Tests cover reject/accept paths.
 State-changing routes are POST-only and cookies are set with
 `samesite="lax"` (`app/routes/auth.py:60`), which blocks the classic
 auto-submitting cross-site form attack in modern browsers. There's no
@@ -73,6 +77,7 @@ double-submit CSRF token on forms would remove the single-point-of-failure
 nature of relying on `SameSite` alone.
 
 ### 🟡 Low — No "last active admin" guard on user *edit*, only on *delete*
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — `update_user` refuses to demote or deactivate the last active admin (same count check as `delete_user`).
 `app/services/user_service.py:87-99` (`delete_user`) correctly refuses to
 delete the last active admin. `update_user` (`user_service.py:58-84`) has no
 equivalent check: an admin can demote their own role to Viewer or toggle
@@ -84,6 +89,7 @@ equivalent check: an admin can demote their own role to Viewer or toggle
 for a user who is currently the last active admin.
 
 ### 🟡 Low — Unbounded upload size on backup restore
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — restore is capped at `INFRAMP_MAX_BACKUP_UPLOAD_BYTES` (50 MB default) and the decompressed DB at `INFRAMP_MAX_BACKUP_DB_BYTES` (250 MB, checked from the zip entry header before extraction — zip-bomb safe).
 `app/routes/records.py`'s CSV import enforces `MAX_UPLOAD_BYTES` (5 MB,
 `app/services/csv_service.py:24`) before reading the file. The backup
 restore endpoint (`app/routes/backup.py:79`, `content = await file.read()`)
@@ -98,6 +104,7 @@ streaming the zip extraction instead of loading the whole archive into
 memory.
 
 ### ⚪ Info — Container runs as root
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — image now runs as non-root uid 10001 with `/data` owned by it; README/SECURITY.md document the one-time volume chown for pre-0.7.0 upgrades.
 `Dockerfile` has no `USER` directive, so the app runs as root inside the
 container. Standard hardening for a single-purpose container is to add a
 non-root user and `chown` `/data` (or rely on the volume's ownership) —
@@ -109,6 +116,7 @@ container security scans.
 ## Performance
 
 ### 🟠 Medium — Every list/filter/sort/search operation loads the full entity into memory
+> **Status (hermes-agent, 2026-08-23):** Addressed as documentation (the review's option b): README now states the design tradeoff and a practical ~10k-records-per-entity ceiling. SQL-side filtering (json_extract) remains a future option.
 `list_records()` (`app/services/record_service.py:38-45`) always fetches
 **every** non-deleted record for an entity; filtering, sorting, quick-search,
 and CSV export/import (`view_service.py`, `csv_service.py`) all operate on
@@ -131,6 +139,7 @@ addressing preemptively — flagging so it's a conscious tradeoff rather than
 a surprise.
 
 ### 🟡 Low — Uniqueness/key validation re-scans the whole entity on every write
+> **Status (hermes-agent, 2026-08-23):** Partially addressed: CSV import now loads the entity's records once and reuses them across rows (was O(n²) per file). The per-write web path still re-reads (fine at homelab scale); SQL json_extract is the documented next step.
 `validate_record_data()` (`app/services/record_service.py:100-124`) loads
 every existing record for the entity on **every single** create/update when
 the entity has any unique or key attribute, to check duplicates in Python
@@ -144,6 +153,7 @@ path as above). Lower priority than the read-side issue since writes are
 typically far less frequent than reads/list views.
 
 ### 🟡 Low — Dashboard widgets re-run redundant queries per widget
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — entities and per-entity record loads are hoisted/shared across widgets per request; plain count widgets use a single SQL `COUNT(*)`.
 `app/routes/dashboard.py:46-69` — each table/count widget independently
 calls `list_records`, `resolve_reference_titles`, and (for view-bound
 widgets) `list_entities(db)` again inside the per-widget loop
@@ -156,6 +166,7 @@ call again for the sidebar on the same request.
 `dashboard()` and pass it in once; low-risk, mechanical change.
 
 ### ⚪ Info — Indexing is actually in good shape
+> **Status (hermes-agent, 2026-08-23):** Noted — plus a composite `(entity_id, deleted_at)` index was added (migration 7f7c07383cf9) per OpenCodeReview #16.
 Checked `app/models/record.py` and `app/models/session.py`: `Record.entity_id`
 and `Record.deleted_at` are indexed, `AuthSession.token_hash` is
 unique+indexed, `expires_at` is indexed. The hot-path `WHERE` clauses in
@@ -173,6 +184,7 @@ XSS surface, and there's a real no-JS fallback path (`is_fragment`/
 `base_template` in `app/templates.py:46-68`). A few smaller items:
 
 ### 🟡 Low — Client-side quick-search/sort don't scale with the in-memory record model
+> **Status (hermes-agent, 2026-08-23):** Deferred with pagination (see OpenCodeReview #12): documented as a conscious homelab-scale tradeoff in README.
 `app.js`'s quick-search (`app.js:668-718`) and sortable-table (`app.js:315-421`)
 features filter/sort the full rendered `<table>` in the DOM. Since
 `records_index` (`app/routes/records.py:48-71`) renders **every** record for
@@ -183,12 +195,14 @@ worth solving together if/when it's addressed (server-side pagination would
 fix both at once).
 
 ### ⚪ Info — No loading/pending state on HTMX-driven actions
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — global busy indicator (progress hairline + cursor) on htmx beforeRequest/afterRequest, and a toast for 5xx errors.
 Modal-opening and form-submit interactions (`app.js:203-236`) rely on HTMX's
 default swap behavior with no visible pending indicator (`htmx-indicator` or
 similar) wired up in the templates checked. On a slower connection this can
 read as an unresponsive click. Minor polish item, not a defect.
 
 ### ⚪ Info — Copy-to-clipboard has a solid fallback, worth keeping as a pattern
+> **Status (hermes-agent, 2026-08-23):** No action — positive finding, pattern kept.
 `app.js:615-645` (API token copy button) correctly uses the async Clipboard
 API with a `document.execCommand('copy')` fallback for browsers/contexts
 where it's unavailable (e.g. non-HTTPS LAN access, which is a realistic
@@ -200,6 +214,7 @@ positive, not an issue.
 ## Other / code quality
 
 ### ⚪ Info — Backup restore accepts any SQLite file with a `users` table
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — after a successful swap the restored DB is brought to the current Alembic revision (upgrade head, or stamp head when it predates Alembic).
 `app/routes/backup.py:117-136` validates the uploaded archive with
 `PRAGMA quick_check` and a check for a `users` table before swapping it in.
 That's a reasonable sanity check, but it's not verifying schema
@@ -210,6 +225,7 @@ admin-only, documented feature (not a bug), this is just a note: consider
 also checking `alembic_version` matches (or is upgradable) before swapping.
 
 ### ⚪ Info — Good architectural discipline overall
+> **Status (hermes-agent, 2026-08-23):** Fixed in v0.7.0 — cross-reference comments added in both RBAC enforcement sites (`app/auth/dependencies.py` and `app/mcp_server.py::_require`).
 `app/auth/dependencies.py`'s single `require_capability()` chokepoint is
 used consistently across every route file checked (`entities.py`,
 `records.py`, `users.py`, `views.py`, `api_tokens.py`, `dashboard.py`) — no
