@@ -47,9 +47,15 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
         try:
             # Store the canonical decimal *string*: round-tripping through
             # float introduces representation noise (0.1 + 0.2 == 0.3000...4).
-            return str(Decimal(str(value)))
+            decimal_value = Decimal(str(value))
         except (InvalidOperation, ValueError) as exc:
             raise ValidationError(f"Expected a decimal number, got {value!r}") from exc
+        # NaN / Infinity serialise fine into JSON but cannot be ordered or
+        # compared, so a single legacy row would crash every sorted view.
+        # Reject non-finite values at the boundary.
+        if not decimal_value.is_finite():
+            raise ValidationError(f"Expected a finite decimal number, got {value!r}")
+        return str(decimal_value)
 
     if data_type == DataType.BOOLEAN:
         if isinstance(value, bool):

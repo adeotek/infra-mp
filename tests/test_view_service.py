@@ -449,3 +449,17 @@ def test_build_view_graph(db_session, ref_graph):
         {"slug": "rack", "name": "Rack"},
         {"slug": "nics", "name": "NICs"},
     ]
+
+
+def test_sort_value_treats_non_finite_as_text():
+    # Legacy rows (pre-v0.7.1) and plain text attributes may hold non-finite
+    # numeric strings; sorting them must never raise during comparison.
+    assert sort_value("NaN")[0] == 2
+    assert sort_value("Infinity")[0] == 2
+    assert sort_value("-Infinity")[0] == 2
+    assert sort_value(float("nan"))[0] == 2
+    assert sort_value(float("inf"))[0] == 2
+    # Finite values still sort numerically, including huge exponents.
+    assert sort_value("1e999999999")[0] == 1
+    # Mixed finite/non-finite sort completes and non-finite values go last.
+    assert sorted(["NaN", "2", "10"], key=sort_value) == ["2", "10", "NaN"]

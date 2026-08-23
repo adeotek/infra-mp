@@ -63,3 +63,17 @@ def test_datetime_coercion():
 
 def test_enum_passthrough():
     assert coerce_value(DataType.ENUM, "active") == "active"
+
+
+def test_decimal_accepts_finite_values():
+    assert coerce_value(DataType.DECIMAL, "1.5") == "1.5"
+    assert coerce_value(DataType.DECIMAL, "-0.25") == "-0.25"
+    # Scientific notation stays finite and canonicalises through Decimal.
+    assert coerce_value(DataType.DECIMAL, "1e3") == "1E+3"
+
+
+@pytest.mark.parametrize("value", ["NaN", "nan", "Infinity", "-Infinity", "inf"])
+def test_decimal_rejects_non_finite(value):
+    # NaN/Infinity would store fine but crash every sorted view comparison.
+    with pytest.raises(ValidationError):
+        coerce_value(DataType.DECIMAL, value)

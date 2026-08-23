@@ -20,7 +20,7 @@ from app.services.record_service import (
     resolve_reference_titles,
 )
 from app.services.schema_service import get_entity_with_attributes, list_entities
-from app.services.view_service import apply_config, list_views
+from app.services.view_service import apply_config, build_view_rows, list_views
 from app.templates import render
 
 router = APIRouter()
@@ -59,10 +59,14 @@ def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, c
     view = widget.view
     if view is not None:
         records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
+        # build_view_rows keys cells by column key (base slugs and rel:* keys),
+        # so related-entity columns render exactly like the view's detail page.
+        rows = build_view_rows(db, entity, records, columns, cache=cache)
+        columns = [{"name": c.label, "slug": c.key} for c in columns]
     else:
-        columns = entity.attributes
-    titles = resolve_reference_titles(db, entity, cache=cache)
-    rows = build_rows(entity, records, titles)
+        columns = [{"name": a.name, "slug": a.slug} for a in entity.attributes]
+        titles = resolve_reference_titles(db, entity, cache=cache)
+        rows = build_rows(entity, records, titles)
     return {"entity": entity, "columns": columns, "rows": rows}
 
 

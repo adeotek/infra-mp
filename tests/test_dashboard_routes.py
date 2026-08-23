@@ -60,6 +60,21 @@ def test_table_widget_with_view(client, login):
     assert client.get("/dashboard").status_code == 200
 
 
+def test_table_widget_with_view_renders_column_headers_and_cells(client, login):
+    _seed_server(client, login)
+    client.post("/views", data={"name": "All", "entity_id": "1"}, follow_redirects=False)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "T", "widget_type": "table", "entity_id": "1", "view_id": "1"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    # View columns are ViewColumn objects: headers render from their labels
+    # and cells from their keys (the template accesses .name / .slug).
+    assert "<th>Name</th>" in html
+    assert "web01" in html
+
+
 def test_edit_widget_page(client, login):
     _seed_server(client, login)
     client.post(

@@ -458,18 +458,27 @@ def sort_value(value: Any) -> tuple[int, Any, str]:
 
     Numeric strings compare numerically ("10" after "2"), and legacy float
     decimals sort against canonical decimal strings via ``Decimal``.
+    Non-finite values (NaN, Infinity — reachable from pre-v0.7.1 rows and
+    from plain text attributes) cannot be ordered, so they sort as text
+    instead of crashing the comparison.
     """
     if isinstance(value, bool):
         return (0, int(value), "")
     if isinstance(value, (int, float)):
-        return (1, Decimal(str(value)), "")
+        decimal_value = Decimal(str(value))
+        if not decimal_value.is_finite():
+            return (2, 0, str(value).lower())
+        return (1, decimal_value, "")
     if isinstance(value, list):
         return (2, 0, str(value).lower())
     if isinstance(value, str):
         try:
-            return (1, Decimal(value), "")
+            decimal_value = Decimal(value)
         except InvalidOperation:
             return (2, 0, value.lower())
+        if not decimal_value.is_finite():
+            return (2, 0, value.lower())
+        return (1, decimal_value, "")
     return (2, 0, str(value).lower())
 
 

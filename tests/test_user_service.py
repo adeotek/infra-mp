@@ -3,7 +3,12 @@
 import pytest
 
 from app.auth.password import verify_password
-from app.models.enums import Role
+from app.models.enums import DataType, Role
+from app.models.record import Record
+from app.schemas.attribute import AttributeCreate
+from app.schemas.entity import EntityCreate
+from app.services.record_service import create_record
+from app.services.schema_service import add_attribute, create_entity, get_entity_with_attributes
 from app.services.user_service import (
     UserError,
     change_password,
@@ -140,3 +145,23 @@ def test_create_user_defaults(db_session):
     user = create_user(db_session, "valid", "", Role.VIEWER, "password-123")
     assert user.role == Role.VIEWER.value
     assert user.display_name == ""
+
+
+def test_delete_user_with_authored_records_nulls_attribution(db_session):
+    admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    author = create_user(db_session, "author", "Author", Role.MAINTAINER, "password-123")
+    entity = create_entity(db_session, EntityCreate(name="Servers"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    record = create_record(
+        db_session, entity, entity.attributes, {"name": "srv1"}, user_id=author.id
+    )
+
+    delete_user(db_session, author, admin)
+
+    assert get_user(db_session, author.id) is None
+    db_session.expire_all()
+    reloaded = db_session.get(Record, record.id)
+    assert reloaded is not None
+    assert reloaded.created_by is None
+    assert reloaded.updated_by is None

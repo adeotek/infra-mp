@@ -283,3 +283,56 @@ def test_reorder_attributes_rejects_duplicate_ids(db_session):
     add_attribute(db_session, entity, AttributeCreate(name="IP", data_type=DataType.TEXT))
     with pytest.raises(SchemaError):
         reorder_attributes(db_session, entity.id, [a.id, a.id])
+
+
+def test_reference_target_change_rejected_with_records(db_session):
+    site = create_entity(db_session, EntityCreate(name="Site"))
+    add_attribute(db_session, site, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    rack = create_entity(db_session, EntityCreate(name="Rack"))
+    add_attribute(db_session, rack, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    server = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, server, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    attr = add_attribute(
+        db_session,
+        server,
+        AttributeCreate(name="Site", data_type=DataType.REFERENCE, reference_entity_id=site.id),
+    )
+    server = get_entity_with_attributes(db_session, server.id)
+    site = get_entity_with_attributes(db_session, site.id)
+    site_record = create_record(db_session, site, site.attributes, {"name": "S1"})
+    create_record(db_session, server, server.attributes, {"name": "srv", "site": site_record.id})
+
+    with pytest.raises(SchemaError, match="reference target"):
+        update_attribute(
+            db_session,
+            attr,
+            AttributeUpdate(name="Site", data_type=DataType.REFERENCE, reference_entity_id=rack.id),
+        )
+    with pytest.raises(SchemaError, match="cardinality"):
+        update_attribute(
+            db_session,
+            attr,
+            AttributeUpdate(
+                name="Site",
+                data_type=DataType.REFERENCE,
+                reference_entity_id=site.id,
+                cardinality="many",
+            ),
+        )
+
+
+def test_reference_target_change_allowed_without_records(db_session):
+    site = create_entity(db_session, EntityCreate(name="Site"))
+    rack = create_entity(db_session, EntityCreate(name="Rack"))
+    server = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        server,
+        AttributeCreate(name="Site", data_type=DataType.REFERENCE, reference_entity_id=site.id),
+    )
+    updated = update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Site", data_type=DataType.REFERENCE, reference_entity_id=rack.id),
+    )
+    assert updated.reference_entity_id == rack.id

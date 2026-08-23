@@ -25,8 +25,12 @@ _DUMMY_HASH = hash_password("dummy-password-for-timing")
 
 
 def _safe_next(value: str | None) -> str:
-    """Allow only relative redirect targets (prevents open redirects)."""
-    if value and value.startswith("/") and not value.startswith("//"):
+    """Allow only relative redirect targets (prevents open redirects).
+
+    ``//host`` is protocol-relative; ``/\\host`` is the same once browsers
+    normalise backslashes in URL paths, so both are rejected.
+    """
+    if value and value.startswith("/") and not value.startswith(("//", "/\\")):
         return value
     return "/"
 

@@ -206,6 +206,18 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
             raise SchemaError("The key flag can only be changed while the entity has no records.")
         if data.slug and slugify(data.slug) != attribute.slug:
             raise SchemaError("The slug can only be changed while the entity has no records.")
+        if attribute.data_type_enum == DataType.REFERENCE:
+            # Existing records store ids into the current target entity;
+            # repointing (or flipping one<->many) would silently reinterpret
+            # every stored value against a different record set.
+            if data.reference_entity_id != attribute.reference_entity_id:
+                raise SchemaError(
+                    "The reference target can only be changed while the entity has no records."
+                )
+            if data.cardinality != attribute.cardinality:
+                raise SchemaError(
+                    "The reference cardinality can only be changed while the entity has no records."
+                )
         # is_active is locked while the entity has records.
     else:
         if data.slug:

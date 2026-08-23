@@ -30,7 +30,11 @@ class Record(TimestampMixin, Base):
     )
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     entity: Mapped[Entity] = relationship(back_populates="records")
