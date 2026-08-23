@@ -204,9 +204,71 @@ def test_update_view_requires_name(client, login):
     assert resp.status_code == 400
 
 
+def test_view_column_reorder_persists(client, login):
+    """Column order on the edit form is submitted via DOM order."""
+    _seed_server(client, login)
+    # Create with name → cores → status.
+    resp = client.post(
+        "/views",
+        data={
+            "name": "Ordered View",
+            "entity_id": "1",
+            "col": ["base:name", "base:cores", "base:status"],
+            "sort_col": "",
+            "sort_dir": "asc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    # Location format: /views/{id}?flash=...; strip query to get the id.
+    loc = resp.headers["location"].split("?")[0].strip("/")
+    parts = loc.split("/")
+    assert len(parts) >= 2 and parts[-2] == "views"
+    view_id = int(parts[-1])
+
+    # Edit and reorder to status → cores → name.
+    resp = client.post(
+        f"/views/{view_id}/edit",
+        data={
+            "name": "Ordered View (renamed)",
+            "col": ["base:status", "base:cores", "base:name"],
+            "sort_col": "",
+            "sort_dir": "asc",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    # Verify order persisted: in the detail page's column headers, "Name" appears after "Cores".
+    page = client.get(f"/views/{view_id}")
+    assert "Name" in page.text.split("Cores")[1]  # reordering worked
+
+
+def test_edit_form_has_column_reorder_handle_and_buttons(client, login):
+    """The edit form shows drag handle and ▲▼ buttons; sort select is driven by columns."""
+    _seed_server(client, login)
+    # Create one view so /views/{id}/edit exists.
+    client.post(
+        "/views",
+        data={"name": "Test View", "entity_id": "1", "columns": ["name"]},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Extra", "data_type": "text"},
+        follow_redirects=False,
+    )
+    page = client.get("/views/1/edit")
+    assert page.status_code == 200
+    # Check that the column-row template includes the drag handle and move buttons.
+    # The template is used via cloning; we look for the static markup fragments.
+    assert "drag-handle" in page.text
+    assert "col-move" in page.text or "row-move" in page.text
+
+
 def test_delete_view(client, login):
     _seed_server(client, login)
-    client.post("/views", data={"name": "V", "entity_id": "1"}, follow_redirects=False)
+    client.post("views", data={"name": "ToDelete", "entity_id": "1"}, follow_redirects=False)
     assert client.post("/views/1/delete", follow_redirects=False).status_code == 303
     assert client.get("/views/1").status_code == 404
 

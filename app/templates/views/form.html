@@ -85,10 +85,15 @@
 </form>
 
 <template id="column-row-template">
-  <div class="column-row">
+  <div class="column-row" draggable="true">
+    <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
     <div class="col-hops"></div>
     <select class="col-attr" aria-label="Attribute"></select>
     <input type="hidden" name="col" value="">
+    <span class="row-move-group" aria-label="Move column">
+      <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
+      <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
+    </span>
     <button type="button" class="btn btn-ghost remove-column">Remove</button>
   </div>
 </template>
@@ -370,7 +375,50 @@
       if (e.target.classList.contains('remove-column')) {
         e.target.closest('.column-row').remove();
         rebuildSortOptions();
+        return;
       }
+      var moveBtn = e.target.closest('.col-move');
+      if (!moveBtn) return;
+      var row = moveBtn.closest('.column-row');
+      var dir = moveBtn.getAttribute('data-dir');
+      if (dir === 'up' && row.previousElementSibling) {
+        row.parentNode.insertBefore(row, row.previousElementSibling);
+      } else if (dir === 'down' && row.nextElementSibling) {
+        row.parentNode.insertBefore(row.nextElementSibling, row);
+      }
+      rebuildSortOptions();
+    });
+
+    // Column reordering: drag by the handle (rows are form-local, so the DOM
+    // order is what gets submitted — no server round-trip needed).
+    var dragRow = null;
+    columnsBox.addEventListener('dragstart', function (e) {
+      if (!e.target.closest('.drag-handle')) {
+        e.preventDefault();
+        return;
+      }
+      dragRow = e.target.closest('.column-row');
+      dragRow.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+      }
+    });
+    columnsBox.addEventListener('dragover', function (e) {
+      if (!dragRow) return;
+      e.preventDefault();
+      var row = e.target.closest('.column-row');
+      if (!row || row === dragRow) return;
+      var rect = row.getBoundingClientRect();
+      var after = (e.clientY - rect.top) > (rect.height / 2);
+      row.insertAdjacentElement(after ? 'afterend' : 'beforebegin', dragRow);
+    });
+    columnsBox.addEventListener('drop', function (e) { e.preventDefault(); });
+    columnsBox.addEventListener('dragend', function () {
+      if (!dragRow) return;
+      dragRow.classList.remove('dragging');
+      dragRow = null;
+      rebuildSortOptions();
     });
 
     document.getElementById('add-column').addEventListener('click', function () {
