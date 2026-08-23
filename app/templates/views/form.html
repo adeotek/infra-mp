@@ -393,20 +393,22 @@
     // order is what gets submitted — no server round-trip needed).
     var dragRow = null;
     columnsBox.addEventListener('dragstart', function (e) {
-      if (!e.target.closest('.drag-handle')) {
+      dragRow = e.target.closest('.column-row');
+      if (!dragRow || !e.target.closest('.drag-handle')) {
         e.preventDefault();
         return;
       }
-      dragRow = e.target.closest('.column-row');
       dragRow.classList.add('dragging');
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.dropEffect = 'move';
         e.dataTransfer.setData('text/plain', '');
       }
     });
     columnsBox.addEventListener('dragover', function (e) {
       if (!dragRow) return;
       e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
       var row = e.target.closest('.column-row');
       if (!row || row === dragRow) return;
       var rect = row.getBoundingClientRect();
