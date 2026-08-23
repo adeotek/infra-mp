@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,15 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="INFRAMP_", extra="ignore")
+
+    @field_validator("cookie_secure", mode="before")
+    @classmethod
+    def _empty_cookie_secure_is_none(cls, value):
+        # docker-compose passes INFRAMP_COOKIE_SECURE as "" when unset; treat
+        # empty values as unset so the base_url auto-detection applies.
+        if value == "" or value is None:
+            return None
+        return value
 
     app_name: str = "InfraMP"
     data_dir: Path = Path("data")
