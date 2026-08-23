@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import Request
@@ -9,10 +10,19 @@ from fastapi.templating import Jinja2Templates
 
 from app import __version__
 from app.config import get_settings
+from app.security.csrf import csrf_token_for
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-# Format an ISO datetime ("YYYY-MM-DDTHH:MM:SS") for <input type="datetime-local">.
-templates.env.filters["datetime_local"] = lambda value: (value or "")[:16]
+
+
+def _datetime_local(value) -> str:
+    """Format a value for <input type="datetime-local"> (str or datetime)."""
+    if isinstance(value, datetime):
+        value = value.isoformat()
+    return (value or "")[:16]
+
+
+templates.env.filters["datetime_local"] = _datetime_local
 
 
 def _datetime_display(value) -> str:
@@ -37,6 +47,10 @@ def _icon_class(value, fallback: str = "fa-cube") -> str:
 
 templates.env.filters["icon_class"] = _icon_class
 
+# Fixed set of flash categories; never interpolate raw query params into
+# class attributes.
+_FLASH_TYPES = frozenset({"success", "error"})
+
 
 def is_htmx(request: Request) -> bool:
     """True when the request was issued by HTMX (sets the ``HX-Request`` header)."""
@@ -56,6 +70,7 @@ def render(
     requests keep the full page layout as a no-JS fallback.
     """
     fragment = is_htmx(request)
+    flash_type = request.query_params.get("flash_type", "success")
     ctx: dict = {
         "current_user": getattr(request.state, "current_user", None),
         "current_path": request.url.path,
@@ -63,9 +78,10 @@ def render(
         "app_version": __version__,
         "base_url": get_settings().base_url,
         "flash": request.query_params.get("flash"),
-        "flash_type": request.query_params.get("flash_type", "success"),
+        "flash_type": flash_type if flash_type in _FLASH_TYPES else "success",
         "is_fragment": fragment,
         "base_template": "fragment.html" if fragment else "base.html",
+        "csrf_token": csrf_token_for(request),
     }
     if context:
         ctx.update(context)

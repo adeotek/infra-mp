@@ -9,6 +9,7 @@
 
 <h2>Add widget</h2>
 <form method="post" action="/dashboard/widgets" class="form-section">
+  {% include "_csrf.html" %}
   <div class="grid-2">
     <label>Title
       <input type="text" name="title" placeholder="e.g. Active servers">
@@ -56,7 +57,7 @@
   <tbody>
   {% for w in widgets %}
     <tr draggable="true" data-id="{{ w.id }}">
-      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></td>
+      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i><span class="row-move-group"><button type="button" class="row-move" data-move="up" title="Move up" aria-label="Move up"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="row-move" data-move="down" title="Move down" aria-label="Move down"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></span></td>
       <td>{{ w.title or '—' }}</td>
       <td><code>{{ w.widget_type }}</code></td>
       <td>{{ w.entity.name if w.entity else '—' }}</td>
@@ -66,6 +67,7 @@
           <a href="/dashboard/widgets/{{ w.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/dashboard/widgets/{{ w.id }}/delete" class="inline"
                 data-confirm="Remove this widget?">
+            {% include "_csrf.html" %}
             <button type="submit" class="action-btn action-btn-danger" title="Remove" aria-label="Remove"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

@@ -6,6 +6,7 @@
 <h1>{{ "Edit entity" if entity else "New entity" }}</h1>
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 <form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
+  {% include "_csrf.html" %}
   <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ f.name if f else '' }}" autofocus>
   </label>

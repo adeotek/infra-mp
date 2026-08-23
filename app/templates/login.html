@@ -5,6 +5,7 @@
   <h1>Sign in</h1>
   {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
+    {% include "_csrf.html" %}
     <input type="hidden" name="next" value="{{ next or '' }}">
     <label>Username <span class="req">*</span>
       <input type="text" name="username" required autofocus autocomplete="username">

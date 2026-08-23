@@ -40,7 +40,7 @@ def server_entity(db_session):
 
 def test_required_field_missing_is_an_error(db_session, server_entity):
     _, errors = validate_record_data(db_session, server_entity.attributes, {"cores": "4"})
-    assert any("Hostname" in e for e in errors)
+    assert any("Hostname" in msg for _, msg in errors)
 
 
 def test_values_are_coerced(db_session, server_entity):
@@ -58,7 +58,7 @@ def test_enum_membership_is_enforced(db_session, server_entity):
     _, errors = validate_record_data(
         db_session, server_entity.attributes, {"hostname": "web01", "status": "bogus"}
     )
-    assert any("Status" in e for e in errors)
+    assert any("Status" in msg for _, msg in errors)
 
 
 def test_unchecked_boolean_is_false(db_session, server_entity):

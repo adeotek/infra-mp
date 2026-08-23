@@ -42,7 +42,13 @@ def resolve_user(db: Session, token: str) -> User | None:
     session = db.execute(
         select(AuthSession).where(AuthSession.token_hash == _hash_token(token))
     ).scalar_one_or_none()
-    if session is None or session.expires_at < utcnow():
+    if session is None:
+        return None
+    if session.expires_at < utcnow():
+        # Opportunistically purge the expired row instead of waiting for the
+        # next login (create_session runs the bulk cleanup).
+        db.delete(session)
+        db.commit()
         return None
     user = db.get(User, session.user_id)
     if user is None or not user.is_active:

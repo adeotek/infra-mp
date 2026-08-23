@@ -144,11 +144,13 @@ def _describe_filters(filters: list[dict], columns: list) -> list[dict]:
     return described
 
 
-def _view_detail_context(db: Session, view: View, entity: Entity, can_manage_views: bool) -> dict:
+def _view_detail_context(
+    db: Session, view: View, entity: Entity, can_manage_views: bool, cache: dict | None = None
+) -> dict:
     records, columns = apply_config(
-        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db, cache=cache
     )
-    rows = build_view_rows(db, entity, records, columns)
+    rows = build_view_rows(db, entity, records, columns, cache=cache)
     config = view.config or {}
     return {
         "view": view,
@@ -220,7 +222,10 @@ async def create_view_post(
     db: Session = Depends(get_session),
 ):
     raw = await parse_form(request)
-    entity_id = int(raw.get("entity_id"))
+    try:
+        entity_id = int(raw.get("entity_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid entity id") from None
     entity = get_entity_with_attributes(db, entity_id)
     if entity is None:
         raise HTTPException(status_code=404)
@@ -254,10 +259,11 @@ def view_detail(
     if view is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
+    cache: dict = {}
     return render(
         request,
         "views/detail.html",
-        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS)),
+        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS), cache),
     )
 
 
@@ -284,28 +290,25 @@ async def view_filters_post(
     filters = list(config.get("filters", []))
     action = str(raw.get("action", ""))
 
+    def _reject(message: str):
+        # In HTMX mode the error belongs next to the filter bar, not on a
+        # fresh page load — return the detail fragment with an inline error.
+        if request.headers.get("HX-Request"):
+            context = _view_detail_context(db, view, entity, True, {})
+            context["filter_error"] = message
+            return render(request, "views/detail_body.html", context)
+        return redirect_with_flash(f"/views/{view.id}", message, category="error", request=request)
+
     if action == "add":
         col_raw = str(raw.get("col", "")).strip()
         value = str(raw.get("value", "")).strip()
         if not col_raw:
-            return redirect_with_flash(
-                f"/views/{view.id}",
-                "Choose a filter column first.",
-                category="error",
-                request=request,
-            )
+            return _reject("Choose a filter column first.")
         if not value:
-            return redirect_with_flash(
-                f"/views/{view.id}",
-                "Enter a filter value first.",
-                category="error",
-                request=request,
-            )
+            return _reject("Enter a filter value first.")
         spec: str | dict | None = "quick" if col_raw == "quick" else parse_column_spec(col_raw)
         if spec is None:
-            return redirect_with_flash(
-                f"/views/{view.id}", "Unknown filter column.", category="error", request=request
-            )
+            return _reject("Unknown filter column.")
         op = str(raw.get("op", "")).strip()
         if op not in FILTER_OPS:
             op = "eq"
@@ -324,16 +327,14 @@ async def view_filters_post(
     elif action == "set_op":
         config["filter_op"] = "or" if str(raw.get("filter_op", "")) == "or" else "and"
     else:
-        return redirect_with_flash(
-            f"/views/{view.id}", "Unknown filter action.", category="error", request=request
-        )
+        return _reject("Unknown filter action.")
 
     config["filters"] = filters
     update_view(db, view, view.name, config, icon=view.icon or "")
 
     if request.headers.get("HX-Request"):
         return render(
-            request, "views/detail_body.html", _view_detail_context(db, view, entity, True)
+            request, "views/detail_body.html", _view_detail_context(db, view, entity, True, {})
         )
     return redirect_with_flash(f"/views/{view.id}", "Filters updated.")
 
@@ -349,10 +350,11 @@ def export_view(
     if view is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, view.entity_id)
+    cache: dict = {}
     records, columns = apply_config(
-        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db
+        entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db, cache=cache
     )
-    rows = build_view_rows(db, entity, records, columns)
+    rows = build_view_rows(db, entity, records, columns, cache=cache)
     csv_text = export_view_csv(columns, rows)
     return Response(
         content=csv_text,

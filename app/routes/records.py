@@ -7,6 +7,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import get_current_user, require_capability
 from app.auth.permissions import (
@@ -126,7 +127,11 @@ async def import_records_post(
         return redirect_with_flash(
             target, "Import aborted: the file must be UTF-8 encoded CSV.", "error"
         )
-    created, updated, errors = import_record_rows(db, entity, rows, user_id=user.id)
+    # The import is heavy sync DB work — run it in the threadpool so the
+    # event loop (which also serves /mcp and static files) is not blocked.
+    created, updated, errors = await run_in_threadpool(
+        import_record_rows, db, entity, rows, user.id
+    )
     if errors:
         detail = "; ".join(errors[:5])
         if len(errors) > 5:
@@ -176,9 +181,9 @@ async def create_record_post(
         raise HTTPException(status_code=404)
     raw = await parse_form(request)
     try:
-        create_record(db, entity, entity.attributes, raw, user_id=user.id)
+        await run_in_threadpool(create_record, db, entity, entity.attributes, raw, user.id)
     except RecordError as exc:
-        return _render_form_error(request, db, entity, None, raw, str(exc))
+        return _render_form_error(request, db, entity, None, raw, exc)
 
     return redirect_with_flash(f"/entities/{entity_id}/records", "Record created.")
 
@@ -223,9 +228,9 @@ async def update_record_post(
     entity = get_entity_with_attributes(db, record.entity_id)
     raw = await parse_form(request)
     try:
-        update_record(db, record, entity.attributes, raw, user_id=user.id)
+        await run_in_threadpool(update_record, db, record, entity.attributes, raw, user.id)
     except RecordError as exc:
-        return _render_form_error(request, db, entity, record, raw, str(exc))
+        return _render_form_error(request, db, entity, record, raw, exc)
 
     return redirect_with_flash(f"/entities/{entity.id}/records", "Record updated.")
 
@@ -250,7 +255,7 @@ def _render_form_error(
     entity,
     record: Record | None,
     raw: dict[str, Any],
-    error: str,
+    error: RecordError,
 ):
     context = {
         "entity": entity,
@@ -260,7 +265,8 @@ def _render_form_error(
         "action_url": (
             f"/entities/{entity.id}/records" if record is None else f"/records/{record.id}/edit"
         ),
-        "error": error,
+        "error": str(error),
+        "field_errors": error.field_errors,
     }
     if record is not None:
         user_names = username_map(db)

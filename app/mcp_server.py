@@ -85,6 +85,10 @@ def _dt(value: Any) -> str | None:
 
 
 def _user_id(ctx: Context) -> int:
+    # The SDK's authenticated principal is the OIDC principal JSON, stored as
+    # a JSON string: [claims, header, signature?] — the subject (user id) is at
+    # index 2. Pinned to InfraMPTokenVerifier's AccessToken(subject=str(user.id)).
+    # See test_mcp.py test_list_users_* for regression coverage.
     principal = authenticated_principal(ctx.request_context)
     if principal is None:
         raise ToolError("Not authenticated")
@@ -97,7 +101,11 @@ def _user_id(ctx: Context) -> int:
 
 
 def _require(db: Session, ctx: Context, capability: str) -> User:
-    """Resolve the authenticated user and enforce ``capability``."""
+    """Resolve the authenticated user and enforce ``capability``.
+
+    Mirrors the web routes' single enforcement point
+    (``app/auth/dependencies.py::require_capability``) — keep both in sync.
+    """
     user = db.get(User, _user_id(ctx))
     if user is None or not user.is_active:
         raise ToolError("User account is not active")
@@ -118,6 +126,22 @@ def _record_or_raise(db: Session, record_id: int) -> Record:
     if record is None:
         raise ToolError(f"Record {record_id} not found")
     return record
+
+
+def _mcp_sort_value(attr: Attribute, value: Any):
+    """Typed sort key for the ``list_records`` tool.
+
+    Coerces the raw value to its canonical form first (numeric strings become
+    numbers) and tags the type, so mixed legacy values never raise during the
+    comparison. Missing values sort last.
+    """
+    if value is None:
+        return (9, 0, "")
+    try:
+        value = record_service.coerce_attribute_value(attr, value)
+    except (TypeError, ValueError):
+        pass
+    return view_service.sort_value(value)
 
 
 def _entity_summary(entity) -> dict:
@@ -240,7 +264,11 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         wanted = record_service.coerce_attribute_value(attr, value)
                     except (TypeError, ValueError):
                         wanted = value
-                    records = [r for r in records if r.data.get(slug) == wanted]
+                    records = [
+                        r
+                        for r in records
+                        if record_service.attribute_values_equal(attr, r.data.get(slug), wanted)
+                    ]
             if search:
                 needle = search.lower()
                 records = [
@@ -251,9 +279,12 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
             if sort:
                 if sort not in attrs:
                     raise ToolError(f"Unknown attribute '{sort}'")
+                sort_attr = attrs[sort]
                 records = sorted(
                     records,
-                    key=lambda r: (str(r.data.get(sort, "")).lower(),),
+                    # Sort by the coerced typed value so numbers order
+                    # numerically, not as strings.
+                    key=lambda r: _mcp_sort_value(sort_attr, r.data.get(sort)),
                     reverse=sort_desc,
                 )
             page = max(1, page)
@@ -465,9 +496,9 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
     @server.tool(
         description=(
             "Add an attribute to an entity (manage_schema — admin). "
-            "data_type is one of: text, textarea, number, date, datetime, "
-            "boolean, enum, reference. For enum pass 'options'; for reference "
-            "pass 'reference_entity_id' and 'cardinality' ('one' or 'many')."
+            "data_type is one of: text, textarea, integer, decimal, date, "
+            "datetime, boolean, enum, reference. For enum pass 'options'; for "
+            "reference pass 'reference_entity_id' and 'cardinality' ('one' or 'many')."
         )
     )
     def create_attribute(
@@ -662,7 +693,7 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                     "title": w.title,
                     "widget_type": w.widget_type,
                     "entity_id": w.entity_id,
-                    "span": w.span,
+                    "width": w.width,
                     "config": w.config,
                 }
                 for w in widgets

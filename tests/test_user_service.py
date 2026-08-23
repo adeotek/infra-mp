@@ -1,11 +1,14 @@
-"""Service-level tests for user management, plus the user input schemas."""
+"""Service-level tests for user management and input validation."""
 
 import pytest
-from pydantic import ValidationError as PydanticValidationError
 
 from app.auth.password import verify_password
-from app.models.enums import Role
-from app.schemas.user import UserCreate, UserUpdate
+from app.models.enums import DataType, Role
+from app.models.record import Record
+from app.schemas.attribute import AttributeCreate
+from app.schemas.entity import EntityCreate
+from app.services.record_service import create_record
+from app.services.schema_service import add_attribute, create_entity, get_entity_with_attributes
 from app.services.user_service import (
     UserError,
     change_password,
@@ -39,6 +42,8 @@ def test_username_exists_and_list_get(db_session):
 
 def test_update_user_changes_fields_and_password(db_session):
     admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    # A second active admin must exist before the first can be demoted.
+    create_user(db_session, "root", "Root", Role.ADMIN, "password-123")
     update_user(db_session, admin, "New Name", Role.VIEWER, True, "new-password-456")
     assert admin.display_name == "New Name"
     assert admin.role == Role.VIEWER.value
@@ -89,6 +94,8 @@ def test_delete_last_active_admin_is_rejected(db_session):
 
 def test_delete_inactive_admin_allowed(db_session):
     admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    # Deactivation of the only admin is guarded; a second admin must exist.
+    create_user(db_session, "root", "Root", Role.ADMIN, "password-123")
     update_user(db_session, admin, "Admin", Role.ADMIN, False)  # deactivate
     other = create_user(db_session, "other", "Other", Role.VIEWER, "password-123")
     delete_user(db_session, admin, other)
@@ -120,23 +127,41 @@ def test_change_password_success(db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Schemas
+# Input validation (enforced in the service; the old pydantic schemas are gone)
 # --------------------------------------------------------------------------- #
 
 
-def test_user_create_validation():
-    with pytest.raises(PydanticValidationError):
-        UserCreate(username="a", password="password-123")  # username too short
-    with pytest.raises(PydanticValidationError):
-        UserCreate(username="valid", password="short")  # password too short
-    user = UserCreate(username="valid", password="password-123")
-    assert user.role == Role.VIEWER
+def test_create_user_username_too_short(db_session):
+    with pytest.raises(UserError, match="at least 2"):
+        create_user(db_session, "a", "A", Role.VIEWER, "password-123")
+
+
+def test_create_user_password_too_short(db_session):
+    with pytest.raises(UserError, match="at least 8"):
+        create_user(db_session, "valid", "Valid", Role.VIEWER, "short")
+
+
+def test_create_user_defaults(db_session):
+    user = create_user(db_session, "valid", "", Role.VIEWER, "password-123")
+    assert user.role == Role.VIEWER.value
     assert user.display_name == ""
 
 
-def test_user_update_defaults():
-    update = UserUpdate()
-    assert update.display_name == ""
-    assert update.role == Role.VIEWER
-    assert update.is_active is True
-    assert update.password is None
+def test_delete_user_with_authored_records_nulls_attribution(db_session):
+    admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    author = create_user(db_session, "author", "Author", Role.MAINTAINER, "password-123")
+    entity = create_entity(db_session, EntityCreate(name="Servers"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    record = create_record(
+        db_session, entity, entity.attributes, {"name": "srv1"}, user_id=author.id
+    )
+
+    delete_user(db_session, author, admin)
+
+    assert get_user(db_session, author.id) is None
+    db_session.expire_all()
+    reloaded = db_session.get(Record, record.id)
+    assert reloaded is not None
+    assert reloaded.created_by is None
+    assert reloaded.updated_by is None

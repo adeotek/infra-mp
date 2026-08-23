@@ -17,6 +17,7 @@ MANAGE_SCHEMA = "manage_schema"
 MANAGE_VIEWS = "manage_views"
 MANAGE_USERS = "manage_users"
 MANAGE_DASHBOARD = "manage_dashboard"
+MANAGE_BACKUP = "manage_backup"
 
 _CAPABILITIES: dict[Role, frozenset[str]] = {
     Role.ADMIN: frozenset(
@@ -29,6 +30,7 @@ _CAPABILITIES: dict[Role, frozenset[str]] = {
             MANAGE_VIEWS,
             MANAGE_USERS,
             MANAGE_DASHBOARD,
+            MANAGE_BACKUP,
         }
     ),
     Role.MAINTAINER: frozenset(
