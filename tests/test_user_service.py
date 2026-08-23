@@ -39,6 +39,8 @@ def test_username_exists_and_list_get(db_session):
 
 def test_update_user_changes_fields_and_password(db_session):
     admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    # A second active admin must exist before the first can be demoted.
+    create_user(db_session, "root", "Root", Role.ADMIN, "password-123")
     update_user(db_session, admin, "New Name", Role.VIEWER, True, "new-password-456")
     assert admin.display_name == "New Name"
     assert admin.role == Role.VIEWER.value
@@ -89,6 +91,8 @@ def test_delete_last_active_admin_is_rejected(db_session):
 
 def test_delete_inactive_admin_allowed(db_session):
     admin = create_user(db_session, "admin", "Admin", Role.ADMIN, "password-123")
+    # Deactivation of the only admin is guarded; a second admin must exist.
+    create_user(db_session, "root", "Root", Role.ADMIN, "password-123")
     update_user(db_session, admin, "Admin", Role.ADMIN, False)  # deactivate
     other = create_user(db_session, "other", "Other", Role.VIEWER, "password-123")
     delete_user(db_session, admin, other)

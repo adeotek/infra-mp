@@ -20,8 +20,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# The app is the source of truth for the database URL.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# The app is the source of truth for the database URL; callers (e.g. backup
+# restore) may pin an explicit URL via config.attributes["inframp_url"].
+url = config.attributes.get("inframp_url") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", url)
 
 target_metadata = Base.metadata
 

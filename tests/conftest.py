@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,6 +24,44 @@ from app.services.schema_service import (
 )
 
 ADMIN_PASSWORD = "admin-password-123"
+
+# CSRF middleware exemptions (mirrors app/security/csrf.py).
+CSRF_EXEMPT_PREFIXES = ("/mcp", "/static", "/login")
+
+
+class _CsrfClient(TestClient):
+    """TestClient that auto-signs POSTs with the session-bound CSRF token.
+
+    The token is HMAC(secret_key, session cookie) — same derivation as the
+    middleware, so real CSRF validation still runs on every request. Tests
+    that exercise rejection paths construct a plain TestClient instead.
+    """
+
+    def __init__(self, app, settings: Settings):
+        super().__init__(app)
+        self._settings = settings
+
+    def _token(self) -> str:
+        session = self.cookies.get(self._settings.session_cookie_name, "") or ""
+        digest = hmac.new(
+            self._settings.secret_key.encode("utf-8"),
+            session.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        return base64.urlsafe_b64encode(digest).decode("ascii")[:43]
+
+    def _inject(self, kwargs: dict) -> dict:
+        data = kwargs.get("data")
+        if isinstance(data, dict):
+            kwargs["data"] = {**data, "csrf_token": self._token()}
+        elif data is None and "json" not in kwargs:
+            kwargs["data"] = {"csrf_token": self._token()}
+        return kwargs
+
+    def post(self, url, *args, **kwargs):
+        if not url.startswith(CSRF_EXEMPT_PREFIXES):
+            kwargs = self._inject(kwargs)
+        return super().post(url, *args, **kwargs)
 
 
 @pytest.fixture
@@ -57,6 +99,14 @@ def db_session(engine):
 @pytest.fixture
 def client(settings, engine):
     """A TestClient whose lifespan seeds the admin account."""
+    app = create_app(settings)
+    with _CsrfClient(app, settings) as c:
+        yield c
+
+
+@pytest.fixture
+def raw_client(settings, engine):
+    """A plain TestClient (no CSRF auto-signing) for rejection-path tests."""
     app = create_app(settings)
     with TestClient(app) as c:
         yield c

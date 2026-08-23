@@ -85,13 +85,34 @@ descriptions. The essentials:
 
 | Variable | Description |
 | --- | --- |
-| `INFRAMP_SECRET_KEY` | Secret used to sign session cookies. **Must** be a long random string. |
+| `INFRAMP_SECRET_KEY` | Server-side key used to sign CSRF tokens (a pepper — sessions are opaque server-side tokens). **Must** be a long random string. |
 | `INFRAMP_ADMIN_USERNAME` / `INFRAMP_ADMIN_PASSWORD` | Initial admin account, seeded on first startup when the users table is empty. |
 | `INFRAMP_DATA_DIR` | Where the SQLite database is stored (default `./data`). |
 | `INFRAMP_SESSION_TTL_DAYS` | Session lifetime in days. |
+| `INFRAMP_COOKIE_SECURE` | Force the `Secure` cookie flag on/off (unset = follow `INFRAMP_BASE_URL` scheme). |
+| `INFRAMP_ALLOWED_HOSTS` | Comma-separated `Host` header allowlist (default `*`; set explicitly behind a proxy). |
+| `INFRAMP_HSTS_ENABLED` | Send HSTS headers — enable only behind a TLS-terminating proxy. |
+| `INFRAMP_LOGIN_MAX_ATTEMPTS` / `_WINDOW_SECONDS` / `_COOLDOWN_SECONDS` | Login brute-force backoff (default 5 failures / 10 min window / 10 min cooldown). |
+| `INFRAMP_MAX_BACKUP_UPLOAD_BYTES` / `INFRAMP_MAX_BACKUP_DB_BYTES` | Backup-restore size caps (zip-bomb protection). |
 | `INFRAMP_DEBUG` | FastAPI debug mode — never enable in production. |
 | `INFRAMP_MCP_ENABLED` | Enable the embedded MCP server at `/mcp` (default `true`). |
 | `INFRAMP_BASE_URL` | Public base URL, advertised in the MCP auth metadata (default `http://localhost:8000`). |
+
+## Security & performance notes
+
+- Forms are protected by **CSRF tokens** (session-bound HMAC, validated on every
+  state-changing request); login is **rate-limited**; unknown-username logins
+  burn the same Argon2 cost as real ones (no timing oracle); password changes
+  are guarded by a **last-active-admin** rule; API tokens can carry an
+  **expiry**; backup restores are **size-capped** and re-migrated to the
+  current schema revision.
+- The container runs as a **non-root user** (uid 10001). When upgrading an
+  existing named volume created by a pre-0.7.0 image, chown it once:
+  `docker run --rm -v infra-mp-data:/data alpine chown -R 10001:10001 /data`.
+- Record lists are loaded in memory and filtered/sorted per request. This is a
+  deliberate consequence of the schema-as-data design and is sized for homelab
+  scale — keep entities below roughly 10k records; beyond that, consider
+  pushing filters into SQL (JSON1 `json_extract`) or adding pagination.
 
 ## Usage overview
 

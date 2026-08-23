@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, ForeignKey
+from sqlalchemy import JSON, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 class Record(TimestampMixin, Base):
     __tablename__ = "records"
+    # The hot path filters on (entity_id, deleted_at); cover both together.
+    __table_args__ = (Index("ix_records_entity_deleted", "entity_id", "deleted_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     entity_id: Mapped[int] = mapped_column(

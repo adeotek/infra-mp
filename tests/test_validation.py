@@ -30,7 +30,11 @@ def test_integer_rejects_bool():
 
 
 def test_decimal_coercion():
-    assert coerce_value(DataType.DECIMAL, "3.14") == 3.14
+    # Canonical decimal storage is the exact string, never a float (no
+    # binary-floating-point representation noise).
+    assert coerce_value(DataType.DECIMAL, "3.14") == "3.14"
+    assert coerce_value(DataType.DECIMAL, "0.1") == "0.1"
+    assert coerce_value(DataType.DECIMAL, 2) == "2"
     with pytest.raises(ValidationError):
         coerce_value(DataType.DECIMAL, "not-a-number")
 

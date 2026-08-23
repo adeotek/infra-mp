@@ -1,8 +1,11 @@
 {% if advanced_filter %}
 <div class="advanced-filter">
+  {% if filter_error %}<div class="flash flash-error" role="alert">{{ filter_error }}</div>{% endif %}
   <form id="af-builder" class="af-builder"
+        method="post" action="/views/{{ view.id }}/filters"
         hx-post="/views/{{ view.id }}/filters"
         hx-target="#view-detail-body" hx-swap="innerHTML">
+    {% include "_csrf.html" %}
     <select name="col" id="af-col" aria-label="Filter column">
       <option value="quick" data-type="text">Quick filter</option>
       {% for o in filter_options %}
@@ -10,7 +13,14 @@
               data-choices='{{ o.choices | tojson }}'>{{ o.label }}</option>
       {% endfor %}
     </select>
-    <select name="op" id="af-op" aria-label="Comparison"></select>
+    {# Static base options so the no-JS path can pick an operator; JS rebuilds
+       the option list per column type. #}
+    <select name="op" id="af-op" aria-label="Comparison">
+      {% for op in ['eq', 'neq', 'contains', 'not_contains', 'gt', 'gte', 'lt', 'lte'] %}
+      <option value="{{ op }}">{{ filter_op_label(op) }}</option>
+      {% endfor %}
+    </select>
+    <label class="sr-only" for="af-value">Filter value</label>
     <input type="text" name="value" id="af-value" placeholder="filter value" autocomplete="off">
     <button type="submit" name="action" value="add" class="btn btn-primary">Add</button>
     <button type="submit" name="action" value="clear" class="btn"
@@ -33,11 +43,18 @@
     {% for f in active_filters %}
     <div class="af-row">
       <span class="af-text"><span class="af-label">{{ f.label }}</span> {{ filter_op_label(f.op) }} <code>{{ f.value }}</code></span>
-      <button type="button" class="af-remove" title="Remove filter"
-              hx-post="/views/{{ view.id }}/filters"
-              hx-vals='{"action": "remove", "index": {{ loop.index0 }}}'
-              hx-target="#view-detail-body" hx-swap="innerHTML"
-              aria-label="Remove filter">×</button>
+      {# A real form (no-JS path) around an htmx button (JS path). The hidden
+         inputs supply action/index for both; htmx submits the enclosing
+         form's values. #}
+      <form method="post" action="/views/{{ view.id }}/filters" class="inline af-remove-form">
+        {% include "_csrf.html" %}
+        <input type="hidden" name="action" value="remove">
+        <input type="hidden" name="index" value="{{ loop.index0 }}">
+        <button type="submit" class="af-remove" title="Remove filter"
+                hx-post="/views/{{ view.id }}/filters"
+                hx-target="#view-detail-body" hx-swap="innerHTML"
+                aria-label="Remove filter">×</button>
+      </form>
     </div>
     {% endfor %}
   </div>

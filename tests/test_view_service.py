@@ -13,7 +13,6 @@ from app.services.schema_service import (
     list_entities,
 )
 from app.services.view_service import (
-    _sortable,
     apply_config,
     build_view_graph,
     build_view_rows,
@@ -23,6 +22,7 @@ from app.services.view_service import (
     get_view,
     list_views,
     parse_column_spec,
+    sort_value,
     update_view,
 )
 
@@ -138,11 +138,20 @@ def test_sort_unknown_attribute_is_noop(db_session, servers):
     assert len(records) == 3
 
 
-def test_sortable_handles_bool_and_list():
-    assert _sortable(True) == 1
-    assert _sortable(False) == 0
-    assert _sortable([1, 2]) == "[1, 2]"
-    assert _sortable("x") == "x"
+def test_sort_value_handles_mixed_types():
+    """Typed sort keys never raise on mixed legacy data (bools/numbers/text)."""
+    from decimal import Decimal
+
+    assert sort_value(True) == (0, 1, "")
+    assert sort_value(False) == (0, 0, "")
+    assert sort_value(5) == (1, Decimal("5"), "")
+    assert sort_value("10") == (1, Decimal("10"), "")
+    assert sort_value(2.5) == (1, Decimal("2.5"), "")
+    assert sort_value([1, 2]) == (2, 0, "[1, 2]")
+    assert sort_value("x") == (2, 0, "x")
+    # Ordering across types is stable: bool < number < text.
+    keys = [sort_value(v) for v in ["x", 5, True, "2"]]
+    assert sorted(keys) == [sort_value(True), sort_value("2"), sort_value(5), sort_value("x")]
 
 
 def test_filter_op_label():

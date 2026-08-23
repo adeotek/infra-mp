@@ -49,6 +49,6 @@ down: ## Stop the docker compose stack
 logs: ## Tail docker compose logs
 	docker compose logs -f
 
-clean: ## Remove Python cache directories
+clean: ## Remove Python cache directories and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
-	rm -rf .pytest_cache .ruff_cache
+	rm -rf .pytest_cache .ruff_cache dist build

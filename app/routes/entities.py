@@ -51,7 +51,10 @@ def _attribute_from_form(
     is_key: bool = False,
 ) -> AttributeUpdate:
     options_list = [o.strip() for o in options.splitlines() if o.strip()] or None
-    ref_id = int(reference_entity_id) if reference_entity_id.strip() else None
+    try:
+        ref_id = int(reference_entity_id) if reference_entity_id.strip() else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid reference entity id") from exc
     return AttributeUpdate(
         name=name,
         data_type=data_type,

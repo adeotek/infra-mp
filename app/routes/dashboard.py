@@ -13,7 +13,12 @@ from app.db import get_session
 from app.flash import redirect_with_flash
 from app.models.dashboard import DashboardWidget
 from app.models.user import User
-from app.services.record_service import build_rows, list_records, resolve_reference_titles
+from app.services.record_service import (
+    build_rows,
+    count_records,
+    list_records,
+    resolve_reference_titles,
+)
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import apply_config, list_views
 from app.templates import render
@@ -28,6 +33,7 @@ WIDGET_WIDTH_CLASSES = {
     "3/4": "widget-span-3",
     "full": "widget-span-4",
 }
+WIDGET_TYPES = {"table", "count"}
 
 
 def _load_widgets(db: Session) -> list[DashboardWidget]:
@@ -43,30 +49,38 @@ def _load_widgets(db: Session) -> list[DashboardWidget]:
     )
 
 
-def _render_table_widget(db: Session, widget: DashboardWidget):
+def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, cache: dict):
     if widget.entity_id is None:
         return None
     entity = get_entity_with_attributes(db, widget.entity_id)
+    if entity is None:
+        return None
     records = list_records(db, widget.entity_id)
-    if widget.view_id is not None:
-        records, columns = apply_config(
-            entity, records, widget.view.config, list_entities(db), db=db
-        )
+    view = widget.view
+    if view is not None:
+        records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
     else:
         columns = entity.attributes
-    titles = resolve_reference_titles(db, entity)
+    titles = resolve_reference_titles(db, entity, cache=cache)
     rows = build_rows(entity, records, titles)
     return {"entity": entity, "columns": columns, "rows": rows}
 
 
-def _render_count_widget(db: Session, widget: DashboardWidget) -> int:
+def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, cache: dict) -> int:
     if widget.entity_id is None:
         return 0
-    entity = get_entity_with_attributes(db, widget.entity_id)
-    records = list_records(db, widget.entity_id)
-    if widget.view_id is not None:
-        records, _ = apply_config(entity, records, widget.view.config, list_entities(db), db=db)
-    return len(records)
+    view = widget.view
+    if view is not None:
+        # A view-bound count must honour the view's filters — materialise.
+        entity = get_entity_with_attributes(db, widget.entity_id)
+        if entity is None:
+            return 0
+        records, _ = apply_config(
+            entity, list_records(db, widget.entity_id), view.config, entities, db=db, cache=cache
+        )
+        return len(records)
+    # A plain count is a single SQL COUNT(*), not a full record load.
+    return count_records(db, widget.entity_id)
 
 
 def _next_sort_order(db: Session) -> int:
@@ -81,10 +95,21 @@ def _parse_width(value: str) -> str:
 
 
 def _parse_ids(entity_id: str | None, view_id: str | None) -> tuple[int | None, int | None]:
-    return (
-        int(entity_id) if entity_id and entity_id.strip() else None,
-        int(view_id) if view_id and view_id.strip() else None,
-    )
+    """Parse widget id fields; malformed values are a 400, not a 500."""
+    try:
+        return (
+            int(entity_id) if entity_id and entity_id.strip() else None,
+            int(view_id) if view_id and view_id.strip() else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid entity or view id") from exc
+
+
+def _validate_widget_type(widget_type: str) -> str | None:
+    """Return the type when valid, else an error message."""
+    if widget_type not in WIDGET_TYPES:
+        return f"Unknown widget type '{widget_type}'; expected 'table' or 'count'."
+    return None
 
 
 @router.get("/")
@@ -98,12 +123,16 @@ def dashboard(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ):
+    # Entities and per-entity record loads are shared across widgets: with N
+    # widgets on one dashboard these lists are fetched once, not N times.
+    entities = list_entities(db)
+    cache: dict = {}
     widgets_data = []
     for widget in _load_widgets(db):
         if widget.widget_type == "table":
-            data = _render_table_widget(db, widget)
+            data = _render_table_widget(db, widget, entities, cache)
         elif widget.widget_type == "count":
-            data = _render_count_widget(db, widget)
+            data = _render_count_widget(db, widget, entities, cache)
         else:
             continue
         widgets_data.append(
@@ -152,6 +181,11 @@ def create_widget(
     view_id: str = Form(""),
     width: str = Form("1/2"),
 ):
+    type_error = _validate_widget_type(widget_type)
+    if type_error is not None:
+        return redirect_with_flash(
+            "/dashboard/config", type_error, category="error", request=request
+        )
     eid, vid = _parse_ids(entity_id, view_id)
     db.add(
         DashboardWidget(
@@ -199,6 +233,11 @@ def update_widget(
     widget = db.get(DashboardWidget, widget_id)
     if widget is None:
         raise HTTPException(status_code=404)
+    type_error = _validate_widget_type(widget_type)
+    if type_error is not None:
+        return redirect_with_flash(
+            "/dashboard/config", type_error, category="error", request=request
+        )
     eid, vid = _parse_ids(entity_id, view_id)
     widget.title = title.strip()
     widget.widget_type = widget_type

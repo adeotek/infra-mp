@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 from typing import Any
 
@@ -16,10 +17,13 @@ from app.models.record import Record
 from app.services.record_service import (
     active_attributes,
     build_record_titles,
+    canonical_key_values,
     list_records,
     validate_record_data,
 )
 from app.services.validation import ValidationError, coerce_value
+
+logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
@@ -176,7 +180,10 @@ def import_record_rows(
     records_by_key: dict[tuple[Any, ...], Record] = {}
     if key_attrs:
         for record in list_records(db, entity.id):
-            records_by_key.setdefault(tuple(record.data.get(a.slug) for a in key_attrs), record)
+            records_by_key.setdefault(canonical_key_values(record, key_attrs), record)
+    # Load the entity's records once and reuse the list across rows so
+    # validation stays O(rows) instead of re-querying per row.
+    existing_cache = list(list_records(db, entity.id))
 
     errors: list[str] = []
     created = 0
@@ -214,12 +221,16 @@ def import_record_rows(
                 if key_error:
                     errors.append(f"Row {row_number}: {key_error}")
                     continue
-                existing = records_by_key.get(tuple(key_values))
+                existing = records_by_key.get(_canonical_from_values(key_values, key_attrs))
 
             if existing is None:
-                data, validation_errors = validate_record_data(db, attributes, raw)
+                data, validation_errors = validate_record_data(
+                    db, attributes, raw, existing_records=existing_cache
+                )
                 if validation_errors:
-                    errors.append(f"Row {row_number}: {'; '.join(validation_errors)}")
+                    errors.append(
+                        f"Row {row_number}: {'; '.join(msg for _, msg in validation_errors)}"
+                    )
                     continue
                 record = Record(
                     entity_id=entity.id,
@@ -229,7 +240,8 @@ def import_record_rows(
                 )
                 db.add(record)
                 db.flush()
-                records_by_key.setdefault(tuple(data.get(a.slug) for a in key_attrs), record)
+                existing_cache.append(record)
+                records_by_key.setdefault(canonical_key_values(record, key_attrs), record)
                 created += 1
             else:
                 # Update: merge the CSV columns over the existing values so
@@ -243,15 +255,19 @@ def import_record_rows(
                     merged_raw,
                     exclude_record_id=existing.id,
                     enforce_key=False,
+                    existing_records=existing_cache,
                 )
                 if validation_errors:
-                    errors.append(f"Row {row_number}: {'; '.join(validation_errors)}")
+                    errors.append(
+                        f"Row {row_number}: {'; '.join(msg for _, msg in validation_errors)}"
+                    )
                     continue
                 existing.data = data
                 existing.updated_by = user_id
                 db.flush()
                 updated += 1
     except Exception:
+        logger.exception("CSV import failed unexpectedly")
         db.rollback()
         return 0, 0, ["Import failed unexpectedly; nothing was imported."]
 
@@ -260,6 +276,26 @@ def import_record_rows(
         return 0, 0, errors
     db.commit()
     return created, updated, []
+
+
+def _canonical_from_values(values: list[Any], key_attrs: list[Attribute]) -> tuple[Any, ...]:
+    """Normalise coerced key values to match ``canonical_key_values``.
+
+    Only DECIMAL-typed keys convert to ``Decimal``; TEXT keys like "123" must
+    stay strings so they match their stored values.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    normalised: list[Any] = []
+    for attr, value in zip(key_attrs, values, strict=True):
+        if attr.data_type_enum == DataType.DECIMAL and isinstance(value, str):
+            try:
+                normalised.append(Decimal(value))
+                continue
+            except InvalidOperation:
+                pass
+        normalised.append(value)
+    return tuple(normalised)
 
 
 def _title_index(db: Session, target_id: int) -> tuple[dict[str, list[int]], set[int]]:

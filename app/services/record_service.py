@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.attribute import Attribute
@@ -17,7 +18,15 @@ from app.services.validation import ValidationError, coerce_value
 
 
 class RecordError(ValueError):
-    """Raised for invalid record data."""
+    """Raised for invalid record data.
+
+    ``field_errors`` maps attribute slug -> message for per-field display;
+    messages without an attribute (e.g. the entity key) appear under ``None``.
+    """
+
+    def __init__(self, message: str, field_errors: dict[str | None, str] | None = None):
+        super().__init__(message)
+        self.field_errors = field_errors or {}
 
 
 def active_attributes(attributes: list[Attribute]) -> list[Attribute]:
@@ -45,6 +54,18 @@ def list_records(db: Session, entity_id: int) -> list[Record]:
     )
 
 
+def count_records(db: Session, entity_id: int) -> int:
+    """SQL-side record count (avoids materialising the whole entity)."""
+    return (
+        db.scalar(
+            select(func.count(Record.id)).where(
+                Record.entity_id == entity_id, Record.deleted_at.is_(None)
+            )
+        )
+        or 0
+    )
+
+
 def get_record(db: Session, record_id: int) -> Record | None:
     return db.get(Record, record_id)
 
@@ -58,7 +79,7 @@ def create_record(
 ) -> Record:
     data, errors = validate_record_data(db, active_attributes(attributes), raw)
     if errors:
-        raise RecordError("; ".join(errors))
+        raise RecordError("; ".join(msg for _, msg in errors), _field_errors(errors))
     record = Record(entity_id=entity.id, data=data, created_by=user_id, updated_by=user_id)
     db.add(record)
     db.commit()
@@ -76,7 +97,7 @@ def update_record(
         db, active_attributes(attributes), raw, exclude_record_id=record.id
     )
     if errors:
-        raise RecordError("; ".join(errors))
+        raise RecordError("; ".join(msg for _, msg in errors), _field_errors(errors))
     # Preserve values for inactive attributes (not submitted from the form).
     inactive_slugs = {a.slug for a in attributes if not a.is_active}
     merged = {slug: record.data[slug] for slug in inactive_slugs if slug in record.data}
@@ -92,6 +113,14 @@ def soft_delete_record(db: Session, record: Record) -> None:
     db.commit()
 
 
+def _field_errors(errors: list[tuple[str | None, str]]) -> dict[str | None, str]:
+    """Collapse (slug, message) pairs into a slug -> first-message dict."""
+    result: dict[str | None, str] = {}
+    for slug, msg in errors:
+        result.setdefault(slug, msg)
+    return result
+
+
 # --------------------------------------------------------------------------- #
 # Validation
 # --------------------------------------------------------------------------- #
@@ -103,46 +132,52 @@ def validate_record_data(
     raw: dict[str, Any],
     exclude_record_id: int | None = None,
     enforce_key: bool = True,
-) -> tuple[dict[str, Any], list[str]]:
+    existing_records: list[Record] | None = None,
+) -> tuple[dict[str, Any], list[tuple[str | None, str]]]:
     """Validate raw form data against ``attributes``.
 
     Returns ``(canonical_data, errors)`` where ``canonical_data`` maps attribute
-    slug -> canonical value. ``exclude_record_id`` skips one record in the
-    uniqueness check (the record being edited).
+    slug -> canonical value and each error is ``(slug | None, message)``
+    (``None`` marks errors without a field, like the entity key).
+    ``exclude_record_id`` skips one record in the uniqueness check (the record
+    being edited). ``existing_records`` is an optional preloaded record list
+    (CSV import reuses it across rows instead of re-querying per row).
     """
     unique_attrs = [a for a in attributes if a.is_unique]
     key_attrs = [a for a in attributes if a.is_key]
-    existing: list[Record] = []
-    if unique_attrs or key_attrs:
-        existing = list(
-            db.execute(
-                select(Record).where(
-                    Record.entity_id == attributes[0].entity_id,
-                    Record.deleted_at.is_(None),
-                )
-            ).scalars()
-        )
+    if existing_records is None:
+        if unique_attrs or key_attrs:
+            existing_records = list(
+                db.execute(
+                    select(Record).where(
+                        Record.entity_id == attributes[0].entity_id,
+                        Record.deleted_at.is_(None),
+                    )
+                ).scalars()
+            )
+        else:
+            existing_records = []
 
     data: dict[str, Any] = {}
-    errors: list[str] = []
+    errors: list[tuple[str | None, str]] = []
     for attr in attributes:
         raw_value = raw.get(attr.slug)
         try:
             value = coerce_attribute_value(attr, raw_value)
         except (ValidationError, ValueError) as exc:
-            errors.append(f"{attr.name}: {exc}")
+            errors.append((attr.slug, f"{attr.name}: {exc}"))
             continue
 
         if value is None or value == []:
             if attr.is_required:
-                errors.append(f"{attr.name} is required.")
+                errors.append((attr.slug, f"{attr.name} is required."))
                 continue
             if attr.default_value is not None:
                 data[attr.slug] = attr.default_value
             continue
 
-        if attr.is_unique and _duplicate_value(existing, attr, value, exclude_record_id):
-            errors.append(f"{attr.name} must be unique.")
+        if attr.is_unique and _duplicate_value(existing_records, attr, value, exclude_record_id):
+            errors.append((attr.slug, f"{attr.name} must be unique."))
             continue
 
         data[attr.slug] = value
@@ -153,14 +188,31 @@ def validate_record_data(
     # is a regular value, not an empty one). Callers that already resolved
     # the key themselves (e.g. CSV import upserts) may skip the check.
     if enforce_key and key_attrs and not errors:
-        key_values = tuple(data.get(a.slug) for a in key_attrs)
-        for other in existing:
+        key_values = _canonical_key_tuple(data, key_attrs)
+        for other in existing_records:
             if exclude_record_id is not None and other.id == exclude_record_id:
                 continue
-            if tuple(other.data.get(a.slug) for a in key_attrs) == key_values:
-                errors.append("The entity key values must be unique.")
+            if _canonical_key_tuple(other.data, key_attrs) == key_values:
+                errors.append((None, "The entity key values must be unique."))
                 break
     return data, errors
+
+
+def _values_equal(attr: Attribute, left: Any, right: Any) -> bool:
+    """Typed equality for duplicate detection (legacy data may be untyped)."""
+    if isinstance(left, list) or isinstance(right, list):
+        # Many-reference values are lists; uniqueness over sets of ids is
+        # meaningless — skip (cannot be a duplicate).
+        return False
+    if attr.data_type_enum == DataType.DECIMAL:
+        try:
+            return Decimal(str(left)) == Decimal(str(right))
+        except InvalidOperation:
+            return False
+    return left == right
+
+
+attribute_values_equal = _values_equal  # public alias for MCP filters
 
 
 def _duplicate_value(
@@ -173,9 +225,28 @@ def _duplicate_value(
     for other in existing:
         if exclude_record_id is not None and other.id == exclude_record_id:
             continue
-        if other.data.get(attr.slug) == value:
+        if _values_equal(attr, other.data.get(attr.slug), value):
             return True
     return False
+
+
+def _canonical_key_tuple(data: dict[str, Any], key_attrs: list[Attribute]) -> tuple[Any, ...]:
+    """Key values normalised for comparison (legacy floats vs decimal strings)."""
+    values: list[Any] = []
+    for attr in key_attrs:
+        value = data.get(attr.slug)
+        if attr.data_type_enum == DataType.DECIMAL and isinstance(value, (float, str)):
+            try:
+                value = Decimal(str(value))
+            except InvalidOperation:
+                pass
+        values.append(value)
+    return tuple(values)
+
+
+def canonical_key_values(record: Record, key_attrs: list[Attribute]) -> tuple[Any, ...]:
+    """Normalised key tuple for an existing record (CSV upsert lookups)."""
+    return _canonical_key_tuple(record.data or {}, key_attrs)
 
 
 def coerce_attribute_value(attr: Attribute, raw_value: Any) -> Any:
@@ -242,14 +313,21 @@ def title_attribute(attributes: list[Attribute]) -> Attribute | None:
     return None
 
 
-def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
+def build_record_titles(db: Session, entity_id: int, cache: dict | None = None) -> dict[int, str]:
     """Map record_id -> display title for every non-deleted record of an entity.
 
     When the entity defines a key (one or more ``is_key`` attributes, in
     display order), the title is the joined key values — these identify the
     record in reference selects and cells. Otherwise the first text
     attribute is used, with ``#<id>`` as the last-resort fallback.
+
+    ``cache`` is an optional per-request dict; results are memoised under
+    ``("titles", entity_id)``.
     """
+    key = ("titles", entity_id)
+    if cache is not None and key in cache:
+        return cache[key]
+
     entity = db.execute(
         select(Entity).options(selectinload(Entity.attributes)).where(Entity.id == entity_id)
     ).scalar_one_or_none()
@@ -273,6 +351,8 @@ def build_record_titles(db: Session, entity_id: int) -> dict[int, str]:
             titles[record.id] = str(record.data[title_attr.slug])
         else:
             titles[record.id] = f"#{record.id}"
+    if cache is not None:
+        cache[key] = titles
     return titles
 
 
@@ -287,14 +367,16 @@ def format_value(value: Any) -> str:
     return str(value)
 
 
-def resolve_reference_titles(db: Session, entity: Entity) -> dict[int, dict[int, str]]:
+def resolve_reference_titles(
+    db: Session, entity: Entity, cache: dict | None = None
+) -> dict[int, dict[int, str]]:
     """Map target_entity_id -> {record_id: title} for every reference attribute."""
     titles: dict[int, dict[int, str]] = {}
     for attr in entity.attributes:
         if attr.data_type == DataType.REFERENCE.value:
             target_id = attr.config.get("reference_entity_id")
             if target_id is not None and target_id not in titles:
-                titles[target_id] = build_record_titles(db, target_id)
+                titles[target_id] = build_record_titles(db, target_id, cache=cache)
     return titles
 
 
@@ -324,6 +406,9 @@ def _display_cell(attr: Attribute, value: Any, titles: dict[int, dict[int, str]]
             ids = value if isinstance(value, list) else []
             return ", ".join(target_titles.get(i, f"#{i}") for i in ids) or "—"
         return target_titles.get(value, f"#{value}")
+    if attr.data_type == DataType.DECIMAL.value and isinstance(value, float):
+        # Legacy rows stored float(decimal) — normalise the representation.
+        return format_value(str(Decimal(str(value))))
     return format_value(value)
 
 

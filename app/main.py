@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.routing import Route
 
 from app.auth.seed import seed_admin
 from app.config import Settings, get_settings
 from app.db import build_engine, build_session_factory
 from app.routes import api_tokens, auth, backup, dashboard, entities, records, users, views
-from app.templates import render
+from app.security.csrf import CSRFMiddleware
+from app.security.headers import SecurityHeadersMiddleware
+from app.security.ratelimit import LoginRateLimiter
+from app.templates import is_htmx, render
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -57,7 +65,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             yield
 
-    app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan, debug=settings.debug)
+    app.state.settings = settings
+    app.state.login_limiter = LoginRateLimiter(
+        max_attempts=settings.login_max_attempts,
+        window_seconds=settings.login_window_seconds,
+        cooldown_seconds=settings.login_cooldown_seconds,
+    )
+
+    app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=settings.hsts_enabled)
+    app.add_middleware(CSRFMiddleware)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts_list)
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -98,6 +116,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             login_url = "/login"
             if request.url.path not in ("", "/", "/login"):
                 login_url = f"/login?next={quote(request.url.path)}"
+            # HTMX would otherwise follow the 303 and swap the full login page
+            # into a fragment target; HX-Redirect triggers a proper navigation.
+            if is_htmx(request):
+                return Response(status_code=401, headers={"HX-Redirect": login_url})
             return RedirectResponse(login_url, status_code=303)
         if exc.status_code == 404:
             return render(
@@ -119,9 +141,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers=exc.headers,
         )
 
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        # Unhandled exceptions must not leak FastAPI's raw JSON to browser
+        # users; render the styled error page (fragment for HTMX requests).
+        logger.exception("Unhandled error while serving %s", request.url.path, exc_info=exc)
+        return render(
+            request,
+            "error.html",
+            {"code": 500, "message": "Something went wrong. Please try again."},
+            status_code=500,
+        )
+
     @app.get("/healthz", tags=["health"])
-    def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    def healthz() -> Response:
+        try:
+            with session_factory() as session:
+                session.execute(text("SELECT 1"))
+        except Exception as exc:  # pragma: no cover - only on broken databases
+            logger.exception("Health check failed", exc_info=exc)
+            return JSONResponse(status_code=503, content={"status": "unhealthy"})
+        return JSONResponse(content={"status": "ok"})
 
     app.include_router(auth.router)
     app.include_router(api_tokens.router)

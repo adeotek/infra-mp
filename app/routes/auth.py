@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
-from app.auth.password import verify_password
+from app.auth.password import hash_password, verify_password
 from app.auth.sessions import create_session, delete_session
 from app.config import get_settings
 from app.db import get_session
@@ -18,6 +18,10 @@ from app.services.user_service import UserError, change_password
 from app.templates import render
 
 router = APIRouter()
+
+# Dummy Argon2 hash verified when the username does not exist, so unknown-user
+# attempts take the same time as real verification (no username enumeration).
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
 
 
 def _safe_next(value: str | None) -> str:
@@ -40,9 +44,24 @@ def login(
     next: str = Form(""),
     db: Session = Depends(get_session),
 ):
-    user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    client_ip = request.client.host if request.client else "unknown"
+    limiter = request.app.state.login_limiter
+    if limiter.is_blocked(client_ip, username):
+        return render(
+            request,
+            "login.html",
+            {
+                "error": "Too many failed attempts. Please wait a few minutes and try again.",
+                "next": next,
+            },
+            status_code=429,
+        )
 
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
+    user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    if user is None or not user.is_active:
+        # Burn the same Argon2 cost as a real attempt to avoid a timing oracle.
+        verify_password(password, _DUMMY_HASH)
+        limiter.register_failure(client_ip, username)
         return render(
             request,
             "login.html",
@@ -50,13 +69,26 @@ def login(
             status_code=401,
         )
 
-    settings = get_settings()
+    if not verify_password(password, user.password_hash):
+        limiter.register_failure(client_ip, username)
+        return render(
+            request,
+            "login.html",
+            {"error": "Invalid username or password.", "next": next},
+            status_code=401,
+        )
+
+    limiter.reset(client_ip, username)
+    # Prefer the app-bound settings (tests inject custom Settings) over the
+    # global cached instance.
+    settings = getattr(request.app.state, "settings", None) or get_settings()
     token = create_session(db, user.id, settings.session_ttl_days)
     response = RedirectResponse(_safe_next(next), status_code=303)
     response.set_cookie(
         settings.session_cookie_name,
         token,
         httponly=True,
+        secure=settings.cookie_secure_resolved,
         samesite="lax",
         max_age=settings.session_ttl_days * 86400,
     )
@@ -65,11 +97,12 @@ def login(
 
 @router.post("/logout")
 def logout(request: Request, db: Session = Depends(get_session)):
-    token = request.cookies.get(get_settings().session_cookie_name)
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    token = request.cookies.get(settings.session_cookie_name)
     if token:
         delete_session(db, token)
     response = RedirectResponse("/login", status_code=303)
-    response.delete_cookie(get_settings().session_cookie_name)
+    response.delete_cookie(settings.session_cookie_name)
     return response
 
 

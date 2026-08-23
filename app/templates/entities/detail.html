@@ -9,6 +9,7 @@
     <a href="/entities/{{ entity.id }}/edit" class="btn btn-primary" hx-get="/entities/{{ entity.id }}/edit" hx-target="#modal-body">Edit</a>
     <form method="post" action="/entities/{{ entity.id }}/delete" class="inline"
           data-confirm="Delete this entity and all its records? This cannot be undone.">
+      {% include "_csrf.html" %}
       <button type="submit" class="btn btn-danger">Delete</button>
     </form>
     {% endif %}
@@ -39,7 +40,7 @@
   {% for a in entity.attributes %}
     <tr{% if can_manage_schema %} draggable="true" data-id="{{ a.id }}"{% endif %}>
       {% if can_manage_schema %}
-      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></td>
+      <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i><span class="row-move-group"><button type="button" class="row-move" data-move="up" title="Move up" aria-label="Move up"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="row-move" data-move="down" title="Move down" aria-label="Move down"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></span></td>
       {% endif %}
       <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
       <td><code>{{ a.data_type }}</code></td>
@@ -54,6 +55,7 @@
           <a href="/attributes/{{ a.id }}/edit" hx-get="/attributes/{{ a.id }}/edit" hx-target="#modal-body" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
           <form method="post" action="/attributes/{{ a.id }}/delete" class="inline"
                 data-confirm="Delete this attribute and remove its value from all records? This cannot be undone.">
+            {% include "_csrf.html" %}
             <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
           </form>
         </div>

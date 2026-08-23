@@ -52,6 +52,7 @@
               {% if can_delete %}
               <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
                     data-confirm="Delete this record?">
+                {% include "_csrf.html" %}
                 <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
               </form>
               {% endif %}

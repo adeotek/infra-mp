@@ -6,6 +6,7 @@
 
 {% set cfg = current_config or {} %}
 <form method="post" action="{{ '/views/' ~ view.id ~ '/edit' if view else '/views' }}" id="view-form">
+  {% include "_csrf.html" %}
   {% if not view %}<input type="hidden" name="entity_id" value="{{ entity.id }}">{% endif %}
 
   <label>Name <span class="req">*</span>

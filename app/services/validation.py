@@ -8,6 +8,11 @@ from typing import Any
 
 from app.models.enums import DataType
 
+# Global cap on text-ish values: the schema-as-data design stores record
+# values in JSON, and unbounded strings from the form/CSV/MCP would bloat
+# rows. 64k characters is far beyond any realistic inventory field.
+MAX_TEXT_LENGTH = 65536
+
 
 class ValidationError(ValueError):
     """Raised when a value is invalid for its declared attribute type."""
@@ -24,8 +29,11 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
     if isinstance(value, str) and value.strip() == "":
         return None
 
-    if data_type in (DataType.TEXT, DataType.TEXTAREA):
-        return str(value)
+    if data_type in (DataType.TEXT, DataType.TEXTAREA, DataType.ENUM):
+        text = str(value)
+        if len(text) > MAX_TEXT_LENGTH:
+            raise ValidationError(f"Value is too long (max {MAX_TEXT_LENGTH} characters).")
+        return text
 
     if data_type == DataType.INTEGER:
         if isinstance(value, bool):
@@ -37,7 +45,9 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
 
     if data_type == DataType.DECIMAL:
         try:
-            return float(Decimal(str(value)))
+            # Store the canonical decimal *string*: round-tripping through
+            # float introduces representation noise (0.1 + 0.2 == 0.3000...4).
+            return str(Decimal(str(value)))
         except (InvalidOperation, ValueError) as exc:
             raise ValidationError(f"Expected a decimal number, got {value!r}") from exc
 
@@ -66,14 +76,17 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
 
     if data_type == DataType.DATETIME:
         if isinstance(value, datetime):
-            return value.isoformat()
-        try:
-            return datetime.fromisoformat(str(value)).isoformat()
-        except ValueError as exc:
-            raise ValidationError(f"Expected an ISO datetime, got {value!r}") from exc
-
-    if data_type == DataType.ENUM:
-        return str(value)
+            parsed = value
+        else:
+            try:
+                parsed = datetime.fromisoformat(str(value))
+            except ValueError as exc:
+                raise ValidationError(f"Expected an ISO datetime, got {value!r}") from exc
+        # The app convention is naive UTC (see AGENTS.md); aware input is
+        # accepted but normalized by dropping the offset (wall-clock time).
+        if parsed.tzinfo is not None:
+            parsed = parsed.replace(tzinfo=None)
+        return parsed.isoformat()
 
     if data_type == DataType.REFERENCE:
         # Validated against the attribute's config (cardinality, target entity)

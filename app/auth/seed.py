@@ -5,6 +5,7 @@ from __future__ import annotations
 import secrets
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.password import hash_password
@@ -17,7 +18,9 @@ def seed_admin(db: Session, settings: Settings) -> None:
     """Create the admin account if no users exist yet.
 
     Returns without doing anything if the database has already been initialised
-    (i.e. at least one user exists).
+    (i.e. at least one user exists). The insert is guarded against the race of
+    two processes seeding concurrently: the loser's unique-username violation
+    is caught and ignored.
     """
     has_users = db.execute(select(func.count(User.id))).scalar_one() > 0
     if has_users:
@@ -33,8 +36,16 @@ def seed_admin(db: Session, settings: Settings) -> None:
             is_active=True,
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Another process seeded first; nothing to do.
+        db.rollback()
+        return
 
     if not settings.admin_password:
+        # NOTE: the generated password is deliberately logged so the operator
+        # can log in on first boot — it is visible in container logs and any
+        # log collector. Change it immediately or pin INFRAMP_ADMIN_PASSWORD.
         print(f"[infra-mp] Seeded admin user '{settings.admin_username}' with password: {password}")
         print("[infra-mp] Log in and change it, or set INFRAMP_ADMIN_PASSWORD and restart.")
