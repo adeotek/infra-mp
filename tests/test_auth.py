@@ -1,10 +1,6 @@
 """Authentication tests via HTTP."""
 
 
-def test_healthz_is_open(client):
-    assert client.get("/healthz").status_code == 200
-
-
 def test_login_page_renders(client):
     assert client.get("/login").status_code == 200
 

@@ -159,6 +159,16 @@ mcp_servers:
 
 The endpoint can be disabled entirely with `INFRAMP_MCP_ENABLED=false`.
 
+## Health check endpoints
+
+Unauthenticated endpoints for orchestrators (Docker `HEALTHCHECK`, Kubernetes probes):
+
+| Endpoint | Purpose | What it checks | Result |
+| --- | --- | --- | --- |
+| `/healthz` | Liveness | Nothing external — process is up and serving | always 200 while serving |
+| `/readyz` | Readiness | Database reachable (`SELECT 1`) | 200; 503 when the DB is broken |
+| `/mcp/readyz` | MCP readiness | In-process probe of the MCP transport (auth middleware + token verifier) | 200 with `mcp: "enabled"`/`"disabled"`; 503 when the transport is broken |
+
 ## Stack
 
 Python 3.12+ · FastAPI · SQLAlchemy 2.0 · SQLite (WAL) · Jinja2 · HTMX · Argon2id · Alembic.

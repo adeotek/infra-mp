@@ -29,6 +29,49 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+async def _mcp_responds(app) -> bool:
+    """Call the MCP app in-process and expect the auth middleware's 401.
+
+    The request carries an invalid Bearer token: the SDK's authentication
+    middleware runs the token verifier (which queries the database) and must
+    answer ``401``. Any other outcome — an exception, a 5xx, a different
+    status — means the MCP transport is not healthy. This is what
+    ``/mcp/readyz`` probes.
+    """
+    status: dict = {}
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/mcp/",
+        "root_path": "/mcp",
+        "scheme": "http",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"localhost"),
+            (b"content-type", b"application/json"),
+            (b"authorization", b"Bearer probe-invalid-token"),
+        ],
+        "server": ("localhost", 8000),
+        "client": ("127.0.0.1", 1),
+    }
+
+    async def receive():
+        if not status.get("body_sent"):
+            status["body_sent"] = True
+            return {"type": "http.request", "body": b"{}", "more_body": False}
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            status["status"] = message["status"]
+        elif message["type"] == "http.response.body":
+            status["body"] = status.get("body", b"") + message.get("body", b"")
+
+    await app(scope, receive, send)
+    return status.get("status") == 401
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the FastAPI application with all dependencies wired up."""
     settings = settings or get_settings()
@@ -76,6 +119,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware, hsts_enabled=settings.hsts_enabled)
     app.add_middleware(CSRFMiddleware)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts_list)
+
+    # Health endpoints. Defined before the mounts so that ``/mcp/readyz`` is
+    # served by this app instead of being swallowed by the ``/mcp`` sub-app.
+    @app.get("/healthz", tags=["health"])
+    def healthz() -> JSONResponse:
+        """Liveness: the process is up and serving. No dependency checks."""
+        return JSONResponse(content={"status": "ok"})
+
+    @app.get("/readyz", tags=["health"])
+    def readyz() -> JSONResponse:
+        """Readiness: the database is reachable and answering queries."""
+        try:
+            with session_factory() as session:
+                session.execute(text("SELECT 1"))
+        except Exception as exc:  # pragma: no cover - only on broken databases
+            logger.exception("Readiness check failed", exc_info=exc)
+            return JSONResponse(status_code=503, content={"status": "unhealthy"})
+        return JSONResponse(content={"status": "ok"})
+
+    @app.get("/mcp/readyz", tags=["health"])
+    async def mcp_readyz() -> JSONResponse:
+        """Readiness of the embedded MCP endpoint.
+
+        When MCP is intentionally disabled the app is in its intended state
+        and the check reports healthy with ``mcp: disabled``; otherwise it
+        probes the transport in-process.
+        """
+        if mcp_starlette is None:
+            return JSONResponse(content={"status": "ok", "mcp": "disabled"})
+        try:
+            ready = await _mcp_responds(mcp_starlette)
+        except Exception as exc:  # pragma: no cover - transport failures
+            logger.exception("MCP readiness check failed", exc_info=exc)
+            ready = False
+        if not ready:
+            return JSONResponse(
+                status_code=503, content={"status": "unhealthy", "mcp": "not responding"}
+            )
+        return JSONResponse(content={"status": "ok", "mcp": "enabled"})
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -152,16 +234,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {"code": 500, "message": "Something went wrong. Please try again."},
             status_code=500,
         )
-
-    @app.get("/healthz", tags=["health"])
-    def healthz() -> Response:
-        try:
-            with session_factory() as session:
-                session.execute(text("SELECT 1"))
-        except Exception as exc:  # pragma: no cover - only on broken databases
-            logger.exception("Health check failed", exc_info=exc)
-            return JSONResponse(status_code=503, content={"status": "unhealthy"})
-        return JSONResponse(content={"status": "ok"})
 
     app.include_router(auth.router)
     app.include_router(api_tokens.router)
