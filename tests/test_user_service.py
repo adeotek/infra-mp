@@ -1,11 +1,9 @@
-"""Service-level tests for user management, plus the user input schemas."""
+"""Service-level tests for user management and input validation."""
 
 import pytest
-from pydantic import ValidationError as PydanticValidationError
 
 from app.auth.password import verify_password
 from app.models.enums import Role
-from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import (
     UserError,
     change_password,
@@ -124,23 +122,21 @@ def test_change_password_success(db_session):
 
 
 # --------------------------------------------------------------------------- #
-# Schemas
+# Input validation (enforced in the service; the old pydantic schemas are gone)
 # --------------------------------------------------------------------------- #
 
 
-def test_user_create_validation():
-    with pytest.raises(PydanticValidationError):
-        UserCreate(username="a", password="password-123")  # username too short
-    with pytest.raises(PydanticValidationError):
-        UserCreate(username="valid", password="short")  # password too short
-    user = UserCreate(username="valid", password="password-123")
-    assert user.role == Role.VIEWER
+def test_create_user_username_too_short(db_session):
+    with pytest.raises(UserError, match="at least 2"):
+        create_user(db_session, "a", "A", Role.VIEWER, "password-123")
+
+
+def test_create_user_password_too_short(db_session):
+    with pytest.raises(UserError, match="at least 8"):
+        create_user(db_session, "valid", "Valid", Role.VIEWER, "short")
+
+
+def test_create_user_defaults(db_session):
+    user = create_user(db_session, "valid", "", Role.VIEWER, "password-123")
+    assert user.role == Role.VIEWER.value
     assert user.display_name == ""
-
-
-def test_user_update_defaults():
-    update = UserUpdate()
-    assert update.display_name == ""
-    assert update.role == Role.VIEWER
-    assert update.is_active is True
-    assert update.password is None
