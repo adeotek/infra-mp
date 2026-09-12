@@ -15,6 +15,8 @@ class AttributeCreate(BaseModel):
     is_required: bool = False
     # Record values must be unique across the entity's records.
     is_unique: bool = False
+    # Render a copy-to-clipboard button next to the attribute's inputs/cells.
+    with_copy_button: bool = False
     # Part of the entity's key: identifies records in reference selects and
     # must be unique across records (composite keys supported, ordered by
     # the attribute display order).

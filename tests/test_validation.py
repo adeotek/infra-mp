@@ -65,6 +65,30 @@ def test_enum_passthrough():
     assert coerce_value(DataType.ENUM, "active") == "active"
 
 
+def test_link_coercion():
+    assert coerce_value(DataType.LINK, "https://example.com/path?a=1") == (
+        "https://example.com/path?a=1"
+    )
+    assert coerce_value(DataType.LINK, "http://10.0.0.1:8000/") == "http://10.0.0.1:8000/"
+    assert coerce_value(DataType.LINK, "") is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "example.com",  # no scheme
+        "/relative/path",
+        "ftp://example.com",
+        "javascript:alert(1)",
+        "http://",  # scheme without host
+        "not a url",
+    ],
+)
+def test_link_rejects_invalid_urls(value):
+    with pytest.raises(ValidationError):
+        coerce_value(DataType.LINK, value)
+
+
 def test_decimal_accepts_finite_values():
     assert coerce_value(DataType.DECIMAL, "1.5") == "1.5"
     assert coerce_value(DataType.DECIMAL, "-0.25") == "-0.25"

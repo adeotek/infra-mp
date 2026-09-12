@@ -18,6 +18,7 @@ class DataType(StrEnum):
 
     TEXT = "text"
     TEXTAREA = "textarea"
+    LINK = "link"
     INTEGER = "integer"
     DECIMAL = "decimal"
     BOOLEAN = "boolean"

@@ -62,6 +62,11 @@
   </label>
 
   <label class="checkbox-label">
+    <input type="checkbox" name="with_copy_button" id="with_copy_button" {% if fd and fd.with_copy_button %}checked{% endif %}>
+    With copy button <span class="muted">(renders a copy icon next to the field; clicking it copies the value to the clipboard)</span>
+  </label>
+
+  <label class="checkbox-label">
     <input type="checkbox" name="is_key" id="is_key" {% if fd and fd.is_key %}checked{% endif %}>
     Key <span class="muted">(part of the entity key — identifies records in reference selects, key must be unique)</span>
   </label>

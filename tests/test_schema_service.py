@@ -201,6 +201,54 @@ def test_update_attribute_updates_unique(db_session):
     assert attr.is_unique is True
 
 
+def test_add_attribute_stores_copy_button(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Panel", data_type=DataType.LINK, with_copy_button=True),
+    )
+    assert attr.with_copy_button is True
+    assert attr.data_type == "link"
+
+
+def test_add_attribute_defaults_copy_button_off(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    assert attr.with_copy_button is False
+
+
+def test_update_attribute_flips_copy_button(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session, entity, AttributeCreate(name="Hostname", data_type=DataType.TEXT)
+    )
+    update_attribute(
+        db_session,
+        attr,
+        AttributeUpdate(name="Hostname", data_type=DataType.TEXT, with_copy_button=True),
+    )
+    assert attr.with_copy_button is True
+
+
+def test_link_default_value_must_be_valid_url(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    attr = add_attribute(
+        db_session,
+        entity,
+        AttributeCreate(name="Panel", data_type=DataType.LINK, default_value="https://example.com"),
+    )
+    assert attr.default_value == "https://example.com"
+    with pytest.raises(SchemaError):
+        add_attribute(
+            db_session,
+            entity,
+            AttributeCreate(name="Docs", data_type=DataType.LINK, default_value="nope"),
+        )
+
+
 def test_add_attribute_stores_key(db_session):
     entity = create_entity(db_session, EntityCreate(name="Server"))
     attr = add_attribute(

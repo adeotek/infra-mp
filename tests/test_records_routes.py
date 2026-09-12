@@ -87,11 +87,12 @@ def test_records_import_upserts_when_entity_has_key(client, login):
     )
     assert resp.status_code == 200
     assert "Imported 1 record(s) and updated 1." in resp.text
-    # web01 was updated (cores 8), web02 created (cores 16).
+    # web01 was updated (cores 8), web02 created (cores 16). Cells are
+    # wrapped in .cell-wrap/.cell-value spans (link/copy-button support).
     assert "web01" in resp.text
     assert "web02" in resp.text
-    assert "<td>8</td>" in resp.text
-    assert "<td>16</td>" in resp.text
+    assert 'class="cell-value">8</span>' in resp.text
+    assert 'class="cell-value">16</span>' in resp.text
 
 
 def test_records_import_success(client, login):
@@ -345,3 +346,53 @@ def test_record_edit_shows_selected_reference_chips(client, login):
     assert "data-remove" in html
     assert "rack-01" in html
     assert "rack-02" in html
+
+
+def _seed_link_server(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Console", "data_type": "link", "with_copy_button": "on"},
+        follow_redirects=False,
+    )
+
+
+def test_record_form_renders_url_input(client, login):
+    _seed_link_server(client, login)
+    html = client.get("/entities/1/records/new").text
+    assert 'type="url" name="console"' in html
+    assert 'class="copy-btn"' in html
+    assert 'name="with_copy_button"' not in html
+
+
+def test_link_attribute_accepts_valid_url(client, login):
+    _seed_link_server(client, login)
+    resp = client.post(
+        "/entities/1/records",
+        data={"console": "https://panel.example.com:8443/?a=1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+
+def test_link_attribute_rejects_invalid_url(client, login):
+    _seed_link_server(client, login)
+    resp = client.post("/entities/1/records", data={"console": "not-a-url"}, follow_redirects=False)
+    assert resp.status_code == 400
+    assert "valid http(s) URL" in resp.text
+
+
+def test_records_list_renders_link_as_anchor_with_copy_button(client, login):
+    _seed_link_server(client, login)
+    client.post(
+        "/entities/1/records",
+        data={"console": "https://panel.example.com"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1/records").text
+    assert (
+        '<a href="https://panel.example.com" target="_blank" rel="noopener">https://panel.example.com</a>'
+        in html
+    )
+    assert 'class="copy-btn"' in html

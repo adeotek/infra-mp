@@ -49,6 +49,7 @@ def _attribute_from_form(
     is_active: bool = True,
     is_unique: bool = False,
     is_key: bool = False,
+    with_copy_button: bool = False,
 ) -> AttributeUpdate:
     options_list = [o.strip() for o in options.splitlines() if o.strip()] or None
     try:
@@ -61,6 +62,7 @@ def _attribute_from_form(
         is_required=is_required,
         is_unique=is_unique,
         is_key=is_key,
+        with_copy_button=with_copy_button,
         default_value=default_value or None,
         options=options_list,
         reference_entity_id=ref_id,
@@ -268,6 +270,7 @@ def create_attribute_post(
     is_active: bool = Form(True),
     is_unique: bool = Form(False),
     is_key: bool = Form(False),
+    with_copy_button: bool = Form(False),
 ):
     entity = get_entity(db, entity_id)
     if entity is None:
@@ -285,6 +288,7 @@ def create_attribute_post(
         is_active=is_active,
         is_unique=is_unique,
         is_key=is_key,
+        with_copy_button=with_copy_button,
     )
     try:
         attribute = add_attribute(db, entity, data)
@@ -361,6 +365,7 @@ def update_attribute_post(
     is_active: bool = Form(True),
     is_unique: bool = Form(False),
     is_key: bool = Form(False),
+    with_copy_button: bool = Form(False),
 ):
     attribute = db.get(Attribute, attribute_id)
     if attribute is None:
@@ -380,6 +385,7 @@ def update_attribute_post(
         is_active=is_active,
         is_unique=is_unique,
         is_key=is_key,
+        with_copy_button=with_copy_button,
     )
     try:
         update_attribute(db, attribute, data)

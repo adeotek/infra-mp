@@ -97,6 +97,11 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
   position: sticky;
   top: 0;
+  z-index: 1; /* sticky forms its own stacking context (z:auto) painted BEFORE
+                 .main's subtree; a positive z-index lifts the whole sidebar —
+                 including the collapsed hover overlays (z:40 inside it) —
+                 above all z:auto/static main content (e.g. sort indicators
+                 with opacity<1), while staying below the topbar (z:20). */
   height: 100vh;
   height: 100dvh; /* visible viewport (fallback above for older engines) */
   overflow: hidden; /* brand and toggle stay pinned; only the nav scrolls */
@@ -892,6 +897,41 @@ code {
 .form-field.has-error textarea { border-color: var(--danger); }
 .field-error { display: block; margin-top: 0.3rem; font-size: 0.85em; color: var(--danger); }
 
+/* -------------------------------------------------- Copy buttons */
+.field-copy { display: flex; gap: 0.4rem; align-items: stretch; }
+.field-copy > input,
+.field-copy > select,
+.field-copy > textarea { flex: 1; min-width: 0; }
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.copy-btn:hover { color: var(--text); background: var(--hover); }
+/* Form fields: the button becomes an input-group adornment matched in height. */
+.field-copy .copy-btn {
+  width: 2.4rem;
+  height: auto;
+  align-self: stretch;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+.field-copy .copy-btn:hover { color: var(--primary); border-color: var(--muted); }
+/* Grid cells: value + copy icon side by side (td stays a plain table cell). */
+.cell-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
+.cell-wrap .cell-value { word-break: break-word; }
+
 /* --------------------------------------------- Toast (async failures) */
 .toast {
   position: fixed;
@@ -910,6 +950,7 @@ code {
   z-index: 200;
 }
 .toast.show { opacity: 1; transform: none; }
+.toast-success { background: var(--success); }
 
 /* ----------------------------------------- Global HTMX busy indicator */
 body.htmx-busy::after {

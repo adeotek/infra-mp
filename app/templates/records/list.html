@@ -39,7 +39,15 @@
         {% for row in rows %}
         <tr>
           {% for attr in entity.attributes %}
-          <td>{{ row.cells[attr.slug] }}</td>
+          <td>
+            <span class="cell-wrap">
+              {% set href = row.link_hrefs.get(attr.slug) if row.link_hrefs else none %}
+              <span class="cell-value">{% if href %}<a href="{{ href }}" target="_blank" rel="noopener">{{ row.cells[attr.slug] }}</a>{% else %}{{ row.cells[attr.slug] }}{% endif %}</span>
+              {% if attr.with_copy_button %}
+              <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>
+              {% endif %}
+            </span>
+          </td>
           {% endfor %}
           <td class="muted">{{ row.record.created_at | datetime_display }}</td>
           <td class="muted">{{ user_names.get(row.record.created_by, "—") }}</td>

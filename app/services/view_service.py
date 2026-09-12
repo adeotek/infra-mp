@@ -704,16 +704,23 @@ def build_view_rows(
     rows: list[dict[str, Any]] = []
     for record in records:
         cells: dict[str, str] = {}
+        link_hrefs: dict[str, str] = {}
         for column in columns:
             if column.path is None:
                 cells[column.key] = _display_cell(
                     column.attr, record.data.get(column.attr.slug), base_titles
                 )
+                if column.attr.data_type == DataType.LINK.value and record.data.get(
+                    column.attr.slug
+                ):
+                    link_hrefs[column.key] = record.data[column.attr.slug]
             else:
-                cells[column.key] = _resolve_related_cell(
+                cells[column.key], href = _resolve_related_cell(
                     record, column, records_by_entity, reverse_index, terminal_titles
                 )
-        rows.append({"record": record, "cells": cells})
+                if href:
+                    link_hrefs[column.key] = href
+        rows.append({"record": record, "cells": cells, "link_hrefs": link_hrefs})
     return rows
 
 
@@ -790,8 +797,13 @@ def _resolve_related_cell(
     records_by_entity: dict[int, dict[int, Record]],
     reverse_index: dict[tuple[int, str], dict[int, list[int]]],
     terminal_titles: dict[int, dict[int, str]],
-) -> str:
-    """Walk the column's hop path from ``record`` and format the terminal value."""
+) -> tuple[str, str | None]:
+    """Walk the column's hop path from ``record`` and format the terminal value.
+
+    Returns ``(display_text, href)``; ``href`` is set only when the terminal
+    attribute is a ``link`` and the path resolves to exactly one URL (a
+    ``many=all`` fan-out has no single link target).
+    """
     current: list[Record] = [record]
     for hop in column.path or []:
         reached: list[Record] = []
@@ -799,7 +811,7 @@ def _resolve_related_cell(
             reached.extend(_follow_hop(rec, hop, records_by_entity, reverse_index))
         current = reached
         if not current:
-            return "—"
+            return "—", None
 
     attr = column.attr
     if attr.data_type == DataType.REFERENCE.value:
@@ -811,14 +823,16 @@ def _resolve_related_cell(
                 continue
             ids = value if isinstance(value, list) else [value]
             parts.extend(titles.get(i, f"#{i}") for i in ids)
-        return ", ".join(parts) or "—"
+        return ", ".join(parts) or "—", None
 
     parts = []
     for rec in current:
         value = rec.data.get(attr.slug)
         if value is not None:
             parts.append(format_value(value))
-    return ", ".join(parts) or "—"
+    text = ", ".join(parts) or "—"
+    href = parts[0] if attr.data_type == DataType.LINK.value and len(parts) == 1 else None
+    return text, href
 
 
 def _resolve_related_sort_value(

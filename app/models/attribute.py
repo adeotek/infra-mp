@@ -29,6 +29,8 @@ class Attribute(TimestampMixin, Base):
     is_required: Mapped[bool] = mapped_column(Boolean, default=False)
     # Record values for this attribute must be unique across the entity's records.
     is_unique: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Render a copy-to-clipboard button next to this attribute's inputs/cells.
+    with_copy_button: Mapped[bool] = mapped_column(Boolean, default=False)
     # Part of the entity's key (single or composite, ordered by sort_order).
     # The key identifies records in reference selects and must be unique.
     is_key: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -385,13 +385,20 @@ def build_rows(
     records: list[Record],
     titles: dict[int, dict[int, str]],
 ) -> list[dict[str, Any]]:
-    """Build display rows: one dict per record with a ``cells`` slug->string map."""
+    """Build display rows: one dict per record with a ``cells`` slug->string map.
+
+    Rows also carry a ``link_hrefs`` slug->url map for ``link`` attributes
+    (templates render those as target=_blank anchors instead of plain text).
+    """
     rows: list[dict[str, Any]] = []
     for record in records:
         cells: dict[str, str] = {}
+        link_hrefs: dict[str, str] = {}
         for attr in entity.attributes:
             cells[attr.slug] = _display_cell(attr, record.data.get(attr.slug), titles)
-        rows.append({"record": record, "cells": cells})
+            if attr.data_type == DataType.LINK.value and record.data.get(attr.slug):
+                link_hrefs[attr.slug] = record.data[attr.slug]
+        rows.append({"record": record, "cells": cells, "link_hrefs": link_hrefs})
     return rows
 
 
