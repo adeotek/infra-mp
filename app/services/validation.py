@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from urllib.parse import urlparse
 
 from app.models.enums import DataType
 
@@ -33,6 +34,18 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
         text = str(value)
         if len(text) > MAX_TEXT_LENGTH:
             raise ValidationError(f"Value is too long (max {MAX_TEXT_LENGTH} characters).")
+        return text
+
+    if data_type == DataType.LINK:
+        text = str(value)
+        if len(text) > MAX_TEXT_LENGTH:
+            raise ValidationError(f"Value is too long (max {MAX_TEXT_LENGTH} characters).")
+        # Only absolute http(s) URLs are accepted: they are rendered as
+        # target=_blank anchors, and scheme/netloc checks also block
+        # javascript: URLs from ever reaching an href.
+        parsed = urlparse(text)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValidationError(f"Expected a valid http(s) URL, got {value!r}")
         return text
 
     if data_type == DataType.INTEGER:

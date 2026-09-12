@@ -32,8 +32,8 @@
     return (uiState.grids && uiState.grids[key]) || null;
   }
 
-  // Transient toast (bottom-right), used for async failures.
-  function showToast(message) {
+  // Transient toast (bottom-right); variant: '' | 'success' | 'error'.
+  function showToast(message, variant) {
     var toast = document.getElementById('toast');
     if (!toast) {
       toast = document.createElement('div');
@@ -43,6 +43,7 @@
       document.body.appendChild(toast);
     }
     toast.textContent = message;
+    toast.className = 'toast' + (variant ? ' toast-' + variant : '');
     toast.classList.add('show');
     clearTimeout(showToast._timer);
     showToast._timer = setTimeout(function () {
@@ -126,6 +127,12 @@
       var label = collapsed ? 'Expand menu' : 'Collapse menu';
       sidebarToggle.setAttribute('title', label);
       sidebarToggle.setAttribute('aria-label', label);
+      // The double-arrow points at the direction the sidebar will move:
+      // right when collapsed (expand back), left when expanded (collapse).
+      var icon = sidebarToggle.querySelector('i');
+      if (icon) {
+        icon.className = collapsed ? 'fa-solid fa-angles-right' : 'fa-solid fa-angles-left';
+      }
     };
     updateToggleLabel();
     sidebarToggle.addEventListener('click', function () {
@@ -557,6 +564,52 @@
   }
 
   document.querySelectorAll('table[data-sortable]').forEach(initSortableTable);
+
+  // Copy-to-clipboard buttons (attributes with "With copy button" + record
+  // form fields). Source: the enclosing control (.field-copy) or the cell's
+  // value span (.cell-value) in grids.
+  function fallbackCopy(text, done) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      done();
+    } catch (e) {
+      /* clipboard unavailable — stay quiet */
+    }
+    document.body.removeChild(ta);
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var wrap = btn.closest('.field-copy');
+    var text = '';
+    if (wrap) {
+      var ctl = wrap.querySelector('input, textarea, select');
+      text = ctl ? ctl.value : '';
+    } else {
+      var cell = btn.closest('td');
+      var val = cell && cell.querySelector('.cell-value');
+      text = val ? val.textContent.trim() : '';
+    }
+    if (!text) return;
+    var notify = function () {
+      showToast('Value copied to clipboard', 'success');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(notify, function () {
+        fallbackCopy(text, notify);
+      });
+    } else {
+      fallbackCopy(text, notify);
+    }
+  });
 
   // Drag & drop upload zones (CSV import modal + backup restore). Delegated
   // so zones also initialize after HTMX swaps a fragment into the modal.

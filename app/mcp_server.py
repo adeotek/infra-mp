@@ -496,9 +496,11 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
     @server.tool(
         description=(
             "Add an attribute to an entity (manage_schema — admin). "
-            "data_type is one of: text, textarea, integer, decimal, date, "
-            "datetime, boolean, enum, reference. For enum pass 'options'; for "
-            "reference pass 'reference_entity_id' and 'cardinality' ('one' or 'many')."
+            "data_type is one of: text, textarea, link, integer, decimal, "
+            "date, datetime, boolean, enum, reference. For enum pass "
+            "'options'; for reference pass 'reference_entity_id' and "
+            "'cardinality' ('one' or 'many'). 'with_copy_button' renders a "
+            "copy-to-clipboard button next to the field."
         )
     )
     def create_attribute(
@@ -508,6 +510,7 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
         is_required: bool = False,
         is_unique: bool = False,
         is_key: bool = False,
+        with_copy_button: bool = False,
         default_value: Any = None,
         hint: str | None = None,
         options: list[str] | None = None,
@@ -529,6 +532,7 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         is_required=is_required,
                         is_unique=is_unique,
                         is_key=is_key,
+                        with_copy_button=with_copy_button,
                         default_value=default_value,
                         hint=hint,
                         options=options,
@@ -552,6 +556,7 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
         is_required: bool | None = None,
         is_unique: bool | None = None,
         is_active: bool | None = None,
+        with_copy_button: bool | None = None,
         default_value: Any = None,
         hint: str | None = None,
         options: list[str] | None = None,
@@ -572,6 +577,11 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         is_required=attribute.is_required if is_required is None else is_required,
                         is_unique=attribute.is_unique if is_unique is None else is_unique,
                         is_key=attribute.is_key,
+                        with_copy_button=(
+                            attribute.with_copy_button
+                            if with_copy_button is None
+                            else with_copy_button
+                        ),
                         default_value=(
                             attribute.default_value if default_value is None else default_value
                         ),

@@ -37,9 +37,14 @@
   {% set field_error = field_errors.get(attr.slug) if field_errors else none %}
   <label class="form-field{% if field_error %} has-error{% endif %}">
     {{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
+    {% set copy_wrap = attr.with_copy_button and attr.data_type not in ('boolean', 'reference') %}
+    {% if copy_wrap %}<div class="field-copy">{% endif %}
     {% if attr.data_type == 'textarea' %}
     <textarea name="{{ attr.slug }}" rows="4" {% if attr.is_required %}required{% endif %}
       {% if field_error %}aria-invalid="true"{% endif %}>{{ val if val is not none else '' }}</textarea>
+    {% elif attr.data_type == 'link' %}
+    <input type="url" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
+      {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% elif attr.data_type == 'boolean' %}
     <input type="checkbox" name="{{ attr.slug }}" {% if val %}checked{% endif %}>
     {% elif attr.data_type == 'integer' %}
@@ -103,6 +108,10 @@
     {% else %}
     <input type="text" name="{{ attr.slug }}" value="{{ val if val is not none else '' }}"
       {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
+    {% endif %}
+    {% if copy_wrap %}
+    <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>
+    </div>
     {% endif %}
     {% if attr.hint %}<span class="hint" id="hint-{{ attr.slug }}">{{ attr.hint }}</span>{% endif %}
     {% if field_error %}<span class="field-error" role="alert">{{ field_error }}</span>{% endif %}

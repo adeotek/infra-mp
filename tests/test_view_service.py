@@ -463,3 +463,124 @@ def test_sort_value_treats_non_finite_as_text():
     assert sort_value("1e999999999")[0] == 1
     # Mixed finite/non-finite sort completes and non-finite values go last.
     assert sorted(["NaN", "2", "10"], key=sort_value) == ["2", "10", "NaN"]
+
+
+@pytest.fixture
+def link_graph(db_session):
+    """Panel/Rack <- Server link graph for link-column href resolution."""
+    panel = create_entity(db_session, EntityCreate(name="Panel"))
+    add_attribute(db_session, panel, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, panel, AttributeCreate(name="URL", data_type=DataType.LINK))
+
+    rack = create_entity(db_session, EntityCreate(name="Rack"))
+    add_attribute(db_session, rack, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, rack, AttributeCreate(name="Panel", data_type=DataType.LINK))
+
+    server = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, server, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, server, AttributeCreate(name="Console", data_type=DataType.LINK))
+    add_attribute(
+        db_session,
+        server,
+        AttributeCreate(
+            name="Rack",
+            data_type=DataType.REFERENCE,
+            reference_entity_id=rack.id,
+            cardinality="one",
+        ),
+    )
+    add_attribute(
+        db_session,
+        server,
+        AttributeCreate(
+            name="Panels",
+            data_type=DataType.REFERENCE,
+            reference_entity_id=panel.id,
+            cardinality="many",
+        ),
+    )
+
+    def _reload(entity):
+        loaded = get_entity_with_attributes(db_session, entity.id)
+        assert loaded is not None
+        return loaded
+
+    panel, rack, server = _reload(panel), _reload(rack), _reload(server)
+    p1 = create_record(
+        db_session, panel, panel.attributes, {"name": "P1", "url": "https://p1.example.com"}
+    )
+    p2 = create_record(
+        db_session, panel, panel.attributes, {"name": "P2", "url": "https://p2.example.com"}
+    )
+    r1 = create_record(
+        db_session, rack, rack.attributes, {"name": "R1", "panel": "https://panel.example.com"}
+    )
+    create_record(db_session, rack, rack.attributes, {"name": "R2"})
+    create_record(
+        db_session,
+        server,
+        server.attributes,
+        {"name": "A", "console": "https://console-a.example.com", "rack": r1.id, "panels": [p1.id]},
+    )
+    create_record(
+        db_session,
+        server,
+        server.attributes,
+        {"name": "B", "rack": 2, "panels": [p1.id, p2.id]},
+    )
+    create_record(db_session, server, server.attributes, {"name": "C"})
+    return {"panel": panel, "rack": rack, "server": server}
+
+
+def _rows_by_name(db, entity, config):
+    records, columns = apply_config(
+        entity, list_records(db, entity.id), config, list_entities(db), db=db
+    )
+    rows = build_view_rows(db, entity, records, columns)
+    return {r["record"].data.get("name"): r for r in rows}, columns
+
+
+def test_base_link_column_provides_hrefs(db_session, link_graph):
+    server = link_graph["server"]
+    rows, _ = _rows_by_name(db_session, server, {})
+    assert rows["A"]["cells"]["console"] == "https://console-a.example.com"
+    assert rows["A"]["link_hrefs"]["console"] == "https://console-a.example.com"
+    # Non-link and empty cells carry no href.
+    assert "name" not in rows["A"]["link_hrefs"]
+    assert "console" not in rows["B"]["link_hrefs"]  # B has no console URL
+
+
+def test_related_link_column_provides_href(db_session, link_graph):
+    server, rack = link_graph["server"], link_graph["rack"]
+    config = {
+        "columns": [
+            {
+                "path": [{"dir": "up", "ref": "rack", "to": rack.id, "many": "first"}],
+                "attr": "panel",
+            }
+        ]
+    }
+    rows, columns = _rows_by_name(db_session, server, config)
+    key = columns[0].key
+    assert rows["A"]["cells"][key] == "https://panel.example.com"
+    assert rows["A"]["link_hrefs"][key] == "https://panel.example.com"
+    # R2 has no panel URL -> dash, no link.
+    assert rows["B"]["cells"][key] == "—"
+    assert key not in rows["B"]["link_hrefs"]
+
+
+def test_related_link_column_many_all_is_plain_text(db_session, link_graph):
+    server, panel = link_graph["server"], link_graph["panel"]
+    config = {
+        "columns": [
+            {"path": [{"dir": "up", "ref": "panels", "to": panel.id, "many": "all"}], "attr": "url"}
+        ]
+    }
+    rows, columns = _rows_by_name(db_session, server, config)
+    key = columns[0].key
+    # Two URLs joined -> no single link target.
+    assert rows["B"]["cells"][key] == "https://p1.example.com, https://p2.example.com"
+    assert key not in rows["B"]["link_hrefs"]
+    # Exactly one reached URL -> linkable.
+    assert rows["A"]["cells"][key] == "https://p1.example.com"
+    assert rows["A"]["link_hrefs"][key] == "https://p1.example.com"

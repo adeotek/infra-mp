@@ -1,5 +1,7 @@
 """HTTP tests for entity and attribute (schema) routes."""
 
+import re
+
 
 def test_entities_index(client, login):
     login()
@@ -437,3 +439,61 @@ def test_unique_attribute_rejects_duplicate_on_record_edit(client, login):
         ).status_code
         == 303
     )
+
+
+def test_attribute_form_has_copy_button_checkbox(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert 'name="with_copy_button"' in html
+
+
+def test_attribute_form_offers_link_type(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert '<option value="link"' in html
+
+
+def test_attribute_detail_shows_copy_column(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Console", "data_type": "link", "with_copy_button": "on"},
+        follow_redirects=False,
+    )
+    html = client.get("/entities/1").text
+    assert "<th>Copy</th>" in html
+    # Type cell, then Required(—) · Unique(—) · Copy(Yes); template
+    # newlines between cells make a whitespace-stripped comparison safer.
+    compact = re.sub(r">\s+<", "><", html)
+    assert "<td><code>link</code></td><td>—</td><td>—</td><td>Yes</td>" in compact
+
+
+def test_copy_button_flag_editable_with_records(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "IP", "data_type": "text"},
+        follow_redirects=False,
+    )
+    assert (
+        client.post(
+            "/entities/1/records", data={"ip": "10.0.0.1"}, follow_redirects=False
+        ).status_code
+        == 303
+    )
+    # Display-only flag: flipping it after records exist is allowed.
+    resp = client.post(
+        "/attributes/1/edit",
+        data={"name": "IP", "data_type": "text", "with_copy_button": "on"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/entities/1").text
+    # Type cell, then Required(—) · Unique(—) · Copy(Yes); template
+    # newlines between cells make a whitespace-stripped comparison safer.
+    compact = re.sub(r">\s+<", "><", html)
+    assert "<td><code>text</code></td><td>—</td><td>—</td><td>Yes</td>" in compact

@@ -159,6 +159,7 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         data_type=data.data_type.value,
         is_required=data.is_required,
         is_unique=data.is_unique,
+        with_copy_button=data.with_copy_button,
         is_key=data.is_key,
         is_active=(True if data.is_required else data.is_active),
         default_value=coerce_value(data.data_type, data.default_value),
@@ -236,6 +237,7 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     attribute.data_type = data.data_type.value
     attribute.is_required = data.is_required
     attribute.is_unique = data.is_unique
+    attribute.with_copy_button = data.with_copy_button
     attribute.is_key = data.is_key
     attribute.default_value = coerce_value(data.data_type, data.default_value)
     attribute.hint = data.hint.strip() if data.hint else None
