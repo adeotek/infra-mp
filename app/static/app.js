@@ -600,7 +600,7 @@
     }
     if (!text) return;
     var notify = function () {
-      showToast('Value copyed to clipboard', 'success');
+      showToast('Value copied to clipboard', 'success');
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(notify, function () {
