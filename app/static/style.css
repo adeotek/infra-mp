@@ -29,6 +29,11 @@
   --btn-teal: #0d9488;
   --btn-teal-hover: #0f766e;
   --btn-danger: #dc2626;
+  /* Icon-only hover blue for the row action icons (.action-btn-edit): one step
+     LIGHTER than --btn-primary (#2563eb). --btn-primary-hover is #1d4ed8
+     (darker) in this theme and must stay that way — it fills the Add/Create
+     buttons, whose white text needs that contrast. */
+  --icon-primary-hover: #3b82f6;
 }
 
 /* Dark theme (default) */
@@ -61,6 +66,9 @@
   --btn-teal: #0f766e;
   --btn-teal-hover: #0d9488;
   --btn-danger: #dc2626;
+  /* Deliberately the same value as in :root (see the comment there): the icon
+     hover blue is theme-independent, unlike the button fills above. */
+  --icon-primary-hover: #3b82f6;
 }
 
 * { box-sizing: border-box; }
@@ -573,7 +581,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 /* Row action icons adopt the button palette without a button background: the
    edit pencil is --btn-primary (the Add/Create blue) and the trash can is
    --btn-danger (the Delete red). Hover only shifts the icon colour — a lighter
-   blue (--btn-primary-hover is #3b82f6 in dark, #1d4ed8 in light) and the
+   blue (--icon-primary-hover, lighter than the base in BOTH themes) and the
    darker red .btn-danger uses on hover. Never a fill: the row highlight is the
    only hover feedback, so `background: none` overrides .action-btn:hover. */
 .action-btn-edit {
@@ -581,7 +589,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 }
 .action-btn-edit:hover {
   background: none;
-  color: var(--btn-primary-hover);
+  color: var(--icon-primary-hover);
 }
 .action-btn-danger {
   color: var(--btn-danger);

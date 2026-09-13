@@ -52,8 +52,37 @@ def test_edit_icon_is_the_primary_blue(client, login):
     base = css.split(".action-btn-edit {")[1].split("}")[0]
     assert "color: var(--btn-primary)" in base
     hover = css.split(".action-btn-edit:hover {")[1].split("}")[0]
-    assert "color: var(--btn-primary-hover)" in hover
+    assert "color: var(--icon-primary-hover)" in hover
     assert "background: none" in hover
+
+
+def _token(css: str, name: str) -> str:
+    """The first (light-theme) declaration of a CSS custom property."""
+    return css.split(f"{name}: ")[1].split(";")[0].strip()
+
+
+def _relative_luminance(hex_color: str) -> float:
+    """WCAG relative luminance of a #rrggbb colour."""
+
+    def channel(value: int) -> float:
+        srgb = value / 255
+        return srgb / 12.92 if srgb <= 0.04045 else ((srgb + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(int(hex_color[i : i + 2], 16)) for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def test_edit_icon_hover_blue_is_lighter_than_its_base(client, login):
+    # Requirement, not a magic hex: the pencil must get LIGHTER on hover. The
+    # button token --btn-primary-hover is darker in light theme, hence the
+    # dedicated --icon-primary-hover.
+    login()
+    css = client.get("/static/style.css").text
+    base = _token(css, "--btn-primary")
+    hover = _token(css, "--icon-primary-hover")
+    assert _relative_luminance(hover) > _relative_luminance(base), (base, hover)
+    # Defined in both theme blocks so the icon hover is theme-independent.
+    assert css.count(f"--icon-primary-hover: {hover}") == 2
 
 
 def test_delete_icon_is_the_danger_red_without_a_background(client, login):
