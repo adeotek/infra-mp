@@ -85,16 +85,43 @@ def test_edit_icon_hover_blue_is_lighter_than_its_base(client, login):
     assert css.count(f"--icon-primary-hover: {hover}") == 2
 
 
-def test_delete_icon_is_the_danger_red_without_a_background(client, login):
+def test_delete_icon_uses_the_lighter_accent_and_darkens_on_hover(client, login):
     login()
     css = client.get("/static/style.css").text
     base = css.split(".action-btn-danger {")[1].split("}")[0]
-    assert "color: var(--btn-danger)" in base
+    # The accent red (lighter), not the darker --btn-danger button fill.
+    assert "color: var(--danger)" in base
     hover = css.split(".action-btn-danger:hover {")[1].split("}")[0]
-    # Darker red, derived exactly like the .btn-danger hover fill.
-    assert "color: color-mix(in srgb, var(--btn-danger) 88%, #000)" in hover
+    assert "color: var(--icon-danger-hover)" in hover
     # The shared .action-btn:hover fill must not survive here.
     assert "background: none" in hover
+
+
+def _theme_block(css: str, theme: str) -> str:
+    """The declaration block of one theme (light = :root, dark = [data-theme])."""
+    marker = ":root {" if theme == "light" else '[data-theme="dark"] {'
+    return css.split(marker)[1].split("}")[0]
+
+
+def _contrast_ratio(fg: str, bg: str) -> float:
+    first, second = _relative_luminance(fg), _relative_luminance(bg)
+    hi, lo = max(first, second), min(first, second)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_delete_icon_reds_are_light_to_dark_with_contrast_in_both_themes(client, login):
+    # Requirement: lighter red at rest, darker on hover, and >= 3:1 for both
+    # states against the backdrops the icon actually sits on (a row is --surface
+    # at rest and --hover while hovered).
+    login()
+    css = client.get("/static/style.css").text
+    for theme in ("light", "dark"):
+        block = _theme_block(css, theme)
+        rest = _token(block, "--danger")
+        hover = _token(block, "--icon-danger-hover")
+        assert _relative_luminance(hover) < _relative_luminance(rest), theme
+        assert _contrast_ratio(rest, _token(block, "--surface")) >= 3.0, (theme, rest)
+        assert _contrast_ratio(hover, _token(block, "--hover")) >= 3.0, (theme, hover)
 
 
 def test_grid_action_icons_carry_the_color_classes(client, login):

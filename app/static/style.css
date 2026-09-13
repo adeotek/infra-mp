@@ -29,6 +29,9 @@
   --btn-teal: #0d9488;
   --btn-teal-hover: #0f766e;
   --btn-danger: #dc2626;
+  /* Row-icon hover red for .action-btn-danger: darker than the --danger accent
+     (#dc2626 in this theme) and still 5.8:1 against the hovered row. */
+  --icon-danger-hover: #b91c1c;
   /* Icon-only hover blue for the row action icons (.action-btn-edit): one step
      LIGHTER than --btn-primary (#2563eb). --btn-primary-hover is #1d4ed8
      (darker) in this theme and must stay that way — it fills the Add/Create
@@ -66,6 +69,10 @@
   --btn-teal: #0f766e;
   --btn-teal-hover: #0d9488;
   --btn-danger: #dc2626;
+  /* Row-icon hover red for .action-btn-danger: darker than the --danger accent
+     (#ef4444 here). Chosen as the darkest red that still clears 3:1 on the
+     hovered row backdrop (--hover); #dc2626 would fall to 2.94:1. */
+  --icon-danger-hover: #dd3838;
   /* Deliberately the same value as in :root (see the comment there): the icon
      hover blue is theme-independent, unlike the button fills above. */
   --icon-primary-hover: #3b82f6;
@@ -579,11 +586,14 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 }
 .action-btn:hover { background: var(--hover); color: var(--primary); text-decoration: none; }
 /* Row action icons adopt the button palette without a button background: the
-   edit pencil is --btn-primary (the Add/Create blue) and the trash can is
-   --btn-danger (the Delete red). Hover only shifts the icon colour — a lighter
-   blue (--icon-primary-hover, lighter than the base in BOTH themes) and the
-   darker red .btn-danger uses on hover. Never a fill: the row highlight is the
-   only hover feedback, so `background: none` overrides .action-btn:hover. */
+   edit pencil is --btn-primary (the Add/Create blue) with a lighter hover, the
+   trash can is the --danger accent — the LIGHTER of the two reds — darkening on
+   hover through --icon-danger-hover (theme-specific: see the token comments).
+   Never a fill: the row highlight is the only hover feedback, so
+   `background: none` overrides .action-btn:hover.
+   The .btn-danger BUTTON keeps the darker --btn-danger fill on purpose: as a
+   background it carries white text, and only fills up to luminance 0.183 clear
+   AA 4.5:1 (#dc2626 gives 4.83:1, #ef4444 would drop to 3.76:1). */
 .action-btn-edit {
   color: var(--btn-primary);
 }
@@ -592,11 +602,11 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   color: var(--icon-primary-hover);
 }
 .action-btn-danger {
-  color: var(--btn-danger);
+  color: var(--danger);
 }
 .action-btn-danger:hover {
   background: none;
-  color: color-mix(in srgb, var(--btn-danger) 88%, #000);
+  color: var(--icon-danger-hover);
 }
 .table-wrap { overflow-x: auto; }
 /* Grids inside a scroll wrapper keep one-line cells so wide content
