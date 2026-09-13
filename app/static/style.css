@@ -29,6 +29,11 @@
   --btn-teal: #0d9488;
   --btn-teal-hover: #0f766e;
   --btn-danger: #dc2626;
+  /* .btn-danger fill on hover: lighter than the rest state, but CAPPED — the
+     button carries white text, which needs AA 4.5:1, and only fills up to
+     luminance 0.183 pass (#e22e2e is the hard ceiling at 4.50:1). Icons are not
+     text-backed and use the brighter --icon-danger-hover instead. */
+  --btn-danger-hover: #df2f2f;
   /* Row-icon hover red for .action-btn-danger: one step LIGHTER than the
      --btn-danger fill it starts from (#dc2626 -> #ef4444), mirroring the edit
      pencil's --icon-primary-hover. Theme-independent, so it is the same value
@@ -71,6 +76,9 @@
   --btn-teal: #0f766e;
   --btn-teal-hover: #0d9488;
   --btn-danger: #dc2626;
+  /* Same value as in :root (see the comment there) — theme-independent, and
+     capped by the white text the fill carries. */
+  --btn-danger-hover: #df2f2f;
   /* Same value as in :root (see the comment there) — like --icon-primary-hover,
      the icon hover red is theme-independent. */
   --icon-danger-hover: #ef4444;
@@ -446,7 +454,7 @@ form input:focus, form select:focus, form textarea:focus,
 .btn-teal { background: var(--btn-teal); border-color: var(--btn-teal); color: #fff; }
 .btn-teal:hover { background: var(--btn-teal-hover); border-color: var(--btn-teal-hover); }
 .btn-danger { background: var(--btn-danger); border-color: var(--btn-danger); color: #fff; }
-.btn-danger:hover { background: color-mix(in srgb, var(--btn-danger) 88%, #000); border-color: var(--btn-danger); }
+.btn-danger:hover { background: var(--btn-danger-hover); border-color: var(--btn-danger-hover); }
 .btn-block { width: 100%; }
 
 /* -------------------------------------------------------- Flash messages */
@@ -966,12 +974,16 @@ code {
   border-radius: var(--radius);
 }
 .field-copy .copy-btn:hover { color: var(--primary); border-color: var(--muted); }
-/* Grid cells: value + copy icon side by side (td stays a plain table cell). */
-.cell-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
-.cell-wrap .cell-value { word-break: break-word; }
+/* Grid cells: value + copy icon side by side (td stays a plain table cell).
+   The wrapper fills the cell (block-level flex) so the icon is pinned to the
+   cell's RIGHT edge — the same x across every row — while the value keeps its
+   full width. flex-shrink: 0 keeps the icon from being squeezed out, so it is
+   always visible. */
+.cell-wrap { display: flex; align-items: center; gap: 0.4rem; }
+.cell-wrap .cell-value { flex: 1 1 auto; min-width: 0; word-break: break-word; }
 /* In the data grids the copy icon is teal — the same teal as the export
    buttons (--btn-teal; contrast vs the surface: 3.1:1 dark, 3.7:1 light). */
-.cell-wrap .copy-btn { color: var(--btn-teal); }
+.cell-wrap .copy-btn { flex-shrink: 0; color: var(--btn-teal); }
 .cell-wrap .copy-btn:hover { color: var(--btn-teal-hover); background: var(--hover); }
 
 /* --------------------------------------------- Toast (async failures) */

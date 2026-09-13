@@ -163,3 +163,29 @@ def test_grid_copy_icon_is_teal_css(client, login):
     assert "color: var(--btn-teal)" in block
     hover = css.split(".cell-wrap .copy-btn:hover {")[1].split("}")[0]
     assert "color: var(--btn-teal-hover)" in hover
+
+
+def test_grid_copy_icon_is_right_aligned_and_never_squeezed(client, login):
+    # The wrapper fills the cell so the icon lands on the cell's right edge (the
+    # same x on every row), the value takes the free space, and the icon cannot
+    # be shrunk out of view.
+    login()
+    css = client.get("/static/style.css").text
+    assert "display: flex" in css.split(".cell-wrap {")[1].split("}")[0]
+    assert "flex: 1 1 auto" in css.split(".cell-wrap .cell-value {")[1].split("}")[0]
+    assert "flex-shrink: 0" in css.split(".cell-wrap .copy-btn {")[1].split("}")[0]
+
+
+def test_danger_button_hover_is_lighter_and_keeps_white_text_aa(client, login):
+    login()
+    css = client.get("/static/style.css").text
+    rest = _token(css, "--btn-danger")
+    hover = _token(css, "--btn-danger-hover")
+    assert _relative_luminance(hover) > _relative_luminance(rest), (rest, hover)
+    # The fill carries white text in both themes: both states must stay AA.
+    assert _contrast_ratio(rest, "#ffffff") >= 4.5, rest
+    assert _contrast_ratio(hover, "#ffffff") >= 4.5, hover
+    assert css.count(f"--btn-danger-hover: {hover}") == 2
+    rule = css.split(".btn-danger:hover {")[1].split("}")[0]
+    assert "background: var(--btn-danger-hover)" in rule
+    assert "border-color: var(--btn-danger-hover)" in rule

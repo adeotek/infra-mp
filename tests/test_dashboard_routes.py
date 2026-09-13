@@ -328,6 +328,8 @@ def test_table_widget_link_cell_without_a_value_is_plain_text(client, login):
     html = client.get("/dashboard").text
     assert html.count('<a href="https://panel.example.com"') == 1
     assert '<span class="cell-value">—</span>' in html
+    # The empty cell gets no copy button either — only web01 holds a Console URL.
+    assert html.count('class="copy-btn"') == 1
 
 
 def test_table_widget_without_copy_flag_has_no_copy_button(client, login):
