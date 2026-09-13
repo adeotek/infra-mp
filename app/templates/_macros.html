@@ -1,0 +1,13 @@
+{# Shared data-grid cell. Link attributes render as target=_blank anchors and
+   attributes flagged with_copy_button get a copy icon — used by the records
+   grid, the view grid and the dashboard table widgets so all three render
+   identically. Args: value = display string, href = link target or none,
+   copy = the attribute's with_copy_button flag. #}
+{% macro grid_cell(value, href=none, copy=false) -%}
+<span class="cell-wrap">
+  <span class="cell-value">{% if href %}<a href="{{ href }}" target="_blank" rel="noopener">{{ value }}</a>{% else %}{{ value }}{% endif %}</span>
+  {% if copy %}
+  <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+  {% endif %}
+</span>
+{%- endmacro %}
