@@ -497,3 +497,120 @@ def test_copy_button_flag_editable_with_records(client, login):
     # newlines between cells make a whitespace-stripped comparison safer.
     compact = re.sub(r">\s+<", "><", html)
     assert "<td><code>text</code></td><td>—</td><td>—</td><td>Yes</td>" in compact
+
+
+# --------------------------------------------------------------------------- #
+# Data-type conversions from the edit form
+# --------------------------------------------------------------------------- #
+
+
+def _seed_panel_attribute(client, login, value: str = "https://console.example"):
+    """Entity 1 with a text 'Panel' attribute and one record holding ``value``."""
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Panel", "data_type": "text"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"panel": value}, follow_redirects=False)
+
+
+def _type_options(html: str) -> str:
+    """The <option> markup of the attribute form's Type select."""
+    return html.split('name="data_type"')[1].split("</select>")[0]
+
+
+def test_text_to_link_conversion_with_records(client, login):
+    _seed_panel_attribute(client, login)
+    resp = client.post(
+        "/attributes/1/edit", data={"name": "Panel", "data_type": "link"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert "<code>link</code>" in client.get("/entities/1").text
+
+
+def test_text_to_link_conversion_rejected_when_a_record_is_not_a_url(client, login):
+    _seed_panel_attribute(client, login, value="see the docs")
+    resp = client.post(
+        "/attributes/1/edit", data={"name": "Panel", "data_type": "link"}, follow_redirects=False
+    )
+    assert resp.status_code == 400
+    assert "not a valid http(s) URL" in resp.text
+    assert "Nothing was changed" in resp.text
+    # Rolled back: the attribute is still text.
+    assert "<code>text</code>" in client.get("/entities/1").text
+
+
+def test_textarea_to_text_conversion_rejected_on_a_multiline_record(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Note", "data_type": "textarea"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={"note": "line one\nline two"}, follow_redirects=False)
+    resp = client.post(
+        "/attributes/1/edit", data={"name": "Note", "data_type": "text"}, follow_redirects=False
+    )
+    assert resp.status_code == 400
+    assert "would truncate" in resp.text
+    assert "<code>textarea</code>" in client.get("/entities/1").text
+
+
+def test_attribute_form_disables_unconvertible_types_with_records(client, login):
+    _seed_panel_attribute(client, login)
+    options = _type_options(client.get("/attributes/1/edit").text)
+    assert '<option value="text" selected>text</option>' in options
+    assert '<option value="link">link</option>' in options
+    assert '<option value="textarea">textarea</option>' in options
+    assert '<option value="integer" disabled>integer</option>' in options
+    assert '<option value="enum" disabled>enum</option>' in options
+
+
+def test_attribute_form_offers_every_type_without_records(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Panel", "data_type": "text"},
+        follow_redirects=False,
+    )
+    options = _type_options(client.get("/attributes/1/edit").text)
+    assert '<option value="integer">integer</option>' in options
+    assert "disabled" not in options
+
+
+# --------------------------------------------------------------------------- #
+# Attribute form layout
+# --------------------------------------------------------------------------- #
+
+
+def test_checkbox_help_renders_below_the_checkbox(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    # Not inline in the checkbox row any more...
+    assert "Unique <span" not in html
+    assert "Key <span" not in html
+    # ...but a sibling of the checkbox label, wrapped onto its own line by CSS.
+    assert 'class="checkbox-label has-help"' in html
+    assert '<span class="checkbox-help muted">Values must be unique across records.</span>' in html
+    assert '<span class="checkbox-help muted">Part of the entity key' in html
+    assert '<span class="checkbox-help muted">Renders a copy icon' in html
+
+    css = client.get("/static/style.css").text
+    assert ".checkbox-label.has-help { flex-wrap: wrap;" in css
+    assert "flex-basis: 100%" in css.split(".checkbox-help {")[1].split("}")[0]
+
+
+def test_attribute_form_modal_is_ten_percent_wider(client, login):
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    html = client.get("/entities/1/attributes/new").text
+    assert 'class="attribute-form"' in html
+    # 520px default modal * 1.1.
+    assert (
+        ".modal:has(.attribute-form) { max-width: 572px; }" in client.get("/static/style.css").text
+    )

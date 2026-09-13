@@ -542,6 +542,9 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   margin-bottom: 1rem;
 }
 .checkbox-label input { width: auto; margin-top: 0; }
+/* Checkboxes with help text: the explanation wraps onto its own line below. */
+.checkbox-label.has-help { flex-wrap: wrap; row-gap: 0.2rem; }
+.checkbox-help { flex-basis: 100%; font-size: 0.85em; font-weight: 400; line-height: 1.4; }
 
 /* Conditional groups (attribute form): hidden only when JS is available so
    the no-JS fallback can configure every attribute type. */
@@ -826,6 +829,10 @@ code {
   box-shadow: var(--shadow);
 }
 .modal::backdrop { background: rgba(0, 0, 0, 0.55); }
+/* The attribute add/edit form carries more conditional fields than the other
+   dialogs, so its modal is 10% wider (520px -> 572px). :has() beats setting
+   an inline width from the fragment, which would have to be reset on close. */
+.modal:has(.attribute-form) { max-width: 572px; }
 .modal-header {
   display: flex;
   justify-content: flex-end;
@@ -931,6 +938,10 @@ code {
 /* Grid cells: value + copy icon side by side (td stays a plain table cell). */
 .cell-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
 .cell-wrap .cell-value { word-break: break-word; }
+/* In the data grids the copy icon is teal — the same teal as the export
+   buttons (--btn-teal; contrast vs the surface: 3.1:1 dark, 3.7:1 light). */
+.cell-wrap .copy-btn { color: var(--btn-teal); }
+.cell-wrap .copy-btn:hover { color: var(--btn-teal-hover); background: var(--hover); }
 
 /* --------------------------------------------- Toast (async failures) */
 .toast {

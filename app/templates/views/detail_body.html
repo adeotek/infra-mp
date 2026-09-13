@@ -79,7 +79,7 @@
             {% set href = row.link_hrefs.get(c.key) if row.link_hrefs else none %}
             <span class="cell-value">{% if href %}<a href="{{ href }}" target="_blank" rel="noopener">{{ row.cells[c.key] }}</a>{% else %}{{ row.cells[c.key] }}{% endif %}</span>
             {% if c.attr.with_copy_button %}
-            <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>
+            <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
             {% endif %}
           </span>
         </td>

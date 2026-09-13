@@ -27,6 +27,7 @@ from app.services.schema_service import (
     get_entity,
     get_entity_with_attributes,
     list_entities,
+    permitted_data_types,
     reorder_attributes,
     update_attribute,
     update_entity,
@@ -247,6 +248,7 @@ def new_attribute_page(
             "attribute": None,
             "entities": list_entities(db),
             "data_types": list(DataType),
+            "permitted_data_types": None,
             "action_url": f"/entities/{entity_id}/attributes",
             "has_records": entity_has_records(db, entity_id),
         },
@@ -341,6 +343,7 @@ def edit_attribute_page(
             "attribute": attribute,
             "entities": list_entities(db),
             "data_types": list(DataType),
+            "permitted_data_types": permitted_data_types(db, attribute),
             "action_url": f"/attributes/{attribute_id}/edit",
             "has_records": entity_has_records(db, attribute.entity_id),
         },
@@ -431,6 +434,9 @@ def _render_attribute_form_error(
             "attribute": attribute,
             "entities": list_entities(db),
             "data_types": list(DataType),
+            "permitted_data_types": (
+                permitted_data_types(db, attribute) if attribute is not None else None
+            ),
             "action_url": (
                 f"/entities/{entity.id}/attributes"
                 if attribute is None

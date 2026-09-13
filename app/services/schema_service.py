@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -11,6 +13,7 @@ from app.models.enums import DataType
 from app.models.record import Record
 from app.schemas.attribute import AttributeCreate, AttributeUpdate
 from app.schemas.entity import EntityCreate, EntityUpdate
+from app.services.record_service import build_record_titles, list_records
 from app.services.slugs import slugify, unique_slug
 from app.services.validation import ValidationError, coerce_value
 
@@ -150,6 +153,144 @@ def entity_has_records(db: Session, entity_id: int) -> bool:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Data-type changes
+# --------------------------------------------------------------------------- #
+
+# Conversions allowed while the entity already has records: text, textarea and
+# link all persist plain strings, so these keep every stored value meaningful.
+# Every other transition (integer -> boolean, text -> reference, ...) would
+# silently reinterpret the JSON already in the rows and stays refused.
+_PERMITTED_TYPE_CHANGES: frozenset[tuple[DataType, DataType]] = frozenset(
+    {
+        (DataType.TEXT, DataType.LINK),
+        (DataType.LINK, DataType.TEXT),
+        (DataType.TEXT, DataType.TEXTAREA),
+        (DataType.TEXTAREA, DataType.TEXT),
+    }
+)
+
+# Failures reported in full before the message switches to "+N more".
+_MAX_REPORTED_VALUES = 3
+
+
+def _conversion_targets(data_type: DataType) -> set[DataType]:
+    """Types ``data_type`` may be converted to while the entity has records."""
+    return {to for frm, to in _PERMITTED_TYPE_CHANGES if frm == data_type}
+
+
+def permitted_data_types(db: Session, attribute: Attribute) -> set[DataType]:
+    """Data types the edit form offers for ``attribute``.
+
+    All of them while the entity has no records; otherwise the current type
+    plus the conversions that keep every stored value valid. The form disables
+    everything outside this set, and ``_validate_type_change`` rejects it
+    server-side if the request is hand-crafted anyway.
+    """
+    current = attribute.data_type_enum
+    if not entity_has_records(db, attribute.entity_id):
+        return set(DataType)
+    return {current} | _conversion_targets(current)
+
+
+def _validate_type_change(db: Session, attribute: Attribute, new_type: DataType) -> None:
+    """Guard a data-type change on an attribute whose entity already has records.
+
+    All-or-nothing: every live record is checked *before* the definition is
+    touched, so a rejected conversion leaves the attribute and its values
+    exactly as they were.
+    """
+    current = attribute.data_type_enum
+    targets = _conversion_targets(current)
+    if new_type not in targets:
+        if not targets:
+            raise SchemaError(
+                f"The data type of '{attribute.name}' ({current.value}) cannot be changed "
+                "while the entity has records."
+            )
+        options = " or ".join(sorted(t.value for t in targets))
+        raise SchemaError(
+            f"The data type of '{attribute.name}' ({current.value}) can only be changed to "
+            f"{options} while the entity has records."
+        )
+    if new_type == DataType.LINK:
+        _require_link_values(db, attribute)
+    else:
+        _require_single_line_values(db, attribute)
+
+
+def _reject_values(
+    attribute: Attribute,
+    target: DataType,
+    failures: list[str],
+    total: int,
+    problem: str,
+) -> None:
+    """Raise ``SchemaError`` listing the records that block the conversion."""
+    if not failures:
+        return
+    shown = ", ".join(failures[:_MAX_REPORTED_VALUES])
+    if len(failures) > _MAX_REPORTED_VALUES:
+        shown += f", +{len(failures) - _MAX_REPORTED_VALUES} more"
+    raise SchemaError(
+        f"Cannot change '{attribute.name}' to {target.value}: {len(failures)} of {total} "
+        f"record(s) {problem} ({shown}). Nothing was changed."
+    )
+
+
+def _record_values(db: Session, attribute: Attribute) -> list[tuple[Record, str, Any]]:
+    """Live records paired with their display title and this attribute's value."""
+    titles = build_record_titles(db, attribute.entity_id)
+    return [
+        (record, titles.get(record.id, f"#{record.id}"), (record.data or {}).get(attribute.slug))
+        for record in list_records(db, attribute.entity_id)
+    ]
+
+
+def _require_link_values(db: Session, attribute: Attribute) -> None:
+    """text -> link: every stored value must already be a valid http(s) URL."""
+    entries = _record_values(db, attribute)
+    failures: list[str] = []
+    for _record, label, value in entries:
+        if value in (None, ""):
+            continue
+        try:
+            coerce_value(DataType.LINK, value)
+        except ValidationError:
+            failures.append(f"{label}: {value!r}")
+    _reject_values(
+        attribute,
+        DataType.LINK,
+        failures,
+        len(entries),
+        "hold a value that is not a valid http(s) URL",
+    )
+
+
+def _require_single_line_values(db: Session, attribute: Attribute) -> None:
+    """textarea -> text: no stored value may contain a line break.
+
+    A ``text`` attribute is edited in a single-line ``<input>``, and the HTML
+    value-sanitisation algorithm strips CR/LF from those — so a multi-line
+    value would be silently truncated the next time the record is saved.
+    """
+    entries = _record_values(db, attribute)
+    failures: list[str] = []
+    for _record, label, value in entries:
+        if not isinstance(value, str) or not ("\n" in value or "\r" in value):
+            continue
+        lines = value.splitlines()
+        first_line = lines[0][:40] if lines else ""
+        failures.append(f"{label}: {len(lines)} lines, starts with {first_line!r}")
+    _reject_values(
+        attribute,
+        DataType.TEXT,
+        failures,
+        len(entries),
+        "hold a multi-line value that a single-line field would truncate",
+    )
+
+
 def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribute:
     _validate_definition(data, db)
     attribute = Attribute(
@@ -196,9 +337,11 @@ def update_attribute(db: Session, attribute: Attribute, data: AttributeUpdate) -
     if has_records:
         # Structural changes would leave existing values un-revalidated
         # (e.g. INTEGER->BOOLEAN leaves 8 in the JSON); refuse them while the
-        # entity has data. Display-only and default-value edits stay allowed.
+        # entity has data, except the string-to-string conversions in
+        # _PERMITTED_TYPE_CHANGES (validated against every record first).
+        # Display-only and default-value edits stay allowed.
         if data.data_type != attribute.data_type_enum:
-            raise SchemaError("The data type can only be changed while the entity has no records.")
+            _validate_type_change(db, attribute, data.data_type)
         if data.is_unique != attribute.is_unique:
             raise SchemaError(
                 "The unique flag can only be changed while the entity has no records."
