@@ -570,11 +570,26 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   text-decoration: none;
 }
 .action-btn:hover { background: var(--hover); color: var(--primary); text-decoration: none; }
-.action-btn-edit:hover {
-  background: var(--hover);
-  color: var(--primary);
+/* Row action icons adopt the button palette without a button background: the
+   edit pencil is --btn-primary (the Add/Create blue) and the trash can is
+   --btn-danger (the Delete red). Hover only shifts the icon colour — a lighter
+   blue (--btn-primary-hover is #3b82f6 in dark, #1d4ed8 in light) and the
+   darker red .btn-danger uses on hover. Never a fill: the row highlight is the
+   only hover feedback, so `background: none` overrides .action-btn:hover. */
+.action-btn-edit {
+  color: var(--btn-primary);
 }
-.action-btn-danger:hover { background: var(--danger-bg); color: var(--danger); }
+.action-btn-edit:hover {
+  background: none;
+  color: var(--btn-primary-hover);
+}
+.action-btn-danger {
+  color: var(--btn-danger);
+}
+.action-btn-danger:hover {
+  background: none;
+  color: color-mix(in srgb, var(--btn-danger) 88%, #000);
+}
 .table-wrap { overflow-x: auto; }
 /* Grids inside a scroll wrapper keep one-line cells so wide content
    overflows horizontally instead of squeezing the columns. */
