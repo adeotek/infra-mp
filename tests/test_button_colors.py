@@ -79,7 +79,7 @@ def test_row_icon_hover_tokens_brighten_the_base_colour(client, login):
     css = client.get("/static/style.css").text
     pairs = (
         ("--btn-primary", "--icon-primary-hover"),
-        ("--btn-danger", "--icon-danger-hover"),
+        ("--btn-danger", "--danger-hover"),
     )
     for base_token, hover_token in pairs:
         base, hover = _token(css, base_token), _token(css, hover_token)
@@ -94,7 +94,7 @@ def test_delete_icon_uses_the_danger_red_and_brightens_on_hover(client, login):
     base = css.split(".action-btn-danger {")[1].split("}")[0]
     assert "color: var(--btn-danger)" in base
     hover = css.split(".action-btn-danger:hover {")[1].split("}")[0]
-    assert "color: var(--icon-danger-hover)" in hover
+    assert "color: var(--danger-hover)" in hover
     # The shared .action-btn:hover fill must not survive here.
     assert "background: none" in hover
 
@@ -120,7 +120,7 @@ def test_delete_icon_reds_keep_3_to_1_contrast_in_both_themes(client, login):
     for theme in ("light", "dark"):
         block = _theme_block(css, theme)
         rest = _token(block, "--btn-danger")
-        hover = _token(block, "--icon-danger-hover")
+        hover = _token(block, "--danger-hover")
         assert _contrast_ratio(rest, _token(block, "--surface")) >= 3.0, (theme, rest)
         assert _contrast_ratio(hover, _token(block, "--hover")) >= 3.0, (theme, hover)
 
@@ -165,27 +165,34 @@ def test_grid_copy_icon_is_teal_css(client, login):
     assert "color: var(--btn-teal-hover)" in hover
 
 
-def test_grid_copy_icon_is_right_aligned_and_never_squeezed(client, login):
-    # The wrapper fills the cell so the icon lands on the cell's right edge (the
-    # same x on every row), the value takes the free space, and the icon cannot
-    # be shrunk out of view.
+def test_grid_copy_icon_follows_the_value_inline(client, login):
+    # Rolled back in v0.8.10: the icon sits directly after the value (inline
+    # flex, value at its natural width) instead of being right-aligned in the
+    # cell.
     login()
     css = client.get("/static/style.css").text
-    assert "display: flex" in css.split(".cell-wrap {")[1].split("}")[0]
-    assert "flex: 1 1 auto" in css.split(".cell-wrap .cell-value {")[1].split("}")[0]
-    assert "flex-shrink: 0" in css.split(".cell-wrap .copy-btn {")[1].split("}")[0]
+    assert "display: inline-flex" in css.split(".cell-wrap {")[1].split("}")[0]
+    assert "flex:" not in css.split(".cell-wrap .cell-value {")[1].split("}")[0]
+    assert "flex-shrink" not in css.split(".cell-wrap .copy-btn {")[1].split("}")[0]
 
 
-def test_danger_button_hover_is_lighter_and_keeps_white_text_aa(client, login):
+def test_danger_fill_and_icon_share_one_hover_red(client, login):
+    # User decision (v0.8.10): the Delete button's hover background is the very
+    # colour the delete row-icon uses on hover, from one shared token.
     login()
     css = client.get("/static/style.css").text
     rest = _token(css, "--btn-danger")
-    hover = _token(css, "--btn-danger-hover")
+    hover = _token(css, "--danger-hover")
     assert _relative_luminance(hover) > _relative_luminance(rest), (rest, hover)
-    # The fill carries white text in both themes: both states must stay AA.
+
+    fill_rule = css.split(".btn-danger:hover {")[1].split("}")[0]
+    assert "background: var(--danger-hover)" in fill_rule
+    assert "border-color: var(--danger-hover)" in fill_rule
+    icon_rule = css.split(".action-btn-danger:hover {")[1].split("}")[0]
+    assert "color: var(--danger-hover)" in icon_rule
+
+    # The button carries white text: the resting fill keeps AA, the hover is
+    # knowingly below it (accepted trade-off — see the token comment) but must
+    # stay above the 3:1 non-text floor.
     assert _contrast_ratio(rest, "#ffffff") >= 4.5, rest
-    assert _contrast_ratio(hover, "#ffffff") >= 4.5, hover
-    assert css.count(f"--btn-danger-hover: {hover}") == 2
-    rule = css.split(".btn-danger:hover {")[1].split("}")[0]
-    assert "background: var(--btn-danger-hover)" in rule
-    assert "border-color: var(--btn-danger-hover)" in rule
+    assert _contrast_ratio(hover, "#ffffff") >= 3.0, hover
