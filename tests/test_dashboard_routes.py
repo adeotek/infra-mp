@@ -247,3 +247,94 @@ def test_reorder_widgets_invalid_order(client, login):
     # Wrong permutation and non-numeric ids are rejected.
     assert client.post("/dashboard/widgets/reorder", data={"order": "1,2"}).status_code == 400
     assert client.post("/dashboard/widgets/reorder", data={"order": "x"}).status_code == 400
+
+
+# --------------------------------------------------------------------------- #
+# Table widget cells: links + copy buttons (same as the records/view grids)
+# --------------------------------------------------------------------------- #
+
+LINK_CELL = (
+    '<span class="cell-value"><a href="https://panel.example.com" target="_blank" '
+    'rel="noopener">https://panel.example.com</a></span>'
+)
+
+
+def _seed_link_server(client, login):
+    """Entity 1: text Name + link Console (copy button on) and one record."""
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Name", "data_type": "text"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Console", "data_type": "link", "with_copy_button": "on"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/records",
+        data={"name": "web01", "console": "https://panel.example.com"},
+        follow_redirects=False,
+    )
+
+
+def _add_table_widget(client, view_id: str = ""):
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "Server List",
+            "widget_type": "table",
+            "entity_id": "1",
+            "view_id": view_id,
+        },
+        follow_redirects=False,
+    )
+
+
+def test_table_widget_renders_link_as_anchor_and_copy_button(client, login):
+    _seed_link_server(client, login)
+    _add_table_widget(client)
+    html = client.get("/dashboard").text
+    assert LINK_CELL in html
+    assert '<i class="fa-regular fa-copy"' in html
+
+
+def test_table_widget_with_view_renders_link_as_anchor_and_copy_button(client, login):
+    _seed_link_server(client, login)
+    client.post("/views", data={"name": "All", "entity_id": "1"}, follow_redirects=False)
+    _add_table_widget(client, view_id="1")
+    html = client.get("/dashboard").text
+    assert LINK_CELL in html
+    assert '<i class="fa-regular fa-copy"' in html
+
+
+def test_widget_cells_match_the_records_and_view_grids(client, login):
+    """The widget table renders cells byte-for-byte like the other two grids."""
+    _seed_link_server(client, login)
+    client.post("/views", data={"name": "All", "entity_id": "1"}, follow_redirects=False)
+    _add_table_widget(client, view_id="1")
+    for url in ("/entities/1/records", "/views/1", "/dashboard"):
+        html = client.get(url).text
+        assert LINK_CELL in html, url
+        assert '<i class="fa-regular fa-copy"' in html, url
+
+
+def test_table_widget_link_cell_without_a_value_is_plain_text(client, login):
+    _seed_link_server(client, login)
+    client.post("/entities/1/records", data={"name": "web02"}, follow_redirects=False)
+    _add_table_widget(client)
+    html = client.get("/dashboard").text
+    assert html.count('<a href="https://panel.example.com"') == 1
+    assert '<span class="cell-value">—</span>' in html
+    # The empty cell gets no copy button either — only web01 holds a Console URL.
+    assert html.count('class="copy-btn"') == 1
+
+
+def test_table_widget_without_copy_flag_has_no_copy_button(client, login):
+    _seed_server(client, login)
+    _add_table_widget(client)
+    html = client.get("/dashboard").text
+    assert "web01" in html
+    assert "copy-btn" not in html

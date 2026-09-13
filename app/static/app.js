@@ -585,6 +585,23 @@
     document.body.removeChild(ta);
   }
 
+  // Form-field copy buttons are rendered hidden while the field is empty (there
+  // is nothing to copy) and revealed as soon as the control holds a value, so a
+  // new record's button appears while typing instead of only after a reload.
+  function syncFieldCopy(control) {
+    var wrap = control.closest('.field-copy');
+    if (!wrap) return;
+    var btn = wrap.querySelector('.copy-btn');
+    if (btn) btn.classList.toggle('hidden', control.value.trim() === '');
+  }
+  ['input', 'change'].forEach(function (type) {
+    document.body.addEventListener(type, function (e) {
+      var el = e.target;
+      if (!el || !el.matches || !el.matches('input, textarea, select')) return;
+      if (el.closest('.field-copy')) syncFieldCopy(el);
+    });
+  });
+
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('.copy-btn');
     if (!btn) return;

@@ -29,6 +29,18 @@
   --btn-teal: #0d9488;
   --btn-teal-hover: #0f766e;
   --btn-danger: #dc2626;
+  /* Shared DANGER hover red, used by the .btn-danger fill AND the row danger
+     icons: one step lighter than --btn-danger (#dc2626 -> #ef4444), mirroring
+     the edit pencil's --icon-primary-hover. Theme-independent. The fill carries
+     WHITE text, which is 3.76:1 on this red — below AA 4.5:1, accepted by user
+     decision (v0.8.10) in favour of a hover that is actually visible; the
+     resting fill is 4.83:1. */
+  --danger-hover: #ef4444;
+  /* Icon-only hover blue for the row action icons (.action-btn-edit): one step
+     LIGHTER than --btn-primary (#2563eb). --btn-primary-hover is #1d4ed8
+     (darker) in this theme and must stay that way — it fills the Add/Create
+     buttons, whose white text needs that contrast. */
+  --icon-primary-hover: #3b82f6;
 }
 
 /* Dark theme (default) */
@@ -61,6 +73,13 @@
   --btn-teal: #0f766e;
   --btn-teal-hover: #0d9488;
   --btn-danger: #dc2626;
+  /* Same value as in :root (see the comment there): the danger hover red is
+     shared by the Delete fill and the row danger icons, and is
+     theme-independent. */
+  --danger-hover: #ef4444;
+  /* Deliberately the same value as in :root (see the comment there): the icon
+     hover blue is theme-independent, unlike the button fills above. */
+  --icon-primary-hover: #3b82f6;
 }
 
 * { box-sizing: border-box; }
@@ -430,7 +449,7 @@ form input:focus, form select:focus, form textarea:focus,
 .btn-teal { background: var(--btn-teal); border-color: var(--btn-teal); color: #fff; }
 .btn-teal:hover { background: var(--btn-teal-hover); border-color: var(--btn-teal-hover); }
 .btn-danger { background: var(--btn-danger); border-color: var(--btn-danger); color: #fff; }
-.btn-danger:hover { background: color-mix(in srgb, var(--btn-danger) 88%, #000); border-color: var(--btn-danger); }
+.btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
 .btn-block { width: 100%; }
 
 /* -------------------------------------------------------- Flash messages */
@@ -542,6 +561,9 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   margin-bottom: 1rem;
 }
 .checkbox-label input { width: auto; margin-top: 0; }
+/* Checkboxes with help text: the explanation wraps onto its own line below. */
+.checkbox-label.has-help { flex-wrap: wrap; row-gap: 0.2rem; }
+.checkbox-help { flex-basis: 100%; font-size: 0.85em; font-weight: 400; line-height: 1.4; }
 
 /* Conditional groups (attribute form): hidden only when JS is available so
    the no-JS fallback can configure every attribute type. */
@@ -567,11 +589,26 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   text-decoration: none;
 }
 .action-btn:hover { background: var(--hover); color: var(--primary); text-decoration: none; }
-.action-btn-edit:hover {
-  background: var(--hover);
-  color: var(--primary);
+/* Row action icons keep the button palette and never paint a background: the
+   edit pencil is --btn-primary and the trash can is --btn-danger, both
+   BRIGHTENING on hover — the pencil through the icon-only --icon-primary-hover
+   (#3b82f6), the trash can through --danger-hover (#ef4444), the same red the
+   .btn-danger fill uses on hover. Never a fill: the row highlight is the only
+   other hover feedback, so `background: none` overrides .action-btn:hover. */
+.action-btn-edit {
+  color: var(--btn-primary);
 }
-.action-btn-danger:hover { background: var(--danger-bg); color: var(--danger); }
+.action-btn-edit:hover {
+  background: none;
+  color: var(--icon-primary-hover);
+}
+.action-btn-danger {
+  color: var(--btn-danger);
+}
+.action-btn-danger:hover {
+  background: none;
+  color: var(--danger-hover);
+}
 .table-wrap { overflow-x: auto; }
 /* Grids inside a scroll wrapper keep one-line cells so wide content
    overflows horizontally instead of squeezing the columns. */
@@ -826,6 +863,10 @@ code {
   box-shadow: var(--shadow);
 }
 .modal::backdrop { background: rgba(0, 0, 0, 0.55); }
+/* The attribute add/edit form carries more conditional fields than the other
+   dialogs, so its modal is 10% wider (520px -> 572px). :has() beats setting
+   an inline width from the fragment, which would have to be reset on close. */
+.modal:has(.attribute-form) { max-width: 572px; }
 .modal-header {
   display: flex;
   justify-content: flex-end;
@@ -928,9 +969,15 @@ code {
   border-radius: var(--radius);
 }
 .field-copy .copy-btn:hover { color: var(--primary); border-color: var(--muted); }
-/* Grid cells: value + copy icon side by side (td stays a plain table cell). */
+/* Grid cells: value + copy icon side by side (td stays a plain table cell).
+   The icon sits directly after the value — NOT right-aligned in the cell
+   (rolled back in v0.8.10 by user request; the value keeps its natural width). */
 .cell-wrap { display: inline-flex; align-items: center; gap: 0.4rem; }
 .cell-wrap .cell-value { word-break: break-word; }
+/* In the data grids the copy icon is teal — the same teal as the export
+   buttons (--btn-teal; contrast vs the surface: 3.1:1 dark, 3.7:1 light). */
+.cell-wrap .copy-btn { color: var(--btn-teal); }
+.cell-wrap .copy-btn:hover { color: var(--btn-teal-hover); background: var(--hover); }
 
 /* --------------------------------------------- Toast (async failures) */
 .toast {

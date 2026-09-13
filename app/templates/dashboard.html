@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import grid_cell %}
 {% block title %}Dashboard — {{ app_name }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -27,7 +28,14 @@
         <thead><tr>{% for c in w.data.columns %}<th>{{ c.name }}</th>{% endfor %}</tr></thead>
         <tbody>
           {% for row in w.data.rows %}
-          <tr>{% for c in w.data.columns %}<td>{{ row.cells[c.slug] }}</td>{% endfor %}</tr>
+          <tr>
+            {% for c in w.data.columns %}
+            {# Cells render exactly like the records/view grids: link attributes
+               as anchors, copy icon where the attribute carries the flag. #}
+            {% set href = row.link_hrefs.get(c.slug) if row.link_hrefs else none %}
+            <td>{{ grid_cell(row.cells[c.slug], href, c.with_copy_button) }}</td>
+            {% endfor %}
+          </tr>
           {% endfor %}
         </tbody>
       </table>

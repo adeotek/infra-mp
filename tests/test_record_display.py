@@ -51,6 +51,30 @@ def test_title_attribute_none_without_text(db_session):
     assert title_attribute(entity.attributes) is None
 
 
+def test_title_attribute_includes_link(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Panel"))
+    add_attribute(db_session, entity, AttributeCreate(name="URL", data_type=DataType.LINK))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    assert title_attribute(entity.attributes).slug == "url"
+
+
+def test_build_record_titles_falls_back_to_a_link_value(db_session):
+    entity = create_entity(db_session, EntityCreate(name="Panel"))
+    add_attribute(db_session, entity, AttributeCreate(name="URL", data_type=DataType.LINK))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"url": "https://panel.example"})
+    assert build_record_titles(db_session, entity.id) == {1: "https://panel.example"}
+
+
+def test_title_attribute_prefers_the_first_displayed_text_like_attribute(db_session):
+    # Attribute order (sort_order) decides: a text Name listed before a link wins.
+    entity = create_entity(db_session, EntityCreate(name="Panel"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="URL", data_type=DataType.LINK))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    assert title_attribute(entity.attributes).slug == "name"
+
+
 def test_build_record_titles(db_session, racks_and_servers):
     rack, _ = racks_and_servers
     titles = build_record_titles(db_session, rack.id)

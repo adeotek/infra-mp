@@ -38,6 +38,7 @@
   <label class="form-field{% if field_error %} has-error{% endif %}">
     {{ attr.name }}{% if attr.is_required %} <span class="req">*</span>{% endif %}
     {% set copy_wrap = attr.with_copy_button and attr.data_type not in ('boolean', 'reference') %}
+    {% set copy_empty = val is none or val == '' %}
     {% if copy_wrap %}<div class="field-copy">{% endif %}
     {% if attr.data_type == 'textarea' %}
     <textarea name="{{ attr.slug }}" rows="4" {% if attr.is_required %}required{% endif %}
@@ -110,7 +111,9 @@
       {% if attr.is_required %}required{% endif %} {% if field_error %}aria-invalid="true"{% endif %}>
     {% endif %}
     {% if copy_wrap %}
-    <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>
+    {# Kept in the DOM but hidden while the field is empty — an empty field has
+       nothing to copy; app.js reveals it as soon as something is typed. #}
+    <button type="button" class="copy-btn{% if copy_empty %} hidden{% endif %}" data-copy title="Copy value" aria-label="Copy value"><i class="fa-solid fa-copy" aria-hidden="true"></i></button>
     </div>
     {% endif %}
     {% if attr.hint %}<span class="hint" id="hint-{{ attr.slug }}">{{ attr.hint }}</span>{% endif %}

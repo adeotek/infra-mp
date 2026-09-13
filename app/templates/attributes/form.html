@@ -5,7 +5,7 @@
 {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 
 {% set fd = form_data or attribute %}
-<form method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
+<form class="attribute-form" method="post" action="{{ action_url }}" {% if is_fragment %}hx-post="{{ action_url }}" hx-target="#modal-body"{% endif %}>
   {% include "_csrf.html" %}
   <label>Name <span class="req">*</span>
     <input type="text" name="name" required value="{{ fd.name if fd else '' }}" autofocus>
@@ -20,9 +20,13 @@
   <label>Type
     <select name="data_type" id="data_type">
       {% for t in data_types %}
-      <option value="{{ t.value }}" {% if fd and fd.data_type == t.value %}selected{% endif %}>{{ t.value }}</option>
+      {% set blocked = permitted_data_types is not none and t not in permitted_data_types %}
+      <option value="{{ t.value }}"{% if fd and fd.data_type == t.value %} selected{% endif %}{% if blocked %} disabled{% endif %}>{{ t.value }}</option>
       {% endfor %}
     </select>
+    {% if has_records and attribute %}
+    <span class="hint">The entity has records: only the current type and the conversions that keep every existing value valid are selectable.</span>
+    {% endif %}
   </label>
 
   {# The conditional groups are hidden only when JS is available (the .js
@@ -56,19 +60,22 @@
     Required
   </label>
 
-  <label class="checkbox-label">
+  <label class="checkbox-label has-help">
     <input type="checkbox" name="is_unique" id="is_unique" {% if fd and fd.is_unique %}checked{% endif %}>
-    Unique <span class="muted">(values must be unique across records)</span>
+    Unique
+    <span class="checkbox-help muted">Values must be unique across records.</span>
   </label>
 
-  <label class="checkbox-label">
+  <label class="checkbox-label has-help">
     <input type="checkbox" name="with_copy_button" id="with_copy_button" {% if fd and fd.with_copy_button %}checked{% endif %}>
-    With copy button <span class="muted">(renders a copy icon next to the field; clicking it copies the value to the clipboard)</span>
+    With copy button
+    <span class="checkbox-help muted">Renders a copy icon next to the field; clicking it copies the value to the clipboard.</span>
   </label>
 
-  <label class="checkbox-label">
+  <label class="checkbox-label has-help">
     <input type="checkbox" name="is_key" id="is_key" {% if fd and fd.is_key %}checked{% endif %}>
-    Key <span class="muted">(part of the entity key — identifies records in reference selects, key must be unique)</span>
+    Key
+    <span class="checkbox-help muted">Part of the entity key — identifies records in reference selects, key must be unique.</span>
   </label>
 
   <label>Default value

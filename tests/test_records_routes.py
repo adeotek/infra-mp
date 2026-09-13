@@ -362,7 +362,9 @@ def test_record_form_renders_url_input(client, login):
     _seed_link_server(client, login)
     html = client.get("/entities/1/records/new").text
     assert 'type="url" name="console"' in html
-    assert 'class="copy-btn"' in html
+    # The copy button is rendered but hidden: a new record's field is empty, so
+    # there is nothing to copy (app.js reveals it as soon as something is typed).
+    assert 'class="copy-btn hidden"' in html
     assert 'name="with_copy_button"' not in html
 
 
@@ -396,3 +398,33 @@ def test_records_list_renders_link_as_anchor_with_copy_button(client, login):
         in html
     )
     assert 'class="copy-btn"' in html
+
+
+def test_grid_copy_button_only_rendered_for_non_empty_cells(client, login):
+    _seed_link_server(client, login)
+    client.post(
+        "/entities/1/records",
+        data={"console": "https://panel.example.com"},
+        follow_redirects=False,
+    )
+    client.post("/entities/1/records", data={}, follow_redirects=False)
+    html = client.get("/entities/1/records").text
+    # Only the record that has a Console URL gets a copy button.
+    assert html.count('class="copy-btn"') == 1
+    assert '<span class="cell-value">—</span>' in html
+
+
+def test_record_form_copy_button_hidden_while_its_field_is_empty(client, login):
+    _seed_link_server(client, login)
+    client.post(
+        "/entities/1/records",
+        data={"console": "https://panel.example.com"},
+        follow_redirects=False,
+    )
+    # New record: the field is empty, so the button is rendered hidden (app.js
+    # reveals it while typing) rather than shown with nothing to copy.
+    assert 'class="copy-btn hidden"' in client.get("/entities/1/records/new").text
+    # Existing value: visible.
+    edit_html = client.get("/records/1/edit").text
+    assert 'class="copy-btn"' in edit_html
+    assert 'class="copy-btn hidden"' not in edit_html

@@ -306,9 +306,19 @@ def _coerce_reference(attr: Attribute, raw_value: Any) -> Any:
 
 
 def title_attribute(attributes: list[Attribute]) -> Attribute | None:
-    """Return the first text attribute, used as a record's display title."""
+    """Return the first text-like attribute, used as a record's display title.
+
+    ``link`` counts as text-like: a URL identifies a record as well as a name
+    does, and converting a text attribute to link must not demote the entity's
+    titles to ``#<id>``.
+    """
+    title_types = (
+        DataType.TEXT.value,
+        DataType.TEXTAREA.value,
+        DataType.LINK.value,
+    )
     for attr in attributes:
-        if attr.data_type in (DataType.TEXT.value, DataType.TEXTAREA.value):
+        if attr.data_type in title_types:
             return attr
     return None
 
