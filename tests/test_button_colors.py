@@ -72,25 +72,27 @@ def _relative_luminance(hex_color: str) -> float:
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
-def test_edit_icon_hover_blue_is_lighter_than_its_base(client, login):
-    # Requirement, not a magic hex: the pencil must get LIGHTER on hover. The
-    # button token --btn-primary-hover is darker in light theme, hence the
-    # dedicated --icon-primary-hover.
+def test_row_icon_hover_tokens_brighten_the_base_colour(client, login):
+    # Requirement (user decision): both row action icons get LIGHTER on hover,
+    # mirroring the Add/Create fill's lighter hover in dark theme.
     login()
     css = client.get("/static/style.css").text
-    base = _token(css, "--btn-primary")
-    hover = _token(css, "--icon-primary-hover")
-    assert _relative_luminance(hover) > _relative_luminance(base), (base, hover)
-    # Defined in both theme blocks so the icon hover is theme-independent.
-    assert css.count(f"--icon-primary-hover: {hover}") == 2
+    pairs = (
+        ("--btn-primary", "--icon-primary-hover"),
+        ("--btn-danger", "--icon-danger-hover"),
+    )
+    for base_token, hover_token in pairs:
+        base, hover = _token(css, base_token), _token(css, hover_token)
+        assert _relative_luminance(hover) > _relative_luminance(base), (base, hover)
+        # Theme-independent: declared in both theme blocks, same value.
+        assert css.count(f"{hover_token}: {hover}") == 2, hover_token
 
 
-def test_delete_icon_uses_the_lighter_accent_and_darkens_on_hover(client, login):
+def test_delete_icon_uses_the_danger_red_and_brightens_on_hover(client, login):
     login()
     css = client.get("/static/style.css").text
     base = css.split(".action-btn-danger {")[1].split("}")[0]
-    # The accent red (lighter), not the darker --btn-danger button fill.
-    assert "color: var(--danger)" in base
+    assert "color: var(--btn-danger)" in base
     hover = css.split(".action-btn-danger:hover {")[1].split("}")[0]
     assert "color: var(--icon-danger-hover)" in hover
     # The shared .action-btn:hover fill must not survive here.
@@ -109,17 +111,16 @@ def _contrast_ratio(fg: str, bg: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def test_delete_icon_reds_are_light_to_dark_with_contrast_in_both_themes(client, login):
-    # Requirement: lighter red at rest, darker on hover, and >= 3:1 for both
-    # states against the backdrops the icon actually sits on (a row is --surface
-    # at rest and --hover while hovered).
+def test_delete_icon_reds_keep_3_to_1_contrast_in_both_themes(client, login):
+    # Requirement: a good contrast in both themes. Each state is checked against
+    # the backdrop it actually sits on — a row is --surface at rest and --hover
+    # while the row is hovered.
     login()
     css = client.get("/static/style.css").text
     for theme in ("light", "dark"):
         block = _theme_block(css, theme)
-        rest = _token(block, "--danger")
+        rest = _token(block, "--btn-danger")
         hover = _token(block, "--icon-danger-hover")
-        assert _relative_luminance(hover) < _relative_luminance(rest), theme
         assert _contrast_ratio(rest, _token(block, "--surface")) >= 3.0, (theme, rest)
         assert _contrast_ratio(hover, _token(block, "--hover")) >= 3.0, (theme, hover)
 
