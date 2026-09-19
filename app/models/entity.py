@@ -17,7 +17,9 @@ class Entity(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     description: Mapped[str] = mapped_column(String(500), default="")
     icon: Mapped[str] = mapped_column(String(64), default="")
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     attributes: Mapped[list[Attribute]] = relationship(
         back_populates="entity",

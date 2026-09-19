@@ -28,6 +28,8 @@ class View(TimestampMixin, Base):
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     # FontAwesome class shown next to the view in the sidebar menu (menu only).
     icon: Mapped[str] = mapped_column(String(64), default="")
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     entity: Mapped[Entity] = relationship()

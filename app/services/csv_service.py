@@ -19,6 +19,7 @@ from app.services.record_service import (
     build_record_titles,
     canonical_key_values,
     list_records,
+    unique_value_key,
     validate_record_data,
 )
 from app.services.validation import ValidationError, coerce_value
@@ -108,6 +109,29 @@ def _safe_cell(value: Any) -> str:
         return "'" + cell
     if cell.startswith("-") and not _NUMERIC.match(cell):
         return "'" + cell
+    # Tab / CR before a formula defeats _safe_cell's "=" test in LibreOffice
+    # (it trims leading whitespace before formula detection, so "\t=CMD()"
+    # executes on open — OWASP CSV injection).
+    if cell.startswith("\t") or cell.startswith("\r"):
+        return "'" + cell
+    return cell
+
+
+def _unmark_formula_cell(cell: str) -> str:
+    """Strip the export-time formula-injection apostrophe marker on import.
+
+    ``_safe_cell`` prefixes formula-looking values with a literal apostrophe
+    so spreadsheets open them as text; keeping that apostrophe on import would
+    corrupt the export -> import round trip (``=prod`` stored as ``'=prod``).
+    Only the exact marker pattern is stripped — a value a user actually typed
+    with a leading apostrophe is preserved.
+    """
+    if cell.startswith("'") and len(cell) > 1:
+        rest = cell[1:]
+        if rest.startswith(("=", "+", "@")) or (rest.startswith("-") and not _NUMERIC.match(rest)):
+            return rest
+        if rest.startswith(("\t", "\r")):
+            return rest
     return cell
 
 
@@ -185,6 +209,26 @@ def import_record_rows(
     # validation stays O(rows) instead of re-querying per row.
     existing_cache = list(list_records(db, entity.id))
 
+    # Prebuilt O(1) lookup maps so unique/key checks stay constant-time per
+    # row (a linear scan over existing_cache would make a large import
+    # quadratic in the number of records). Both are kept in sync below as
+    # rows are created/updated.
+    unique_attrs = [a for a in attributes if a.is_unique]
+    unique_index: dict[tuple[Any, Any], int] = {}
+    for attr in unique_attrs:
+        for record in existing_cache:
+            value = record.data.get(attr.slug)
+            if value is None or isinstance(value, list):
+                continue
+            index_key = unique_value_key(attr, value)
+            if index_key is not None:
+                unique_index.setdefault((attr.slug, index_key), record.id)
+    key_index: dict[tuple[Any, ...], int] = (
+        {canonical_key_values(record, key_attrs): record.id for record in existing_cache}
+        if key_attrs
+        else {}
+    )
+
     errors: list[str] = []
     created = 0
     updated = 0
@@ -196,6 +240,7 @@ def import_record_rows(
             row_errors: list[str] = []
             for attr, index in mapping.items():
                 cell = row[index].strip() if index < len(row) else ""
+                cell = _unmark_formula_cell(cell)
                 if attr.data_type == DataType.REFERENCE.value:
                     try:
                         raw[attr.slug] = _resolve_reference_cell(attr, cell, ref_maps)
@@ -225,7 +270,12 @@ def import_record_rows(
 
             if existing is None:
                 data, validation_errors = validate_record_data(
-                    db, attributes, raw, existing_records=existing_cache
+                    db,
+                    attributes,
+                    raw,
+                    existing_records=existing_cache,
+                    unique_index=unique_index if unique_attrs else None,
+                    key_index=key_index if key_attrs else None,
                 )
                 if validation_errors:
                     errors.append(
@@ -242,6 +292,15 @@ def import_record_rows(
                 db.flush()
                 existing_cache.append(record)
                 records_by_key.setdefault(canonical_key_values(record, key_attrs), record)
+                if key_attrs:
+                    key_index[canonical_key_values(record, key_attrs)] = record.id
+                for attr in unique_attrs:
+                    value = data.get(attr.slug)
+                    if isinstance(value, list):
+                        continue
+                    index_key = unique_value_key(attr, value) if value is not None else None
+                    if index_key is not None:
+                        unique_index[(attr.slug, index_key)] = record.id
                 created += 1
             else:
                 # Update: merge the CSV columns over the existing values so
@@ -256,15 +315,55 @@ def import_record_rows(
                     exclude_record_id=existing.id,
                     enforce_key=False,
                     existing_records=existing_cache,
+                    unique_index=unique_index if unique_attrs else None,
+                    key_index=key_index if key_attrs else None,
                 )
                 if validation_errors:
                     errors.append(
                         f"Row {row_number}: {'; '.join(msg for _, msg in validation_errors)}"
                     )
                     continue
+                old_key = canonical_key_values(existing, key_attrs)
+                old_unique = {attr.slug: existing.data.get(attr.slug) for attr in unique_attrs}
+                # Preserve values for inactive attributes (the same semantics
+                # as update_record: the form/CSV never submits them).
+                inactive_slugs = {a.slug for a in attributes if not a.is_active}
+                for slug in inactive_slugs:
+                    data.pop(slug, None)
+                    if slug in existing.data:
+                        data[slug] = existing.data[slug]
                 existing.data = data
                 existing.updated_by = user_id
                 db.flush()
+                if key_attrs:
+                    new_key = canonical_key_values(existing, key_attrs)
+                    if old_key in key_index and key_index[old_key] == existing.id:
+                        del key_index[old_key]
+                    key_index[new_key] = existing.id
+                    # Keep the upsert map in sync: a key change must re-point
+                    # it, or later rows carrying the OLD key would silently
+                    # merge into this record instead of finding/creating the
+                    # record the new key identifies.
+                    if old_key in records_by_key and records_by_key[old_key] is existing:
+                        del records_by_key[old_key]
+                    records_by_key[new_key] = existing
+                for attr in unique_attrs:
+                    old_value = old_unique.get(attr.slug)
+                    new_value = data.get(attr.slug)
+                    if not isinstance(old_value, list) and old_value is not None:
+                        old_key_value = unique_value_key(attr, old_value)
+                        if (
+                            old_key_value is not None
+                            and unique_index.get((attr.slug, old_key_value)) == existing.id
+                        ):
+                            del unique_index[(attr.slug, old_key_value)]
+                    if isinstance(new_value, list):
+                        continue
+                    new_index_key = (
+                        unique_value_key(attr, new_value) if new_value is not None else None
+                    )
+                    if new_index_key is not None:
+                        unique_index[(attr.slug, new_index_key)] = existing.id
                 updated += 1
     except Exception:
         logger.exception("CSV import failed unexpectedly")
@@ -328,6 +427,12 @@ def _resolve_reference_cell(
         if not token:
             continue
         if token.isdigit():
+            # A digit-only token can still be a legit TITLE (e.g. record named
+            # "1001"): prefer an exact title match; fall back to id lookup.
+            matches = by_title.get(token.lower(), [])
+            if len(matches) == 1:
+                resolved.append(matches[0])
+                continue
             record_id = int(token)
             if record_id in known_ids:
                 resolved.append(record_id)

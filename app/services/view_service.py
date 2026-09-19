@@ -56,6 +56,11 @@ FILTER_OPS = [
     "not_null",
 ]
 
+# Related-column paths are capped: every hop multiplies the per-record walk
+# (fan-out × records), so an unbounded spec is a page-render DoS. Longer
+# specs are skipped leniently, like every other unresolvable column.
+MAX_REL_HOPS = 6
+
 _FILTER_OP_LABELS = {
     "eq": "equals",
     "neq": "does not equal",
@@ -383,6 +388,12 @@ def _match_reference(
     titles = base_titles.get(attr.config.get("reference_entity_id"), {})
 
     def title_of(item: Any) -> str:
+        if isinstance(item, list):
+            # Legacy/corrupt row: one-cardinality ref holding a list would be
+            # unhashable for the titles dict — degrade to first id.
+            item = item[0] if item else None
+            if item is None:
+                return ""
         return titles.get(item, str(item))
 
     if op in ("eq", "neq"):
@@ -487,7 +498,7 @@ def _apply_sort(
             return records
         with_value = [r for r in records if r.data.get(attr.slug) is not None]
         without_value = [r for r in records if r.data.get(attr.slug) is None]
-        with_value.sort(key=lambda r: sort_value(r.data[attr.slug]), reverse=reverse)
+        with_value.sort(key=lambda r: _ordered_value(r.data[attr.slug], reverse))
         return with_value + without_value
 
     if db is None:
@@ -496,8 +507,34 @@ def _apply_sort(
     values = {r.id: _resolve_related_sort_value(r, column, context) for r in records}
     with_value = [r for r in records if values[r.id] is not None]
     without_value = [r for r in records if values[r.id] is None]
-    with_value.sort(key=lambda r: sort_value(values[r.id]), reverse=reverse)
+    with_value.sort(key=lambda r: _ordered_value(values[r.id], reverse))
     return with_value + without_value
+
+
+def _ordered_value(value: Any, reverse: bool) -> tuple:
+    """``sort_value`` with direction-aware inner keys.
+
+    The type tag itself must NOT be inverted on a descending sort — tiers
+    (bool < number < text) stay in place, only the value inside a tier
+    reverses. Reversing the whole tuple would float text rows above numbers
+    on ``desc`` (e.g. a legacy "NaN" row jumping to the top of a numeric
+    column).
+    """
+    tier, inner, text = sort_value(value)
+    if not reverse:
+        return (tier, inner, text)
+    if isinstance(inner, Decimal):
+        return (tier, -inner, text)
+    if text:
+        # Inverted lexical order within the text tier: complement of each
+        # code point, so mixed types never collide (same property as ``inner``).
+        return (tier, _invert_text(inner or text), "")
+    return (tier, inner, text)
+
+
+def _invert_text(text: str) -> tuple[int, ...]:
+    """Direction-invertible key for a string: complement of its code points."""
+    return tuple(-ord(ch) for ch in text)
 
 
 def sort_value(value: Any) -> tuple[int, Any, str]:
@@ -615,7 +652,7 @@ def parse_column_spec(value: str) -> str | dict | None:
             if not ref:
                 return None
             hops.append({"dir": direction, "ref": ref, "to": target_id, "many": many})
-        if not hops or not attr:
+        if not hops or not attr or len(hops) > MAX_REL_HOPS:
             return None
         return {"path": hops, "attr": attr}
     return None
@@ -728,7 +765,7 @@ def _resolve_related_column(
 ) -> ViewColumn | None:
     """Resolve a related-column spec against the reference graph; None if invalid."""
     hops_spec = spec.get("path")
-    if not isinstance(hops_spec, list) or not hops_spec:
+    if not isinstance(hops_spec, list) or not hops_spec or len(hops_spec) > MAX_REL_HOPS:
         return None
     current = entity
     resolved_hops: list[dict[str, Any]] = []

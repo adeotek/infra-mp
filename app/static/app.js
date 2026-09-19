@@ -44,6 +44,7 @@
     }
     toast.textContent = message;
     toast.className = 'toast' + (variant ? ' toast-' + variant : '');
+    toast.setAttribute('role', variant === 'error' ? 'alert' : 'status');
     toast.classList.add('show');
     clearTimeout(showToast._timer);
     showToast._timer = setTimeout(function () {
@@ -65,16 +66,24 @@
 
   // Modal/entity forms return 400 + error fragments; htmx 2 discards 4xx
   // responses by default, which made validation errors invisible. Allow
-  // 4xx swaps into fragment targets.
+  // 4xx swaps into fragment targets, but only for HTML responses — the CSRF
+  // middleware rejects with bare JSON ({detail: ...}), and swapping raw JSON
+  // into a fragment target would paste it as text into the page.
   document.body.addEventListener('htmx:beforeSwap', function (e) {
     if (e.detail.xhr && e.detail.xhr.status >= 400 && e.detail.xhr.status < 500) {
-      e.detail.shouldSwap = true;
+      var type = (e.detail.xhr.getResponseHeader('Content-Type') || '');
+      e.detail.isError = false;
+      e.detail.shouldSwap = type.indexOf('text/html') !== -1;
     }
   });
 
   // 5xx responses are not swapped; surface them instead of failing silently.
-  document.body.addEventListener('htmx:responseError', function () {
-    showToast('Something went wrong. Please try again.');
+  // 4xx responses (validation errors, 403s) render their own error content —
+  // toasting those too would double-signal every failed modal form.
+  document.body.addEventListener('htmx:responseError', function (e) {
+    if (e.detail && e.detail.xhr && e.detail.xhr.status >= 500) {
+      showToast('Something went wrong. Please try again.');
+    }
   });
 
   // Global busy indicator: a progress hairline under the topbar.
@@ -110,11 +119,20 @@
   // Theme toggle (dark is the default, applied early in <head>).
   var themeToggle = document.getElementById('theme-toggle');
   if (themeToggle) {
+    function syncThemeToggle() {
+      var current = document.documentElement.getAttribute('data-theme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      var label = next === 'dark' ? 'Switch to dark theme' : 'Switch to light theme';
+      themeToggle.setAttribute('aria-label', label);
+      themeToggle.setAttribute('title', label);
+    }
+    syncThemeToggle();
     themeToggle.addEventListener('click', function () {
       var current = document.documentElement.getAttribute('data-theme') || 'dark';
       var next = current === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
+      syncThemeToggle();
     });
   }
 
@@ -193,11 +211,16 @@
     });
   }
 
+  // Hover overlays only make sense for a fine pointer: on touch devices a tap
+  // fires mouseover, opening off-screen fixed-positioned overlays.
+  var hoverCapable = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   document.addEventListener('mouseover', function (e) {
+    if (!hoverCapable) return;
     var section = e.target.closest('.sidebar-collapsed .nav-section');
     if (section) openSectionOverlay(section);
   });
   document.addEventListener('mouseout', function (e) {
+    if (!hoverCapable) return;
     var section = e.target.closest('.sidebar-collapsed .nav-section');
     if (!section) return;
     if (section.contains(e.relatedTarget)) return;
@@ -332,7 +355,7 @@
   // attributes, dashboard widgets). Rows are reordered live on dragover; the
   // final order is persisted on dragend via fetch. ▲/▼ buttons in the handle
   // column provide a keyboard-accessible alternative.
-  function postReorder(table, ids) {
+  function postReorder(table, ids, originalOrder) {
     var reorderUrl = table.getAttribute('data-reorder-url');
     if (!reorderUrl) return;
     fetch(reorderUrl, {
@@ -345,25 +368,34 @@
     }).then(function (resp) {
       if (!resp.ok) {
         showToast('Reordering failed — the previous order was restored.');
-        // Restore the DOM to the data-sort-index order.
+        // Restore the DOM to the order snapshot taken at dragstart (the
+        // data-sort-index stamping belongs to the sortable grid init and is
+        // not maintained on reorder-only tables).
         var rows = Array.prototype.slice.call(table.querySelectorAll('tr[draggable]'));
-        rows.sort(function (a, b) {
-          return parseInt(a.getAttribute('data-sort-index'), 10)
-            - parseInt(b.getAttribute('data-sort-index'), 10);
-        });
-        rows.forEach(function (tr) { tr.parentNode.appendChild(tr); });
+        var byId = {};
+        rows.forEach(function (tr) { byId[tr.getAttribute('data-id')] = tr; });
+        if (originalOrder) {
+          originalOrder.forEach(function (id) {
+            if (byId[id]) table.tBodies[0].appendChild(byId[id]);
+          });
+        }
       }
     });
   }
 
   function initReorderTable(table) {
     var dragRow = null;
+    var dragStartOrder = null;
     var reorderUrl = table.getAttribute('data-reorder-url');
 
     table.addEventListener('dragstart', function (e) {
       var tr = e.target.closest('tr[draggable]');
       if (!tr) return;
       dragRow = tr;
+      dragStartOrder = Array.prototype.map.call(
+        table.querySelectorAll('tr[draggable]'),
+        function (row) { return row.getAttribute('data-id'); }
+      );
       tr.classList.add('dragging');
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move';
@@ -396,14 +428,10 @@
         rows,
         function (tr) { return tr.getAttribute('data-id'); }
       );
-      // Keep the sortable "restore original order" index in sync with the
-      // newly persisted order.
-      Array.prototype.forEach.call(rows, function (tr, index) {
-        tr.setAttribute('data-sort-index', String(index));
-      });
       dragRow = null;
       if (!reorderUrl) return;
-      postReorder(table, ids);
+      postReorder(table, ids, dragStartOrder);
+      dragStartOrder = null;
     });
 
     // Keyboard reordering: ▲/▼ buttons move a row one position and persist.
@@ -423,7 +451,7 @@
       }
       var rows = table.querySelectorAll('tr[draggable]');
       var ids = Array.prototype.map.call(rows, function (r) { return r.getAttribute('data-id'); });
-      postReorder(table, ids);
+      postReorder(table, ids, dragStartOrder);
     });
   }
 
@@ -864,6 +892,7 @@
 
   function updateStickyScrollbars() {
     var viewport = window.innerHeight || document.documentElement.clientHeight;
+    var visibleEntry = null;
     for (var i = stickyScrollbars.length - 1; i >= 0; i--) {
       var entry = stickyScrollbars[i];
       if (!entry.wrap.isConnected) {
@@ -880,6 +909,15 @@
         entry.proxy.classList.remove('visible');
         continue;
       }
+      // Keep only the LOWEST crossing grid's proxy visible (the others sit at
+      // the same screen edge and would cover each other).
+      if (visibleEntry && visibleEntry.rectTop >= rect.top) {
+        entry.proxy.classList.remove('visible');
+        continue;
+      }
+      if (visibleEntry) visibleEntry.proxy.classList.remove('visible');
+      visibleEntry = entry;
+      visibleEntry.rectTop = rect.top;
       entry.proxy.style.left = rect.left + 'px';
       entry.proxy.style.width = rect.width + 'px';
       entry.inner.style.width = wrap.scrollWidth + 'px';
@@ -914,7 +952,9 @@
   });
 
   // API token user filter (admin page): client-side row filter on the user
-  // column, persisted in the shared UI state.
+  // column, persisted in the shared UI state (single-writer: the token filter
+  // and the grid sort/filter state must not race each other's localStorage
+  // writes).
   function applyTokenFilter(select) {
     var table = document.getElementById('tokens-table');
     if (!table) return;
@@ -922,20 +962,22 @@
     table.querySelectorAll('tbody tr').forEach(function (row) {
       row.style.display = !value || row.getAttribute('data-user-id') === value ? '' : 'none';
     });
-    try {
-      var ui = JSON.parse(localStorage.getItem('inframp-ui-state') || 'null') || {};
-      ui.tokenFilter = value;
-      localStorage.setItem('inframp-ui-state', JSON.stringify(ui));
-    } catch (e) { /* ignore */ }
+    updateGridState('token-filter', { value: value || null });
   }
   var tokenFilter = document.getElementById('token-user-filter');
   if (tokenFilter) {
-    try {
-      var savedUi = JSON.parse(localStorage.getItem('inframp-ui-state') || 'null') || {};
-      var savedFilter = savedUi.tokenFilter || '';
-      var match = tokenFilter.querySelector('option[value="' + savedFilter + '"]');
-      if (match) tokenFilter.value = savedFilter;
-    } catch (e) { /* ignore */ }
+    var savedTokenFilter = gridStateFor('token-filter');
+    if (savedTokenFilter && savedTokenFilter.value) {
+      // Match by value (no selector interpolation): a crafted stored value
+      // must not be able to raise a selector SyntaxError.
+      var savedValue = String(savedTokenFilter.value);
+      for (var i = 0; i < tokenFilter.options.length; i++) {
+        if (tokenFilter.options[i].value === savedValue) {
+          tokenFilter.value = savedValue;
+          break;
+        }
+      }
+    }
     applyTokenFilter(tokenFilter);
     tokenFilter.addEventListener('change', function () {
       applyTokenFilter(tokenFilter);
@@ -1123,8 +1165,9 @@
     }
   });
 
-  // Flash messages: dismiss button and URL cleanup (the ?flash= query param
-  // is stripped so reloads don't re-show stale messages).
+  // Flash messages: dismiss button and URL cleanup (the ?flash=&flash_type=
+  // params are stripped so reloads don't re-show stale messages — other query
+  // params (entity_id, next, ...) must survive, they carry page state).
   document.addEventListener('click', function (e) {
     var closeBtn = e.target.closest('.flash-close');
     if (closeBtn) {
@@ -1132,7 +1175,11 @@
     }
   });
   if (window.location.search.indexOf('flash=') !== -1) {
-    var cleanUrl = window.location.pathname;
+    var params = new URLSearchParams(window.location.search);
+    params.delete('flash');
+    params.delete('flash_type');
+    var qs = params.toString();
+    var cleanUrl = window.location.pathname + (qs ? '?' + qs : '');
     try { window.history.replaceState(null, '', cleanUrl); } catch (err) { /* ignore */ }
   }
 })();

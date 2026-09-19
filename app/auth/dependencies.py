@@ -26,7 +26,9 @@ def get_current_user(
     Raises ``HTTPException(401)`` when unauthenticated; the application's
     exception handler converts that into a redirect to the login page.
     """
-    token = request.cookies.get(get_settings().session_cookie_name)
+    token = request.cookies.get(
+        (getattr(request.app.state, "settings", None) or get_settings()).session_cookie_name
+    )
     if token:
         user = resolve_user(db, token)
         if user is not None:

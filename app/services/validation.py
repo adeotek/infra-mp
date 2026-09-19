@@ -51,7 +51,13 @@ def coerce_value(data_type: DataType, value: Any) -> Any:
     if data_type == DataType.INTEGER:
         if isinstance(value, bool):
             raise ValidationError(f"Expected an integer, got {value!r}")
+        if isinstance(value, float) and not float(value).is_integer():
+            # JSON floats (MCP create/update) must not silently truncate:
+            # int(2.7) == 2 corrupts the value without any error.
+            raise ValidationError(f"Expected an integer, got {value!r}")
         try:
+            if isinstance(value, Decimal) and value != value.to_integral_value():
+                raise ValidationError(f"Expected an integer, got {value!r}")
             return int(value)
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"Expected an integer, got {value!r}") from exc

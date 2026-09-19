@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     debug: bool = False
     mcp_enabled: bool = True
     base_url: str = "http://localhost:8000"
+    # Comma-separated list of reverse-proxy IPs whose X-Forwarded-For header is
+    # trusted for login rate limiting (empty = no proxy; every client is
+    # keyed by its direct peer). Never enable this when the app is exposed
+    # directly — clients could rotate their own rate-limit buckets.
+    trusted_proxy_ips: str = ""
     # Login brute-force protection: after max_attempts failures within
     # window_seconds, further attempts are rejected for cooldown_seconds.
     login_max_attempts: int = 5
@@ -55,6 +60,10 @@ class Settings(BaseSettings):
     # Backup restore limits (zip-bomb protection).
     max_backup_upload_bytes: int = 50 * 1024 * 1024
     max_backup_db_bytes: int = 250 * 1024 * 1024
+
+    @property
+    def trusted_proxy_ips_list(self) -> list[str]:
+        return [ip.strip() for ip in self.trusted_proxy_ips.split(",") if ip.strip()]
 
     @property
     def database_url(self) -> str:

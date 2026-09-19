@@ -1,11 +1,12 @@
 /* InfraMP — light (default) theme variables */
 :root {
+  color-scheme: light dark; /* native controls (date pickers, selects) follow the theme */
   --bg: #f5f6f8;
   --surface: #ffffff;
   --surface-2: #fafbfc;
   --border: #e2e5ea;
   --text: #1a1d21;
-  --muted: #6b7280;
+  --muted: #5f6672;
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --teal: #0d9488;
@@ -23,11 +24,11 @@
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.10);
   --radius: 8px;
   --topbar-height: 56px;
-  /* Button fills (white text must hit WCAG AA 4.5:1). */
+  /* Button fills (white text must hit WCAG AA 4.5:1; #0d9488 was 3.74:1). */
   --btn-primary: #2563eb;
   --btn-primary-hover: #1d4ed8;
-  --btn-teal: #0d9488;
-  --btn-teal-hover: #0f766e;
+  --btn-teal: #0f766e;
+  --btn-teal-hover: #115e59;
   --btn-danger: #dc2626;
   /* Shared DANGER hover red, used by the .btn-danger fill AND the row danger
      icons: one step lighter than --btn-danger (#dc2626 -> #ef4444), mirroring
@@ -71,7 +72,7 @@
   --btn-primary: #2563eb;
   --btn-primary-hover: #3b82f6;
   --btn-teal: #0f766e;
-  --btn-teal-hover: #0d9488;
+  --btn-teal-hover: #14b8a6;
   --btn-danger: #dc2626;
   /* Same value as in :root (see the comment there): the danger hover red is
      shared by the Delete fill and the row danger icons, and is
@@ -383,12 +384,12 @@ html.sect-config-collapsed #nav-section-config .section-chevron {
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
+  padding: 1.25rem 1.25rem 2.5rem;
 }
 /* Data-grid pages stretch edge to edge on large screens. */
 .content-wide { max-width: none; }
 .content-standalone { max-width: 1200px; margin: 0 auto; }
-h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+h1 { font-size: 1.5rem; margin: 0 0 0.75rem; }
 h2 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; }
 .muted { color: var(--muted); }
 
@@ -407,7 +408,7 @@ h2 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; }
 /* ----------------------------------------------------------------- Forms */
 .form-narrow { max-width: 420px; }
 
-form label { display: block; margin-bottom: 1rem; font-weight: 500; }
+form label { display: block; margin-bottom: 0.8rem; font-weight: 500; }
 form input, form select, form textarea,
 .quick-search input,
 .token-toolbar select {
@@ -453,7 +454,7 @@ form input:focus, form select:focus, form textarea:focus,
 .btn-block { width: 100%; }
 
 /* -------------------------------------------------------- Flash messages */
-.flash { padding: 0.6rem 0.85rem; border-radius: var(--radius); margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.flash { padding: 0.6rem 0.85rem; border-radius: var(--radius); margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .flash-message { flex: 1; }
 .flash-close { background: none; border: none; color: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0 0.2rem; opacity: 0.7; }
 .flash-close:hover { opacity: 1; }
@@ -470,7 +471,7 @@ form input:focus, form select:focus, form textarea:focus,
 }
 .page-head h1 { margin: 0; }
 .actions { display: flex; align-items: center; gap: 0.5rem; }
-.form-actions { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+.form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
 .inline { display: inline; margin: 0; }
 
 /* ----------------------------------------------------------------- Tables */
@@ -484,7 +485,10 @@ form input:focus, form select:focus, form textarea:focus,
 }
 .table th, .table td {
   text-align: left;
-  padding: 0.6rem 0.85rem;
+  /* Dense grid: vertical padding is half the original 0.6rem (v0.9.x),
+     horizontal tightened 0.85rem -> 0.7rem. Row height stays touch-safe
+     because row actions are fixed-size 28px buttons. */
+  padding: 0.3rem 0.7rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
   vertical-align: middle;
@@ -519,7 +523,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  margin: 0.75rem 0;
+  margin: 0.5rem 0;
 }
 .quick-search input[type="text"] { width: 16rem; margin-top: 0; }
 .quick-search-count { margin-left: auto; font-size: 0.85rem; }
@@ -531,8 +535,8 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   align-items: center;
   gap: 0.35rem;
   width: 100%;
-  padding: 1.75rem 1rem;
-  margin-top: 0.75rem;
+  padding: 1.25rem 1rem;
+  margin-top: 0.5rem;
   border: 1.5px dashed var(--border);
   border-radius: var(--radius);
   background: var(--surface-2);
@@ -556,7 +560,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 
 /* ---------------------------------------------------------- Empty states */
 .empty-state {
-  padding: 2rem;
+  padding: 1.5rem;
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: var(--radius);
@@ -569,7 +573,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
   align-items: center;
   gap: 0.5rem;
   font-weight: 500;
-  margin-bottom: 1rem;
+  margin-bottom: 0.8rem;
 }
 .checkbox-label input { width: auto; margin-top: 0; }
 /* Checkboxes with help text: the explanation wraps onto its own line below. */
@@ -646,7 +650,7 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 .sticky-scrollbar-inner { height: 1px; }
 
 /* --------------------------------------- Advanced filters (view detail) */
-.advanced-filter { margin: 0 0 1rem; }
+.advanced-filter { margin: 0 0 0.75rem; }
 .af-builder { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .af-builder select, .af-builder input { margin-top: 0; width: 16rem; }
 .af-builder select.af-op { width: auto; min-width: 3.5rem; margin-left: auto; }
@@ -732,8 +736,8 @@ tr.dragging { opacity: 0.4; }
 .form-section {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1rem;
-  margin-bottom: 1.25rem;
+  padding: 0.85rem;
+  margin-bottom: 1rem;
   background: var(--surface);
 }
 .form-section legend {
@@ -797,14 +801,14 @@ tr.dragging { opacity: 0.4; }
 .widget-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
-  gap: 1.25rem;
+  gap: 1rem;
   align-items: start;
 }
 .widget {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1rem;
+  padding: 0.85rem;
 }
 .widget-span-1 { grid-column: span 1; }
 .widget-span-2 { grid-column: span 2; }
@@ -818,7 +822,7 @@ tr.dragging { opacity: 0.4; }
 .widget-span-10 { grid-column: span 10; }
 .widget-span-11 { grid-column: span 11; }
 .widget-span-12 { grid-column: span 12; }
-.widget h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+.widget h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 .widget-title-link { color: inherit; text-decoration: none; }
 .widget-title-link:hover { color: var(--primary); text-decoration: underline; }
 .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
@@ -858,8 +862,27 @@ code {
     transition: transform 0.2s ease;
   }
   body.sidebar-open .sidebar { transform: translateX(0); }
-  /* The desktop icon-rail is meaningless on a phone: always show labels. */
+  /* The desktop icon-rail is meaningless on a phone: always show labels AND
+     keep section items visible — the desktop-collapsed .nav-section-items
+     {display:none} + hover-overlay pattern must not hide drawer content. */
   .sidebar-collapsed .sidebar { width: min(280px, 85vw); }
+  /* Neutralise the desktop collapsed-rail rules inside the drawer: items are
+     rendered in-flow (never as hover overlays) on the phone. */
+  .sidebar-collapsed .nav-section {
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-collapsed .nav-section-items,
+  .sidebar-collapsed .nav-section.overlay-open .nav-section-items {
+    position: static;
+    display: flex;
+    left: auto;
+    top: auto;
+    min-width: 0;
+    max-width: none;
+    box-shadow: none;
+    overflow: visible;
+  }
   .brand-text, .nav-label { display: inline; }
   .sidebar-collapsed .brand-text, .sidebar-collapsed .nav-label,
   .sidebar-collapsed .nav-section-items .nav-label { display: inline; }
@@ -903,7 +926,7 @@ code {
   .widget, .widget-grid > * { min-width: 0; }
 
   /* Tighter tables. */
-  .table th, .table td { padding: 0.5rem 0.6rem; font-size: 0.95em; }
+  .table th, .table td { padding: 0.3rem 0.6rem; font-size: 0.95em; }
 
   /* Advanced filter bar: full-width controls, buttons share a row. */
   .af-builder select, .af-builder input { width: 100%; }
@@ -955,7 +978,7 @@ code {
 .confirm-message { margin: 0 0 1rem; }
 
 /* ------------------------------------------------------------- API tokens */
-.token-create-form { display: flex; gap: 0.5rem; margin: 1rem 0 1.25rem; }
+.token-create-form { display: flex; gap: 0.5rem; margin: 0.75rem 0 1rem; }
 .token-create-form input { flex: 1; margin-top: 0; }
 .token-reveal {
   border: 1px solid var(--success-border);
@@ -963,7 +986,7 @@ code {
   color: var(--success-text);
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
-  margin: 1rem 0 1.25rem;
+  margin: 0.75rem 0 1rem;
 }
 .token-reveal-head { display: flex; align-items: center; gap: 0.5rem; }
 .token-reveal-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
@@ -977,7 +1000,7 @@ code {
   font-size: 0.95rem;
 }
 .token-reveal .muted { color: inherit; opacity: 0.75; }
-.token-toolbar { display: flex; align-items: center; gap: 0.5rem; margin: 1rem 0; }
+.token-toolbar { display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0; }
 .token-toolbar select { width: auto; margin-top: 0; }
 .token-filter-label { color: var(--muted); font-size: 0.85rem; }
 .token-create-form select { margin-top: 0; width: auto; }
