@@ -19,9 +19,13 @@ from app.schemas.attribute import AttributeCreate
 from app.schemas.entity import EntityCreate
 from app.services.calculated import (
     FormulaError,
+    concat_expr_from_parts,
+    concat_references,
     evaluate_formula,
     formula_references,
+    parse_concat,
     parse_formula,
+    render_concat,
 )
 from app.services.record_service import create_record, list_records
 from app.services.schema_service import (
@@ -428,6 +432,18 @@ def test_create_view_with_a_concat_column(client, login):
     _seed(client, login)
     resp = _create_view(
         client,
+        calc=[_calc_row({"kind": "concat", "label": "Label", "expr": "{name} — {price}"})],
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1").text
+    assert "<th>Label</th>" in html
+    assert "Chair — 10.25" in html
+
+
+def test_legacy_parts_row_is_read_as_its_expression(client, login):
+    _seed(client, login)
+    resp = _create_view(
+        client,
         calc=[
             _calc_row(
                 {"kind": "concat", "label": "Label", "parts": ["name", "price"], "separator": " — "}
@@ -436,8 +452,11 @@ def test_create_view_with_a_concat_column(client, login):
     )
     assert resp.status_code == 303
     html = client.get("/views/1").text
-    assert "<th>Label</th>" in html
     assert "Chair — 10.25" in html
+    stored = client.get("/views/1/edit").text
+    config = json.loads(stored.split("var CONFIG = ", 1)[1].split(";\n", 1)[0])
+    # Saved in the one shape both kinds share.
+    assert config["columns"][-1] == {"kind": "concat", "label": "Label", "expr": "{name} — {price}"}
 
 
 def test_concat_parts_must_reference_view_columns(client, login):
@@ -447,8 +466,46 @@ def test_concat_parts_must_reference_view_columns(client, login):
         col=["base:name"],
         calc=[_calc_row({"kind": "concat", "label": "X", "parts": ["nope"], "separator": ""})],
     )
-    assert resp.status_code == 303
-    assert "<th>X</th>" not in client.get("/views/1").text
+    # An unknown reference is an error, exactly like in a formula — the old
+    # shape used to drop the row silently, which hid the typo.
+    assert resp.status_code == 400
+    assert "nope" in resp.text
+
+
+def test_unknown_reference_in_a_text_expression_is_rejected(client, login):
+    _seed(client, login)
+    resp = _create_view(
+        client, calc=[_calc_row({"kind": "concat", "label": "Bad", "expr": "{nope} - {name}"})]
+    )
+    assert resp.status_code == 400
+    assert "nope" in resp.text
+
+
+def test_bad_text_expression_syntax_is_rejected(client, login):
+    _seed(client, login)
+    resp = _create_view(
+        client, calc=[_calc_row({"kind": "concat", "label": "Bad", "expr": "{name"})]
+    )
+    assert resp.status_code == 400
+    assert "Unbalanced" in resp.text
+
+
+def test_text_expression_without_a_reference_is_rejected(client, login):
+    _seed(client, login)
+    resp = _create_view(
+        client, calc=[_calc_row({"kind": "concat", "label": "Bad", "expr": "just text"})]
+    )
+    assert resp.status_code == 400
+    assert "at least one" in resp.text
+
+
+def test_view_form_uses_one_expression_input_for_both_kinds(client, login):
+    _seed(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'class="calc-parts"' not in html
+    assert 'class="calc-sep"' not in html
+    assert html.count('class="calc-expr"') == 1
+    assert "reference it in an expression" in html
 
 
 def test_unknown_reference_in_a_formula_is_rejected(client, login):
@@ -545,6 +602,60 @@ def test_dashboard_widget_shows_calculated_columns(client, login):
     html = client.get("/dashboard").text
     assert '<th class="num">Total</th>' in html
     assert "20.5" in html
+
+
+# --------------------------------------------------------------------------- #
+# Text expressions (the one definition mode both kinds share)
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_concat_splits_text_and_references():
+    node = parse_concat("{name} - {room}")
+    assert node == ("concat", (("ref", "name"), ("text", " - "), ("ref", "room")))
+    assert concat_references(node) == {"name", "room"}
+
+
+def test_parse_concat_keeps_leading_and_trailing_text():
+    node = parse_concat("Item: {name} (owned)")
+    assert concat_references(node) == {"name"}
+    assert render_concat(node, {"name": "Chair"}) == "Item: Chair (owned)"
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["", "   ", "no references here", "{name", "name}", "{}", "{ }", "{a{b}}", "x" * 201],
+)
+def test_invalid_text_expressions_are_rejected(expr):
+    with pytest.raises(FormulaError):
+        parse_concat(expr)
+
+
+@pytest.mark.parametrize(
+    ("expr", "values", "expected"),
+    [
+        ("{name} - {room}", {"name": "Chair", "room": "A1"}, "Chair - A1"),
+        ("{name} - {room}", {"name": "Chair"}, "Chair"),
+        ("{name} - {room}", {"room": "A1"}, "A1"),
+        ("{name} - {room}", {}, None),
+        ("{name} / {room} - {ref}", {"name": "A", "ref": "C"}, "A - C"),
+        ("Item: {name}", {"name": "Chair"}, "Item: Chair"),
+        ("Item: {name}", {}, None),
+        ("{name} (new)", {"name": "Chair"}, "Chair (new)"),
+        ("{a}{b}", {"a": "Ch", "b": "air"}, "Chair"),
+        ("{a} - {b} - {c}", {"a": "1", "c": "3"}, "1 - 3"),
+        ("{a}", {"a": "   "}, None),
+        ("{a} - {b}", {"a": 12.5, "b": "EUR"}, "12.5 - EUR"),
+    ],
+)
+def test_text_expression_rendering_rules(expr, values, expected):
+    assert render_concat(parse_concat(expr), values) == expected
+
+
+def test_concat_expr_from_parts_expresses_the_old_shape():
+    assert concat_expr_from_parts({"parts": ["a", "b"], "separator": " · "}) == "{a} · {b}"
+    assert concat_expr_from_parts({"parts": ["a"], "separator": "/"}) == "{a}"
+    assert concat_expr_from_parts({"parts": []}) == ""
+    assert concat_expr_from_parts({}) == ""
 
 
 # --------------------------------------------------------------------------- #

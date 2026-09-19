@@ -24,9 +24,13 @@ from app.services.aggregates import (
 from app.services.calculated import (
     CALC_KINDS,
     FormulaError,
+    concat_expr_from_parts,
+    concat_references,
     evaluate_formula,
     formula_references,
+    parse_concat,
     parse_formula,
+    render_concat,
 )
 from app.services.record_service import (
     _display_cell,
@@ -689,17 +693,17 @@ def _calculated_column(spec: dict, ordinal: int, available: set[str]) -> ViewCol
     if not label or kind not in CALC_KINDS:
         return None
     if kind == "concat":
-        parts = [
-            part for part in spec.get("parts") or [] if isinstance(part, str) and part in available
-        ]
-        if not parts:
+        # Text expressions are the definition mode for both kinds; specs saved
+        # with the old parts/separator shape are read as their template.
+        expr = str(spec.get("expr") or "").strip() or concat_expr_from_parts(spec)
+        try:
+            node = parse_concat(expr)
+        except FormulaError:
             return None
-        calc = {
-            "kind": "concat",
-            "label": label,
-            "parts": parts,
-            "separator": str(spec.get("separator") or ""),
-        }
+        references = concat_references(node)
+        if not references or not references <= available:
+            return None
+        calc = {"kind": "concat", "label": label, "expr": expr, "node": node}
     else:
         try:
             node = parse_formula(str(spec.get("expr") or ""))
@@ -896,14 +900,19 @@ def _calculated_cell(
     cells: dict[str, str],
     columns_by_key: dict[str, ViewColumn],
 ) -> str:
-    """Render one calculated cell: a text join or an arithmetic formula."""
+    """Render one calculated cell: a text template or an arithmetic formula."""
     spec = column.calc or {}
     if spec.get("kind") == "concat":
-        parts = [str(cells.get(key, "")).strip() for key in spec.get("parts", [])]
-        present = [part for part in parts if part and part != EMPTY_CELL]
-        if not present:
+        node = spec.get("node")
+        if node is None:  # pragma: no cover - resolver only stores parsed templates
             return EMPTY_CELL
-        return str(spec.get("separator") or "").join(present)
+        # The template reads display cells; an empty cell is an empty value.
+        values = {}
+        for key in concat_references(node):
+            value = cells.get(key)
+            values[key] = "" if value is None or value == EMPTY_CELL else value
+        text = render_concat(node, values)
+        return text if text else EMPTY_CELL
 
     node = spec.get("node")
     if node is None:  # pragma: no cover - resolver only stores parsed formulas

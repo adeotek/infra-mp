@@ -1,13 +1,16 @@
 """Calculated view columns: text concatenation and arithmetic formulas.
 
-The view config carries a ``calculated`` list; each entry is either
+Each calculated entry of a view's ``columns`` list is either
 
-    {"label": "Location", "kind": "concat", "parts": ["floor", "room"], "separator": " / "}
+    {"label": "Location", "kind": "concat", "expr": "{floor} - {room}"}
     {"label": "Yearly", "kind": "formula", "expr": "round({price} * 12, 2)"}
 
-``parts`` and the ``{…}`` references name *resolved view columns* by their key:
-a base attribute's slug (``price``) or a related column's key
-(``rel:up:rack:3:first→capacity``).
+Both kinds share one syntax: literal text with ``{…}`` references naming
+*resolved view columns* by their key — a base attribute's slug (``price``) or a
+related column's key (``rel:up:rack:3:first→capacity``). In a text expression the
+literal text between references is the separator, so ``{name} - {room}`` reads
+"Chair - A1"; a reference that renders empty is skipped together with the text
+in front of it, and a leading/trailing literal is kept (``Item: {name}``).
 
 Formulas support the four operations with the usual precedence, parentheses,
 unary minus and ``round(value[, digits])``. Everything is ``Decimal`` end to
@@ -32,8 +35,9 @@ MAX_EXPRESSION_LENGTH = 200
 MAX_DEPTH = 16
 MAX_ROUND_DIGITS = 12
 
-# AST node tuples: ("num", Decimal) | ("ref", key) | ("neg", node)
-#                  | ("bin", op, left, right) | ("round", node, digits | None)
+# AST node tuples — formulas: ("num", Decimal) | ("ref", key) | ("neg", node)
+#                             | ("bin", op, left, right) | ("round", node, digits | None)
+#                 concat:     ("concat", (("text", text) | ("ref", key), …))
 Node = tuple
 
 _TOKEN_PUNCTUATION = {"(": "lparen", ")": "rparen", ",": "comma"}
@@ -51,6 +55,108 @@ def parse_formula(expr: str) -> Node:
     if len(expr) > MAX_EXPRESSION_LENGTH:
         raise FormulaError(f"The formula is longer than {MAX_EXPRESSION_LENGTH} characters.")
     return _Parser(_tokenize(expr)).parse_expr_top()
+
+
+def parse_concat(expr: str) -> Node:
+    """Parse a text expression into a segment list; raises :class:`FormulaError`.
+
+    The text is a template: everything outside ``{…}`` is literal, every
+    ``{key}`` is a column reference. Literal text between two references is the
+    separator, so ``{name} - {room}`` joins the two cells with ``" - "``.
+    """
+    text = (expr or "").strip()
+    if not text:
+        raise FormulaError("The text expression is empty.")
+    if len(text) > MAX_EXPRESSION_LENGTH:
+        raise FormulaError(
+            f"The text expression is longer than {MAX_EXPRESSION_LENGTH} characters."
+        )
+    segments: list[tuple[str, str]] = []
+    index = 0
+    literal_start = 0
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char == "}":
+            raise FormulaError("Unbalanced '}' — a column reference opens with '{'.")
+        if char != "{":
+            index += 1
+            continue
+        end = text.find("}", index + 1)
+        if end == -1:
+            raise FormulaError("Unbalanced '{' — close the column reference.")
+        name = text[index + 1 : end].strip()
+        if not name:
+            raise FormulaError("Empty column reference '{}'.")
+        if "{" in name:
+            raise FormulaError("Nested '{' inside a column reference.")
+        if index > literal_start:
+            segments.append(("text", text[literal_start:index]))
+        segments.append(("ref", name))
+        index = end + 1
+        literal_start = index
+    if literal_start < length:
+        segments.append(("text", text[literal_start:]))
+    if not any(segment_kind == "ref" for segment_kind, _ in segments):
+        raise FormulaError("The text expression needs at least one {column} reference.")
+    return ("concat", tuple(segments))
+
+
+def concat_expr_from_parts(spec: dict) -> str:
+    """Text expression equivalent to a legacy ``parts``/``separator`` spec.
+
+    The old shape joined the parts with the separator; as a template that is
+    exactly the parts referenced in order with the separator in between.
+    """
+    parts = [str(part) for part in spec.get("parts") or [] if str(part).strip()]
+    separator = str(spec.get("separator") or "")
+    return separator.join(f"{{{part}}}" for part in parts)
+
+
+def concat_references(node: Node) -> set[str]:
+    """Every column key the text expression reads."""
+    return {value for segment_kind, value in node[1] if segment_kind == "ref"}
+
+
+def render_concat(node: Node, values: dict[str, Any]) -> str | None:
+    """Render a text expression against ``values`` (key -> display value).
+
+    Literal text *between* references joins them and only appears when both
+    sides are present, so ``{name} - {room}`` with a missing room renders just
+    the name. Text before the first reference is a prefix kept with the first
+    value (``Item: {name}``) and text after the last one a suffix kept when
+    anything was rendered. ``None`` means every reference was empty.
+    """
+    segments = node[1]
+    prefix = ""
+    suffix = ""
+    if segments and segments[0][0] == "text":
+        prefix = segments[0][1]
+        segments = segments[1:]
+    if segments and segments[-1][0] == "text":
+        suffix = segments[-1][1]
+        segments = segments[:-1]
+
+    pieces: list[str] = []
+    pending = ""
+    for segment_kind, value in segments:
+        if segment_kind == "text":
+            pending += value
+            continue
+        raw = values.get(value)
+        text = "" if raw is None else str(raw).strip()
+        if not text:
+            # The joiner in front of a missing value disappears with it.
+            pending = ""
+            continue
+        if pieces:
+            pieces.append(pending)
+        pieces.append(text)
+        pending = ""
+    if not pieces:
+        return None
+    pieces[0] = prefix + pieces[0]
+    return "".join(pieces) + suffix
 
 
 def formula_references(node: Node) -> set[str]:

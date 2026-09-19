@@ -24,12 +24,13 @@
       entities (any depth) and end on one of their attributes; leave empty to show every
       attribute. Numeric columns can carry a grand total (sum / average / min / max) over the
       view's filtered rows.</p>
-    <p class="muted">A <strong>calculated</strong> row derives its value per record:
-      <strong>Text</strong> joins the display value of two or more rows, with an optional
-      separator; <strong>Number</strong> evaluates an arithmetic formula over numeric rows —
-      <code>+ - * /</code>, parentheses, unary minus and <code>round(value, digits)</code> —
-      referencing a column by its key in braces, e.g. <code>round({price} * {quantity}, 2)</code>.
-      An empty result shows the em dash.</p>
+    <p class="muted">A <strong>calculated</strong> row derives its value per record from one
+      expression: literal text with <code>{column-key}</code> references.
+      <strong>Text</strong> joins the referenced cells — the text between references acts as the
+      separator (<code>{name} - {room}</code> → <code>Chair - A1</code>), empty cells are
+      skipped. <strong>Number</strong> evaluates an arithmetic formula: <code>+ - * /</code>,
+      parentheses, unary minus and <code>round(value, digits)</code>, e.g.
+      <code>round({price} * {quantity}, 2)</code>. An empty result shows the em dash.</p>
     <div id="columns"></div>
     <button type="button" id="add-column" class="btn">Add column</button>
     <button type="button" id="add-calculated" class="btn">Add calculated column</button>
@@ -130,13 +131,7 @@
       <option value="concat">Text — join columns</option>
       <option value="formula">Number — formula</option>
     </select>
-    <span class="calc-concat">
-      <select class="calc-parts" multiple size="2" aria-label="Columns to join"></select>
-      <input type="text" class="calc-sep" placeholder="separator (optional)">
-    </span>
-    <span class="calc-formula hidden">
-      <input type="text" class="calc-expr" placeholder="e.g. round({price} * 12, 2)">
-    </span>
+    <input type="text" class="calc-expr" placeholder="e.g. {name} - {room}">
     <input type="hidden" name="calc" value="">
     <input type="hidden" name="col_order" value="">
     <span class="row-move-group" aria-label="Move row">
@@ -475,9 +470,6 @@
     (CONFIG.calculated || []).forEach(loadCalcRow);
     rebuildSortOptions();
     rebuildCalcPickers();
-    // The reference pickers only hold every column once the whole list is
-    // replayed, so stored selections are restored after that.
-    columnsBox.querySelectorAll('.calc-row').forEach(applyStoredParts);
     syncColumnOrder();
 
     columnsBox.addEventListener('change', function (e) {
@@ -618,67 +610,45 @@
 
     function syncCalcRow(row) {
       var kind = row.querySelector('.calc-kind').value;
-      row.querySelector('.calc-concat').classList.toggle('hidden', kind !== 'concat');
-      row.querySelector('.calc-formula').classList.toggle('hidden', kind !== 'formula');
+      row.querySelector('.calc-expr').placeholder = kind === 'concat'
+        ? 'e.g. {name} - {room}'
+        : 'e.g. round({price} * 12, 2)';
+    }
+
+    // Text expressions are the definition mode for both kinds, so a stored
+    // spec is one expression. Specs saved with the old shape (a parts list and
+    // a separator) read back as their template.
+    function calcExprOfSpec(spec) {
+      if (spec.expr) return spec.expr;
+      if (!spec.parts || !spec.parts.length) return '';
+      return spec.parts.map(function (part) { return '{' + part + '}'; })
+        .join(spec.separator || '');
     }
 
     function rebuildCalcPickers() {
       var choices = columnChoices();
-      columnsBox.querySelectorAll('.calc-row').forEach(function (row) {
-        var select = row.querySelector('.calc-parts');
-        var selected = Array.prototype.map.call(select.selectedOptions, function (o) {
-          return o.value;
-        });
-        select.innerHTML = '';
-        choices.forEach(function (choice) {
-          var option = document.createElement('option');
-          option.value = choice.value;
-          option.textContent = choice.label;
-          if (selected.indexOf(choice.value) !== -1) option.selected = true;
-          select.appendChild(option);
-        });
-        // A reference to a removed column disappears with its option; re-encode
-        // so the submitted payload never lags behind the pickers.
-        serializeCalcRow(row);
-      });
       if (calcTokens) {
         calcTokens.textContent = choices.length
           ? 'Columns you can reference: ' + choices.map(function (c) {
               return '{' + c.value + '} = ' + c.label;
             }).join(' · ')
-          : 'Add a column above to reference it in a calculation.';
+          : 'Add a column above to reference it in an expression.';
       }
     }
 
     function serializeCalcRow(row) {
       var hidden = row.querySelector('input[name="calc"]');
       var label = row.querySelector('.calc-label').value.trim();
-      var kind = row.querySelector('.calc-kind').value;
-      var payload = { label: label, kind: kind };
-      if (!label) {
+      var expr = row.querySelector('.calc-expr').value.trim();
+      if (!label || !expr) {
         hidden.value = '';
         return;
       }
-      if (kind === 'concat') {
-        var parts = Array.prototype.map.call(
-          row.querySelector('.calc-parts').selectedOptions,
-          function (o) { return o.value; }
-        ).filter(Boolean);
-        if (!parts.length) {
-          hidden.value = '';
-          return;
-        }
-        payload.parts = parts;
-        payload.separator = row.querySelector('.calc-sep').value;
-      } else {
-        var expr = row.querySelector('.calc-expr').value.trim();
-        if (!expr) {
-          hidden.value = '';
-          return;
-        }
-        payload.expr = expr;
-      }
-      hidden.value = JSON.stringify(payload);
+      hidden.value = JSON.stringify({
+        label: label,
+        kind: row.querySelector('.calc-kind').value,
+        expr: expr
+      });
     }
 
     function serializeCalcRows() {
@@ -692,31 +662,15 @@
       return row;
     }
 
-    // Fill a row from a stored spec (used when replaying an edit). The
-    // reference selections are applied by `applyStoredParts` once every row
-    // exists — a calculated row may sit above the columns it references.
+    // Fill a row from a stored spec (used when replaying an edit).
     function loadCalcRow(spec) {
       var row = newCalcRow();
-      row._spec = spec;
       row.querySelector('.calc-label').value = spec.label || '';
       row.querySelector('.calc-kind').value = spec.kind === 'formula' ? 'formula' : 'concat';
-      row.querySelector('.calc-sep').value = spec.separator || '';
-      row.querySelector('.calc-expr').value = spec.expr || '';
+      row.querySelector('.calc-expr').value = calcExprOfSpec(spec);
       syncCalcRow(row);
-      rebuildCalcPickers();
       serializeCalcRow(row);
       return row;
-    }
-
-    function applyStoredParts(row) {
-      var spec = row._spec;
-      if (spec && spec.parts) {
-        var select = row.querySelector('.calc-parts');
-        Array.prototype.forEach.call(select.options, function (option) {
-          option.selected = spec.parts.indexOf(option.value) !== -1;
-        });
-      }
-      serializeCalcRow(row);
     }
 
     document.getElementById('add-calculated').addEventListener('click', function () {

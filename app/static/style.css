@@ -789,14 +789,7 @@ tr.dragging { opacity: 0.4; }
 .calc-row .drag-handle { align-self: stretch; display: flex; align-items: center; justify-content: center; }
 .calc-row.dragging { opacity: 0.4; }
 .calc-row .calc-label { min-width: 12rem; }
-.calc-row .calc-expr { min-width: 18rem; }
-.calc-concat, .calc-formula {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-.calc-concat select[multiple] { min-width: 12rem; }
+.calc-row .calc-expr { min-width: 20rem; }
 #calc-tokens { font-size: 0.8rem; }
 
 /* --------------------------------------------------------- Dashboard widgets */

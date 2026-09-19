@@ -24,7 +24,15 @@ from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
 from app.services.aggregates import TOTAL_OPS
-from app.services.calculated import CALC_KINDS, FormulaError, formula_references, parse_formula
+from app.services.calculated import (
+    CALC_KINDS,
+    FormulaError,
+    concat_expr_from_parts,
+    concat_references,
+    formula_references,
+    parse_concat,
+    parse_formula,
+)
 from app.services.csv_service import export_view_csv
 from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
@@ -160,10 +168,13 @@ def _columns_from_form(raw: dict) -> tuple[list, dict[str, str]]:
 def _calculated_spec(value: str, known: set[str]) -> dict | None:
     """Parse one calculated-column form row (a JSON object).
 
-    Rows referencing columns that are not part of the view are dropped, except
-    for a formula that references an unknown column or does not parse: that
-    raises :class:`FormulaError` so the form can show the mistake instead of
-    silently saving a column that would never render.
+    Both kinds take a single expression (``expr``): literal text with ``{…}``
+    column references for text, an arithmetic formula for numbers. Rows
+    referencing columns that are not part of the view are dropped, except when
+    the expression names an unknown column or does not parse: that raises
+    :class:`FormulaError` so the form can show the mistake instead of silently
+    saving a column that would never render. A legacy ``parts``/``separator``
+    row (the old text shape) is read as the equivalent template.
     """
     text = value.strip()
     if not text:
@@ -178,26 +189,23 @@ def _calculated_spec(value: str, known: set[str]) -> dict | None:
     kind = row.get("kind")
     if not label or kind not in CALC_KINDS:
         return None
-    if kind == "concat":
-        parts = [str(part) for part in row.get("parts") or [] if str(part) in known]
-        if not parts:
-            return None
-        return {
-            "kind": "concat",
-            "label": label,
-            "parts": parts,
-            "separator": str(row.get("separator") or ""),
-        }
+    is_text = kind == "concat"
     expr = str(row.get("expr") or "").strip()
+    if is_text and not expr:
+        expr = concat_expr_from_parts(row)
     if not expr:
         return None
-    node = parse_formula(expr)
-    unknown = sorted(formula_references(node) - known)
+    if is_text:
+        node = parse_concat(expr)
+        unknown = sorted(concat_references(node) - known)
+    else:
+        node = parse_formula(expr)
+        unknown = sorted(formula_references(node) - known)
     if unknown:
         raise FormulaError(
             f"Calculated column '{label}': {unknown[0]!r} is not one of the view's columns."
         )
-    return {"kind": "formula", "label": label, "expr": expr}
+    return {"kind": kind, "label": label, "expr": expr}
 
 
 def _icon_from_form(raw: dict) -> str:
