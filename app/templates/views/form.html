@@ -587,6 +587,9 @@
           if (selected.indexOf(choice.value) !== -1) option.selected = true;
           select.appendChild(option);
         });
+        // A reference to a removed column disappears with its option; re-encode
+        // so the submitted payload never lags behind the pickers.
+        serializeCalcRow(row);
       });
       if (calcTokens) {
         calcTokens.textContent = choices.length
