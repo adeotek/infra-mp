@@ -69,7 +69,7 @@
     <thead>
       <tr>
         {% if show_actions %}<th class="no-sort"></th>{% endif %}
-        {% for c in columns %}<th>{{ c.label }}</th>{% endfor %}
+        {% for c in columns %}<th{% if c.is_numeric %} class="num"{% endif %}>{{ c.label }}</th>{% endfor %}
       </tr>
     </thead>
     <tbody>
@@ -94,9 +94,9 @@
         </td>
         {% endif %}
         {% for c in columns %}
-        <td>
+        <td{% if c.is_numeric %} class="num"{% endif %}>
           {% set href = row.link_hrefs.get(c.key) if row.link_hrefs else none %}
-          {{ grid_cell(row.cells[c.key], href, c.attr.with_copy_button) }}
+          {{ grid_cell(row.cells[c.key], href, c.with_copy_button) }}
         </td>
         {% endfor %}
       </tr>
@@ -109,7 +109,7 @@
         {% for c in columns %}
         {% set total = column_totals.get(c.key) %}
         {# Just the number — the operation stays available as a hover title. #}
-        <td class="total-cell"{% if total %} title="{{ total.op }}"{% endif %}>
+        <td class="total-cell{% if c.is_numeric %} num{% endif %}"{% if total %} title="{{ total.op }}"{% endif %}>
           {% if total %}<strong>{{ total.value }}</strong>{% endif %}
         </td>
         {% endfor %}

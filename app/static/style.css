@@ -492,6 +492,9 @@ form input:focus, form select:focus, form textarea:focus,
 .table th { background: var(--surface-2); font-weight: 600; }
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: var(--hover); }
+/* Numeric columns (integer/decimal attributes and formula columns) align
+   right in every grid, spreadsheet-style. */
+.table th.num, .table td.num { text-align: right; }
 
 /* Sortable column headers (click cycles none -> asc -> desc). */
 th.sortable { cursor: pointer; user-select: none; }
@@ -773,6 +776,26 @@ tr.dragging { opacity: 0.4; }
 .col-hops { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .btn-ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn-ghost:hover { border-color: var(--border); color: var(--danger); text-decoration: none; }
+
+/* --------------------------------------------------- Calculated column builder */
+.calc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.calc-row input, .calc-row select { margin-top: 0; width: auto; }
+.calc-row .calc-label { min-width: 12rem; }
+.calc-row .calc-expr { min-width: 18rem; }
+.calc-concat, .calc-formula {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.calc-concat select[multiple] { min-width: 12rem; }
+#calc-tokens { font-size: 0.8rem; }
 
 /* --------------------------------------------------------- Dashboard widgets */
 /* Widget widths are 1-12 spans of a 12-column grid, Bootstrap-style. */

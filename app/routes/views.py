@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -21,6 +23,7 @@ from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
 from app.services.aggregates import TOTAL_OPS
+from app.services.calculated import CALC_KINDS, FormulaError, formula_references, parse_formula
 from app.services.csv_service import export_view_csv
 from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
@@ -87,6 +90,7 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         in ("on", "true", "1", "yes"),
         "record_actions": str(raw.get("record_actions", "")).lower() in ("on", "true", "1", "yes"),
         "totals": totals,
+        "calculated": _calculated_from_form(raw, column_specs),
     }
     if sort_value:
         # Any view column may be the sort column: the form submits the same
@@ -99,6 +103,67 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         elif sort_value in {a.slug for a in entity.attributes}:
             config["sort"] = {"slug": sort_value, "dir": sort_dir}
     return config
+
+
+def _column_keys(specs: list) -> list[str]:
+    """Canonical key of each resolved column spec (the keys calculated columns use)."""
+    keys = []
+    for spec in specs:
+        if isinstance(spec, str):
+            keys.append(spec)
+        elif isinstance(spec, dict):
+            keys.append(_rel_key(spec))
+    return keys
+
+
+def _calculated_from_form(raw: dict, column_specs: list) -> list[dict]:
+    """Parse the calculated-column rows (one JSON object per form row).
+
+    Rows referencing columns that are not part of the view are dropped, except
+    for a formula that references an unknown column or does not parse: that
+    raises :class:`FormulaError` so the form can show the mistake instead of
+    silently saving a column that would never render.
+    """
+    known = set(_column_keys(column_specs))
+    specs: list[dict] = []
+    for value in to_list(raw.get("calc")):
+        text = value.strip()
+        if not text:
+            continue
+        try:
+            row = json.loads(text)
+        except json.JSONDecodeError:
+            continue  # an unparseable row is an empty row
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("label") or "").strip()
+        kind = row.get("kind")
+        if not label or kind not in CALC_KINDS:
+            continue
+        if kind == "concat":
+            parts = [str(part) for part in row.get("parts") or [] if str(part) in known]
+            if not parts:
+                continue
+            specs.append(
+                {
+                    "kind": "concat",
+                    "label": label,
+                    "parts": parts,
+                    "separator": str(row.get("separator") or ""),
+                }
+            )
+            continue
+        expr = str(row.get("expr") or "").strip()
+        if not expr:
+            continue
+        node = parse_formula(expr)
+        unknown = sorted(formula_references(node) - known)
+        if unknown:
+            raise FormulaError(
+                f"Calculated column '{label}': {unknown[0]!r} is not one of the view's columns."
+            )
+        specs.append({"kind": "formula", "label": label, "expr": expr})
+    return specs
 
 
 def _icon_from_form(raw: dict) -> str:
@@ -128,6 +193,8 @@ def _filter_options(columns: list) -> list[dict]:
     options = []
     for column in columns:
         attr = column.attr
+        if attr is None:
+            continue  # calculated columns cannot be filtered on
         options.append(
             {
                 "value": column_spec_string(column),
@@ -274,11 +341,20 @@ async def create_view_post(
             {**_view_form_context(db, entity, None), "error": "Name is required."},
             status_code=400,
         )
+    try:
+        config = _merged_config(None, _config_from_form(raw, entity))
+    except FormulaError as exc:
+        return render(
+            request,
+            "views/form.html",
+            {**_view_form_context(db, entity, None), "error": str(exc)},
+            status_code=400,
+        )
     view = create_view(
         db,
         entity,
         name,
-        _merged_config(None, _config_from_form(raw, entity)),
+        config,
         icon=_icon_from_form(raw),
         user_id=user.id,
     )
@@ -436,11 +512,20 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
+    try:
+        config = _merged_config(view.config, _config_from_form(raw, entity))
+    except FormulaError as exc:
+        return render(
+            request,
+            "views/form.html",
+            {**_view_form_context(db, entity, view), "error": str(exc)},
+            status_code=400,
+        )
     update_view(
         db,
         view,
         name,
-        _merged_config(view.config, _config_from_form(raw, entity)),
+        config,
         icon=_icon_from_form(raw),
     )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")

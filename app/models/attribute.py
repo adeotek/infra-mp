@@ -60,3 +60,8 @@ class Attribute(TimestampMixin, Base):
     def cardinality(self) -> str:
         """Reference cardinality, stored in ``config``."""
         return self.config.get("cardinality", "one")
+
+    @property
+    def is_numeric(self) -> bool:
+        """True for the aggregatable numeric types (grids right-align them)."""
+        return self.data_type in (DataType.INTEGER.value, DataType.DECIMAL.value)

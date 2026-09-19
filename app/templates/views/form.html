@@ -28,6 +28,19 @@
   </fieldset>
 
   <fieldset class="form-section">
+    <legend>Calculated columns</legend>
+    <p class="muted">Derived columns computed for every row. <strong>Text</strong> joins the
+      display value of two or more columns, with an optional separator. <strong>Number</strong>
+      evaluates an arithmetic formula over numeric columns:<br>
+      <code>+ - * /</code>, parentheses, unary minus and <code>round(value, digits)</code> —
+      reference a column by its key in braces, e.g. <code>round({price} * {quantity}, 2)</code>.
+      A row with an empty value shows the em dash.</p>
+    <div id="calculated"></div>
+    <button type="button" id="add-calculated" class="btn">Add calculated column</button>
+    <p class="muted" id="calc-tokens"></p>
+  </fieldset>
+
+  <fieldset class="form-section">
     <legend>Sort</legend>
     <div class="grid-2">
       <label>Column
@@ -109,6 +122,25 @@
       <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
     </span>
     <button type="button" class="btn btn-ghost remove-column">Remove</button>
+  </div>
+</template>
+
+<template id="calc-row-template">
+  <div class="calc-row">
+    <input type="text" class="calc-label" placeholder="Header (e.g. Yearly cost)">
+    <select class="calc-kind" aria-label="Calculation">
+      <option value="concat">Text — join columns</option>
+      <option value="formula">Number — formula</option>
+    </select>
+    <span class="calc-concat">
+      <select class="calc-parts" multiple size="2" aria-label="Columns to join"></select>
+      <input type="text" class="calc-sep" placeholder="separator (optional)">
+    </span>
+    <span class="calc-formula hidden">
+      <input type="text" class="calc-expr" placeholder="e.g. round({price} * 12, 2)">
+    </span>
+    <input type="hidden" name="calc" value="">
+    <button type="button" class="btn btn-ghost remove-calc">Remove</button>
   </div>
 </template>
 
@@ -440,12 +472,14 @@
         syncTotalOptions(row);
       }
       rebuildSortOptions();
+      rebuildCalcPickers();
     });
 
     columnsBox.addEventListener('click', function (e) {
       if (e.target.classList.contains('remove-column')) {
         e.target.closest('.column-row').remove();
         rebuildSortOptions();
+        rebuildCalcPickers();
         return;
       }
       var moveBtn = e.target.closest('.col-move');
@@ -458,6 +492,7 @@
         row.parentNode.insertBefore(row.nextElementSibling, row);
       }
       rebuildSortOptions();
+      rebuildCalcPickers();
     });
 
     // Column reordering: drag by the handle (rows are form-local, so the DOM
@@ -499,16 +534,150 @@
       dragRow.classList.remove('dragging');
       dragRow = null;
       rebuildSortOptions();
+      rebuildCalcPickers();
     });
 
     document.getElementById('add-column').addEventListener('click', function () {
       newColumnRow();
       rebuildSortOptions();
+      rebuildCalcPickers();
     });
     document.getElementById('view-form').addEventListener('submit', function () {
       columnsBox.querySelectorAll('.column-row').forEach(serializeColumnRow);
+      serializeCalcRows();
       rebuildSortOptions();
     });
+
+    // --- Calculated columns -------------------------------------------------
+    // Each row serialises itself into one hidden `calc` input (JSON): the row
+    // controls are unnamed, so a row with missing pieces simply submits
+    // nothing — the same pattern the column builder uses for `col`.
+    var calcBox = document.getElementById('calculated');
+    var calcTemplate = document.getElementById('calc-row-template');
+    var calcTokens = document.getElementById('calc-tokens');
+
+    function columnChoices() {
+      var choices = [];
+      columnsBox.querySelectorAll('.column-row').forEach(function (row) {
+        var encoding = columnEncodingOfRow(row);
+        if (!encoding) return;
+        choices.push({ value: totalKeyOf(encoding), label: sortLabelForRow(row) });
+      });
+      return choices;
+    }
+
+    function syncCalcRow(row) {
+      var kind = row.querySelector('.calc-kind').value;
+      row.querySelector('.calc-concat').classList.toggle('hidden', kind !== 'concat');
+      row.querySelector('.calc-formula').classList.toggle('hidden', kind !== 'formula');
+    }
+
+    function rebuildCalcPickers() {
+      var choices = columnChoices();
+      calcBox.querySelectorAll('.calc-row').forEach(function (row) {
+        var select = row.querySelector('.calc-parts');
+        var selected = Array.prototype.map.call(select.selectedOptions, function (o) {
+          return o.value;
+        });
+        select.innerHTML = '';
+        choices.forEach(function (choice) {
+          var option = document.createElement('option');
+          option.value = choice.value;
+          option.textContent = choice.label;
+          if (selected.indexOf(choice.value) !== -1) option.selected = true;
+          select.appendChild(option);
+        });
+      });
+      if (calcTokens) {
+        calcTokens.textContent = choices.length
+          ? 'Columns you can reference: ' + choices.map(function (c) {
+              return '{' + c.value + '} = ' + c.label;
+            }).join(' · ')
+          : 'Add a column above to reference it in a calculation.';
+      }
+    }
+
+    function serializeCalcRow(row) {
+      var hidden = row.querySelector('input[name="calc"]');
+      var label = row.querySelector('.calc-label').value.trim();
+      var kind = row.querySelector('.calc-kind').value;
+      var payload = { label: label, kind: kind };
+      if (!label) {
+        hidden.value = '';
+        return;
+      }
+      if (kind === 'concat') {
+        var parts = Array.prototype.map.call(
+          row.querySelector('.calc-parts').selectedOptions,
+          function (o) { return o.value; }
+        ).filter(Boolean);
+        if (!parts.length) {
+          hidden.value = '';
+          return;
+        }
+        payload.parts = parts;
+        payload.separator = row.querySelector('.calc-sep').value;
+      } else {
+        var expr = row.querySelector('.calc-expr').value.trim();
+        if (!expr) {
+          hidden.value = '';
+          return;
+        }
+        payload.expr = expr;
+      }
+      hidden.value = JSON.stringify(payload);
+    }
+
+    function serializeCalcRows() {
+      calcBox.querySelectorAll('.calc-row').forEach(serializeCalcRow);
+    }
+
+    function newCalcRow() {
+      var row = calcTemplate.content.cloneNode(true).firstElementChild;
+      calcBox.appendChild(row);
+      syncCalcRow(row);
+      return row;
+    }
+
+    document.getElementById('add-calculated').addEventListener('click', function () {
+      newCalcRow();
+      rebuildCalcPickers();
+    });
+    calcBox.addEventListener('change', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (!row) return;
+      if (e.target.classList.contains('calc-kind')) syncCalcRow(row);
+      serializeCalcRow(row);
+    });
+    calcBox.addEventListener('input', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (row) serializeCalcRow(row);
+    });
+    calcBox.addEventListener('click', function (e) {
+      if (e.target.classList.contains('remove-calc')) {
+        e.target.closest('.calc-row').remove();
+      }
+    });
+
+    // Replay the stored calculated columns (after the column rows exist, so
+    // the reference pickers can list them).
+    (CONFIG.calculated || []).forEach(function (spec) {
+      var row = newCalcRow();
+      row.querySelector('.calc-label').value = spec.label || '';
+      row.querySelector('.calc-kind').value = spec.kind === 'formula' ? 'formula' : 'concat';
+      row.querySelector('.calc-sep').value = spec.separator || '';
+      row.querySelector('.calc-expr').value = spec.expr || '';
+      syncCalcRow(row);
+      rebuildCalcPickers();
+      if (spec.parts) {
+        var select = row.querySelector('.calc-parts');
+        Array.prototype.forEach.call(select.options, function (option) {
+          option.selected = spec.parts.indexOf(option.value) !== -1;
+        });
+      }
+      serializeCalcRow(row);
+    });
+    rebuildCalcPickers();
 
     // Filters
     var filterBox = document.getElementById('filters');

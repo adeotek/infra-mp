@@ -62,12 +62,22 @@ def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, c
         # so related-entity columns render exactly like the view's detail page.
         rows = build_view_rows(db, entity, records, columns, cache=cache)
         columns = [
-            {"name": c.label, "slug": c.key, "with_copy_button": c.attr.with_copy_button}
+            {
+                "name": c.label,
+                "slug": c.key,
+                "with_copy_button": c.with_copy_button,
+                "numeric": c.is_numeric,
+            }
             for c in columns
         ]
     else:
         columns = [
-            {"name": a.name, "slug": a.slug, "with_copy_button": a.with_copy_button}
+            {
+                "name": a.name,
+                "slug": a.slug,
+                "with_copy_button": a.with_copy_button,
+                "numeric": a.is_numeric,
+            }
             for a in entity.attributes
         ]
         titles = resolve_reference_titles(db, entity, cache=cache)

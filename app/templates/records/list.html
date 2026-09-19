@@ -29,7 +29,7 @@
       <thead>
         <tr>
           {% if can_update %}<th class="no-sort"></th>{% endif %}
-          {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
+          {% for attr in entity.attributes %}<th{% if attr.is_numeric %} class="num"{% endif %}>{{ attr.name }}</th>{% endfor %}
           <th class="muted">Created at</th>
           <th class="muted">Created by</th>
           <th class="muted">Last modified at</th>
@@ -54,7 +54,7 @@
           </td>
           {% endif %}
           {% for attr in entity.attributes %}
-          <td>
+          <td{% if attr.is_numeric %} class="num"{% endif %}>
             {% set href = row.link_hrefs.get(attr.slug) if row.link_hrefs else none %}
             {{ grid_cell(row.cells[attr.slug], href, attr.with_copy_button) }}
           </td>
