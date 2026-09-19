@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.attribute import Attribute
@@ -332,7 +333,13 @@ def add_attribute(db: Session, entity: Entity, data: AttributeCreate) -> Attribu
         sort_order=_next_sort_order(db, entity.id),
     )
     db.add(attribute)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Concurrent creation of the same attribute name raced unique_slug
+        # (check-then-insert); surface a typed 400 instead of a 500.
+        db.rollback()
+        raise SchemaError(f"An attribute named '{data.name.strip()}' already exists.") from exc
     return attribute
 
 
