@@ -79,12 +79,14 @@
         <td class="row-actions">
           <div class="row-actions-inner">
             {% if can_update %}
-            <a href="/records/{{ row.record.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+            <a href="/records/{{ row.record.id }}/edit?next={{ ('/views/' ~ view.id) | urlencode }}" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
             {% endif %}
             {% if can_delete %}
             <form method="post" action="/records/{{ row.record.id }}/delete" class="inline"
                   data-confirm="Delete this record?">
               {% include "_csrf.html" %}
+              {# Return to this view after the delete, not the entity's records list. #}
+              <input type="hidden" name="next" value="/views/{{ view.id }}">
               <button type="submit" class="action-btn action-btn-danger" title="Delete" aria-label="Delete"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>
             </form>
             {% endif %}
@@ -106,8 +108,9 @@
         {% if show_actions %}<td class="row-actions"></td>{% endif %}
         {% for c in columns %}
         {% set total = column_totals.get(c.key) %}
-        <td class="total-cell">
-          {% if total %}<span class="total-op">{{ total.op }}</span> <strong>{{ total.value }}</strong>{% endif %}
+        {# Just the number — the operation stays available as a hover title. #}
+        <td class="total-cell"{% if total %} title="{{ total.op }}"{% endif %}>
+          {% if total %}<strong>{{ total.value }}</strong>{% endif %}
         </td>
         {% endfor %}
       </tr>

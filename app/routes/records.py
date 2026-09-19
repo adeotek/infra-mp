@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -17,7 +17,7 @@ from app.auth.permissions import (
     has_capability,
 )
 from app.db import get_session
-from app.flash import redirect_with_flash
+from app.flash import redirect_with_flash, safe_next
 from app.form import parse_form
 from app.models.record import Record
 from app.models.user import User
@@ -44,6 +44,30 @@ from app.services.schema_service import get_entity_with_attributes
 from app.templates import render
 
 router = APIRouter()
+
+
+def _records_url(entity_id: int) -> str:
+    return f"/entities/{entity_id}/records"
+
+
+def _return_target(raw_next: Any, entity_id: int) -> str:
+    """Where a record mutation lands: the page it was started from.
+
+    The source page passes its own path as ``next`` (the view detail page sends
+    ``/views/<id>``); anything that is not a local path falls back to the
+    entity's records list, so a crafted value cannot redirect off-site.
+    """
+    value = str(raw_next or "").strip() or None
+    return safe_next(value, _records_url(entity_id))
+
+
+def _next_context(entity_id: int, raw_next: Any) -> dict[str, str]:
+    """Template context for the record form's return target."""
+    target = _return_target(raw_next, entity_id)
+    return {
+        "next_url": target,
+        "next_label": "Back to view" if target.startswith("/views/") else "Back to records",
+    }
 
 
 @router.get("/entities/{entity_id}/records")
@@ -150,6 +174,7 @@ async def import_records_post(
 def new_record_page(
     request: Request,
     entity_id: int,
+    next: str = "",
     user: User = Depends(require_capability(CREATE_RECORD)),
     db: Session = Depends(get_session),
 ):
@@ -165,6 +190,7 @@ def new_record_page(
             "current": None,
             "ref_options": reference_options(db, entity),
             "action_url": f"/entities/{entity_id}/records",
+            **_next_context(entity_id, next),
         },
     )
 
@@ -185,13 +211,14 @@ async def create_record_post(
     except RecordError as exc:
         return _render_form_error(request, db, entity, None, raw, exc)
 
-    return redirect_with_flash(f"/entities/{entity_id}/records", "Record created.")
+    return redirect_with_flash(_return_target(raw.get("next"), entity_id), "Record created.")
 
 
 @router.get("/records/{record_id}/edit")
 def edit_record_page(
     request: Request,
     record_id: int,
+    next: str = "",
     user: User = Depends(require_capability(UPDATE_RECORD)),
     db: Session = Depends(get_session),
 ):
@@ -211,6 +238,7 @@ def edit_record_page(
             "action_url": f"/records/{record_id}/edit",
             "created_by_name": user_names.get(record.created_by, "—"),
             "updated_by_name": user_names.get(record.updated_by, "—"),
+            **_next_context(record.entity_id, next),
         },
     )
 
@@ -232,21 +260,23 @@ async def update_record_post(
     except RecordError as exc:
         return _render_form_error(request, db, entity, record, raw, exc)
 
-    return redirect_with_flash(f"/entities/{entity.id}/records", "Record updated.")
+    return redirect_with_flash(_return_target(raw.get("next"), record.entity_id), "Record updated.")
 
 
 @router.post("/records/{record_id}/delete")
 def delete_record_post(
     request: Request,
     record_id: int,
+    next: str = Form(""),
     user: User = Depends(require_capability(DELETE_RECORD)),
     db: Session = Depends(get_session),
 ):
     record = get_record(db, record_id)
     if record is None:
         raise HTTPException(status_code=404)
+    entity_id = record.entity_id
     soft_delete_record(db, record)
-    return redirect_with_flash(f"/entities/{record.entity_id}/records", "Record deleted.")
+    return redirect_with_flash(_return_target(next, entity_id), "Record deleted.")
 
 
 def _render_form_error(
@@ -267,6 +297,9 @@ def _render_form_error(
         ),
         "error": str(error),
         "field_errors": error.field_errors,
+        # Keep the source page through a failed submit, so the corrected form
+        # still returns there.
+        **_next_context(entity.id, raw.get("next")),
     }
     if record is not None:
         user_names = username_map(db)

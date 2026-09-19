@@ -500,14 +500,13 @@ th.sortable:hover { color: var(--primary); }
 th.sorted-asc .sort-indicator,
 th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 
-/* Grand totals (view grids): the footer row shares the header's surface, and
-   each total reads as "op value" (e.g. "sum 1,234.5"). */
+/* Grand totals (view grids): the footer row shares the header's surface; the
+   cells show the bare value (the aggregation op lives in the cell's title). */
 .table tfoot td {
   background: var(--surface-2);
   border-top: 1px solid var(--border);
   border-bottom: none;
 }
-.total-op { color: var(--muted); font-weight: 500; }
 
 /* -------------------------------------------------------------- Utilities */
 .hidden { display: none !important; }

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{{ "Edit record" if record else "New record" }} <span class="muted">in {{ entity.name }}</span></h1>
-  <a href="/entities/{{ entity.id }}/records" class="btn">Back to records</a>
+  <a href="{{ next_url or '/entities/' ~ entity.id ~ '/records' }}" class="btn">{{ next_label or 'Back to records' }}</a>
 </div>
 {% if error and not field_errors %}<div class="flash flash-error">{{ error }}</div>{% endif %}
 {% if error and field_errors and field_errors.get(none) %}<div class="flash flash-error">{{ field_errors.get(none) }}</div>{% endif %}
@@ -11,6 +11,9 @@
 {% if entity.attributes %}
 <form method="post" action="{{ action_url }}">
   {% include "_csrf.html" %}
+  {# Where to return after saving: the page this form was opened from
+     (the records list by default, the view detail page when started there). #}
+  <input type="hidden" name="next" value="{{ next_url }}">
   {% if record %}
   <fieldset class="form-section">
     <legend>Record metadata</legend>
@@ -122,7 +125,7 @@
   {% endfor %}
   <div class="form-actions">
     <button type="submit" class="btn btn-primary">Save</button>
-    <a href="/entities/{{ entity.id }}/records" class="btn">Cancel</a>
+    <a href="{{ next_url or '/entities/' ~ entity.id ~ '/records' }}" class="btn">Cancel</a>
   </div>
 </form>
 {% else %}

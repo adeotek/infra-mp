@@ -12,7 +12,7 @@ from app.auth.password import hash_password, verify_password
 from app.auth.sessions import create_session, delete_session
 from app.config import get_settings
 from app.db import get_session
-from app.flash import redirect_with_flash
+from app.flash import redirect_with_flash, safe_next
 from app.models.user import User
 from app.services.user_service import UserError, change_password
 from app.templates import render
@@ -25,14 +25,8 @@ _DUMMY_HASH = hash_password("dummy-password-for-timing")
 
 
 def _safe_next(value: str | None) -> str:
-    """Allow only relative redirect targets (prevents open redirects).
-
-    ``//host`` is protocol-relative; ``/\\host`` is the same once browsers
-    normalise backslashes in URL paths, so both are rejected.
-    """
-    if value and value.startswith("/") and not value.startswith(("//", "/\\")):
-        return value
-    return "/"
+    """Post-login redirect target: a local path, else the dashboard root."""
+    return safe_next(value, "/")
 
 
 @router.get("/login")

@@ -6,7 +6,7 @@
   <h1>{{ view.name }}</h1>
   <div class="actions">
     {% if record_actions and can_create %}
-    <a href="/entities/{{ entity.id }}/records/new" class="btn btn-primary">Add record</a>
+    <a href="/entities/{{ entity.id }}/records/new?next={{ ('/views/' ~ view.id) | urlencode }}" class="btn btn-primary">Add record</a>
     {% endif %}
     {% if can_manage_views %}
     <a href="/views/{{ view.id }}/edit" class="btn btn-primary">Edit view</a>

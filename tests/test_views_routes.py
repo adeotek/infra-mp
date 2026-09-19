@@ -562,7 +562,7 @@ def test_view_totals_render_in_the_footer(client, login):
     _create_view(client, col_total=["sum"])
     html = client.get("/views/1").text
     assert "<tfoot>" in html
-    assert '<span class="total-op">sum</span> <strong>12</strong>' in html
+    assert 'class="total-cell" title="sum"' in html and "<strong>12</strong>" in html
 
 
 def test_view_totals_follow_the_filters(client, login):
@@ -575,7 +575,7 @@ def test_view_totals_follow_the_filters(client, login):
         filter_value=["alpha"],
     )
     html = client.get("/views/1").text
-    assert '<span class="total-op">sum</span> <strong>4</strong>' in html
+    assert 'class="total-cell" title="sum"' in html and "<strong>4</strong>" in html
 
 
 def test_view_totals_are_skipped_for_text_columns(client, login):
@@ -606,7 +606,7 @@ def test_view_totals_survive_an_advanced_filter_rerender(client, login):
         data={"action": "add", "col": "quick", "value": "alpha"},
         headers={"HX-Request": "true"},
     ).text
-    assert '<span class="total-op">sum</span> <strong>4</strong>' in html
+    assert 'class="total-cell" title="sum"' in html and "<strong>4</strong>" in html
 
 
 def test_totals_need_a_matching_column_row(client, login):
@@ -614,3 +614,13 @@ def test_totals_need_a_matching_column_row(client, login):
     _seed_server(client, login)
     _create_view(client, col=[], col_total=["sum"])
     assert "<tfoot>" not in client.get("/views/1").text
+
+
+def test_view_action_links_carry_the_return_target(client, login):
+    """Add/edit/delete started on a view page come back to that view."""
+    _seed_server(client, login)
+    _create_view(client, record_actions="on")
+    html = client.get("/views/1").text
+    assert "/entities/1/records/new?next=/views/1" in html
+    assert "/records/1/edit?next=/views/1" in html
+    assert '<input type="hidden" name="next" value="/views/1">' in html
