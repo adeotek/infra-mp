@@ -21,6 +21,11 @@
     </h2>
     {% if w.widget.widget_type == 'count' %}
     <div class="stat-value">{{ w.data }}</div>
+    {% elif w.widget.widget_type == 'sum' and w.data %}
+    <div class="stat-value">{{ w.data.value }}</div>
+    <p class="muted">Sum of {{ w.data.label }}</p>
+    {% elif w.widget.widget_type == 'sum' %}
+    <p class="muted">No numeric field selected for this widget.</p>
     {% elif w.data %}
     {% if w.data.rows %}
     <div class="table-wrap">

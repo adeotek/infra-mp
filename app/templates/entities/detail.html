@@ -33,7 +33,7 @@
   <thead>
     <tr>
       {% if can_manage_schema %}<th class="no-sort drag-handle-col" aria-hidden="true"></th>{% endif %}
-      <th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Copy</th><th>Key</th><th>Active</th><th>Default</th><th class="no-sort"></th>
+      <th class="no-sort"></th><th>Name</th><th>Type</th><th>Required</th><th>Unique</th><th>Copy</th><th>Key</th><th>Active</th><th>Default</th>
     </tr>
   </thead>
   <tbody>
@@ -42,14 +42,6 @@
       {% if can_manage_schema %}
       <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i><span class="row-move-group"><button type="button" class="row-move" data-move="up" title="Move up" aria-label="Move up"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="row-move" data-move="down" title="Move down" aria-label="Move down"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></span></td>
       {% endif %}
-      <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
-      <td><code>{{ a.data_type }}</code></td>
-      <td>{{ "Yes" if a.is_required else "—" }}</td>
-      <td>{{ "Yes" if a.is_unique else "—" }}</td>
-      <td>{{ "Yes" if a.with_copy_button else "—" }}</td>
-      <td>{{ "Yes" if a.is_key else "—" }}</td>
-      <td>{{ "Yes" if a.is_active else "No" }}</td>
-      <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
       <td class="row-actions">
         {% if can_manage_schema %}
         <div class="row-actions-inner">
@@ -62,6 +54,14 @@
         </div>
         {% endif %}
       </td>
+      <td>{{ a.name }} <span class="muted">({{ a.slug }})</span></td>
+      <td><code>{{ a.data_type }}</code></td>
+      <td>{{ "Yes" if a.is_required else "—" }}</td>
+      <td>{{ "Yes" if a.is_unique else "—" }}</td>
+      <td>{{ "Yes" if a.with_copy_button else "—" }}</td>
+      <td>{{ "Yes" if a.is_key else "—" }}</td>
+      <td>{{ "Yes" if a.is_active else "No" }}</td>
+      <td>{{ a.default_value if a.default_value is not none else "—" }}</td>
     </tr>
   {% endfor %}
   </tbody>

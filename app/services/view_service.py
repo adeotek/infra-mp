@@ -14,6 +14,13 @@ from app.models.entity import Entity
 from app.models.enums import DataType
 from app.models.record import Record
 from app.models.view import View
+from app.services.aggregates import (
+    TOTAL_OPS,
+    aggregate,
+    format_total,
+    is_numeric_attribute,
+    to_decimal,
+)
 from app.services.record_service import (
     _display_cell,
     build_record_titles,
@@ -272,17 +279,24 @@ def _match_scalar(
     if op in ("contains", "not_contains"):
         if isinstance(value, list):
             target = _coerce_filter_target(attr, raw_target)
-            hit = target in value
+            hit = any(_scalar_equal(attr, item, target) for item in value)
         else:
-            hit = str(raw_target).lower() in str(value).lower()
+            hit = str(raw_target).casefold() in str(value).casefold()
         return hit if op == "contains" else not hit
 
     target = _coerce_filter_target(attr, raw_target)
     if op == "eq":
-        return value == target
+        return _scalar_equal(attr, value, target)
     if op == "neq":
-        return value != target
+        return not _scalar_equal(attr, value, target)
     if op in ("gt", "gte", "lt", "lte"):
+        # Numeric attributes store canonical decimal *strings*, which must be
+        # ordered by value ("4.50" is smaller than "10", not the reverse).
+        if is_numeric_attribute(attr):
+            left_decimal, right_decimal = to_decimal(value), to_decimal(target)
+            if left_decimal is None or right_decimal is None:
+                return False
+            value, target = left_decimal, right_decimal
         try:
             if op == "gt":
                 return value > target
@@ -295,6 +309,23 @@ def _match_scalar(
         except TypeError:
             return False
     return True
+
+
+def _scalar_equal(attr: Attribute, left: Any, right: Any) -> bool:
+    """Equality used by ``eq``/``neq`` filters and list membership.
+
+    Text-like values compare case-insensitively — filters are typed by hand,
+    so "Active" must match "active" (and enums accept any casing). Numeric
+    attributes compare by value: decimals are stored as canonical strings, and
+    "12.5" must match a filter target of "12.50".
+    """
+    if is_numeric_attribute(attr):
+        left_decimal, right_decimal = to_decimal(left), to_decimal(right)
+        if left_decimal is not None and right_decimal is not None:
+            return left_decimal == right_decimal
+    if isinstance(left, str) and isinstance(right, str):
+        return left.casefold() == right.casefold()
+    return left == right
 
 
 def _related_filter_values(record: Record, column: ViewColumn, context: Any) -> list[Any]:
@@ -345,13 +376,13 @@ def _match_reference(
         if isinstance(target, int):
             hit = value == target
         else:
-            hit = title_of(value).lower() == str(raw_target).lower()
+            hit = title_of(value).casefold() == str(raw_target).casefold()
         return hit if op == "eq" else not hit
     # contains / not_contains over the referenced title(s).
     if isinstance(value, list):
-        hit = any(str(raw_target).lower() in title_of(v).lower() for v in value)
+        hit = any(str(raw_target).casefold() in title_of(v).casefold() for v in value)
     else:
-        hit = str(raw_target).lower() in title_of(value).lower()
+        hit = str(raw_target).casefold() in title_of(value).casefold()
     return hit if op == "contains" else not hit
 
 
@@ -366,7 +397,7 @@ def _quick_match(
     """True when any cell (base attribute or related column) contains ``term``."""
     if not term:
         return True
-    term = term.lower()
+    term = term.casefold()
     for slug, value in record.data.items():
         if value is None:
             continue
@@ -381,7 +412,7 @@ def _quick_match(
             hay = [str(v) for v in value]
         else:
             hay = [str(value)]
-        if any(term in str(part).lower() for part in hay):
+        if any(term in str(part).casefold() for part in hay):
             return True
     if context:
         for column in columns_by_key.values():
@@ -391,7 +422,7 @@ def _quick_match(
             if value is None:
                 continue
             hay = value if isinstance(value, list) else [value]
-            if any(term in str(part).lower() for part in hay):
+            if any(term in str(part).casefold() for part in hay):
                 return True
     return False
 
@@ -664,7 +695,7 @@ def build_view_graph(db: Session, base_entity_id: int) -> dict:
         attrs = []
         up = []
         for attr in entity.attributes:
-            attrs.append({"slug": attr.slug, "name": attr.name})
+            attrs.append({"slug": attr.slug, "name": attr.name, "type": attr.data_type})
             if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
                 up.append(
                     {
@@ -722,6 +753,79 @@ def build_view_rows(
                     link_hrefs[column.key] = href
         rows.append({"record": record, "cells": cells, "link_hrefs": link_hrefs})
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# Grand totals (custom views)
+# --------------------------------------------------------------------------- #
+
+
+def build_totals(
+    db: Session,
+    entity: Entity,
+    records: list[Record],
+    columns: list[ViewColumn],
+    config: dict,
+    cache: dict | None = None,
+) -> dict[str, dict[str, str]]:
+    """Grand totals for the view's numeric columns, as the template consumes them.
+
+    ``config["totals"]`` maps a column key (base slug or ``rel:…`` key) to one
+    of :data:`TOTAL_OPS`; entries whose column is missing or not numeric are
+    ignored (view configs are lenient by design, same as column specs).
+    """
+    totals_spec = config.get("totals")
+    if not isinstance(totals_spec, dict) or not totals_spec:
+        return {}
+    wanted = [
+        column
+        for column in columns
+        if totals_spec.get(column.key) in TOTAL_OPS and is_numeric_attribute(column.attr)
+    ]
+    if not wanted:
+        return {}
+    # Related columns need the hop-resolution context; base columns do not.
+    context = (
+        _related_context(db, entity, wanted, records, cache)
+        if any(column.path is not None for column in wanted)
+        else None
+    )
+    totals: dict[str, dict[str, str]] = {}
+    for column in wanted:
+        op = totals_spec[column.key]
+        values = []
+        for record in records:
+            value = _column_numeric_value(record, column, context)
+            if value is not None:
+                values.append(value)
+        if not values:
+            continue
+        totals[column.key] = {"op": op, "value": format_total(aggregate(values, op))}
+    return totals
+
+
+def _column_numeric_value(
+    record: Record,
+    column: ViewColumn,
+    context: tuple[
+        dict[int, dict[int, Record]],
+        dict[tuple[int, str], dict[int, list[int]]],
+        dict[int, dict[int, str]],
+    ]
+    | None,
+) -> Any:
+    """The column's numeric value for one record.
+
+    Base columns use the stored value; related columns use their first terminal
+    value — the same value the column sorts and quick-filters by.
+    """
+    if column.path is None:
+        raw = record.data.get(column.attr.slug)
+    elif context is not None:
+        raw = _resolve_related_sort_value(record, column, context)
+    else:
+        return None
+    return to_decimal(raw)
 
 
 def _related_context(

@@ -21,7 +21,8 @@
     <legend>Columns</legend>
     <p class="muted">Add a column row per attribute. Rows may follow reference hops to parent or
       child entities (any depth) and end on one of their attributes. Leave empty to show every
-      attribute.</p>
+      attribute. Numeric columns can carry a grand total (sum / average / min / max) over the
+      view's filtered rows.</p>
     <div id="columns"></div>
     <button type="button" id="add-column" class="btn">Add column</button>
   </fieldset>
@@ -52,6 +53,14 @@
   </label>
   <p class="muted">Show the interactive filter bar on the view page instead of the
     standard filter rows below. Each filter is applied as soon as it is added.</p>
+
+  <label class="checkbox-label">
+    <input type="checkbox" name="record_actions" id="record-actions-toggle"
+           {% if view is none or cfg.get('record_actions') %}checked{% endif %}>
+    Record actions (add, edit, delete)
+  </label>
+  <p class="muted">Show the Add record button and the per-row Edit / Delete buttons on
+    the view page. Buttons appear only for actions your role allows.</p>
 
   <fieldset class="form-section" id="filters-section">
     <legend>Standard filters</legend>
@@ -89,6 +98,11 @@
     <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
     <div class="col-hops"></div>
     <select class="col-attr" aria-label="Attribute"></select>
+    <label class="col-total-label">Total
+      <select class="col-total" name="col_total" aria-label="Grand total">
+        <option value="">— none —</option>
+      </select>
+    </label>
     <input type="hidden" name="col" value="">
     <span class="row-move-group" aria-label="Move column">
       <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
@@ -226,6 +240,49 @@
       }
       attrSel.innerHTML = '';
       attrSel.appendChild(attrOptions(current, prevAttr));
+      row._nodeId = current;
+      syncTotalOptions(row);
+    }
+
+    // --- Grand total select: only numeric terminal attributes offer ops ---
+    var TOTAL_OPS = [['sum', 'Sum'], ['avg', 'Average'], ['min', 'Min'], ['max', 'Max']];
+    var NUMERIC_TYPES = ['integer', 'decimal'];
+
+    function attrTypeOf(nodeId, slug) {
+      var found = null;
+      ((ent(nodeId) && ent(nodeId).attrs) || []).forEach(function (a) {
+        if (a.slug === slug) found = a;
+      });
+      return found ? found.type : null;
+    }
+
+    function syncTotalOptions(row) {
+      var sel = row.querySelector('.col-total');
+      if (!sel) return;
+      var attr = row.querySelector('.col-attr').value;
+      var numeric = !!attr && NUMERIC_TYPES.indexOf(attrTypeOf(row._nodeId, attr)) !== -1;
+      var previous = sel.value;
+      sel.innerHTML = '';
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = '\u2014 none \u2014';
+      sel.appendChild(none);
+      if (numeric) {
+        TOTAL_OPS.forEach(function (pair) {
+          var option = document.createElement('option');
+          option.value = pair[0];
+          option.textContent = pair[1];
+          sel.appendChild(option);
+        });
+        if (previous) sel.value = previous;
+      }
+      // Non-numeric columns keep the (empty) select so the per-row pairing
+      // with the `col` field survives: disabled fields are not submitted.
+      sel.classList.toggle('total-na', !numeric);
+    }
+
+    function totalKeyOf(encoding) {
+      return encoding.indexOf('base:') === 0 ? encoding.slice(5) : encoding;
     }
 
     function readColumnState(row) {
@@ -263,6 +320,7 @@
       var row = newColumnRow();
       if (typeof spec === 'string') {
         row.querySelector('.col-attr').value = spec;
+        applyStoredTotal(row);
         return;
       }
       (spec.path || []).forEach(function (hop) {
@@ -277,6 +335,17 @@
         renderColumnRow(row);
       });
       if (spec.attr) row.querySelector('.col-attr').value = spec.attr;
+      applyStoredTotal(row);
+    }
+
+    // Replay the grand total stored for this row's column, when it has one.
+    function applyStoredTotal(row) {
+      syncTotalOptions(row);
+      serializeColumnRow(row);
+      var encoding = row.querySelector('input[name="col"]').value;
+      var op = (CONFIG.totals || {})[totalKeyOf(encoding)];
+      var sel = row.querySelector('.col-total');
+      if (sel && op) sel.value = op;
     }
 
     // --- Sort column select: mirrors the current column rows ---
@@ -367,6 +436,8 @@
         renderColumnRow(row);
       } else if (e.target.classList.contains('col-many')) {
         row._state = readColumnState(row);
+      } else if (e.target.classList.contains('col-attr')) {
+        syncTotalOptions(row);
       }
       rebuildSortOptions();
     });

@@ -7,19 +7,27 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
-from app.auth.permissions import MANAGE_VIEWS, has_capability
+from app.auth.permissions import (
+    CREATE_RECORD,
+    DELETE_RECORD,
+    MANAGE_VIEWS,
+    UPDATE_RECORD,
+    has_capability,
+)
 from app.db import get_session
 from app.flash import redirect_with_flash
 from app.form import parse_form, to_list
 from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
+from app.services.aggregates import TOTAL_OPS
 from app.services.csv_service import export_view_csv
 from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
     apply_config,
+    build_totals,
     build_view_graph,
     build_view_rows,
     column_spec_string,
@@ -38,10 +46,19 @@ router = APIRouter()
 
 def _config_from_form(raw: dict, entity: Entity) -> dict:
     column_specs = []
-    for value in to_list(raw.get("col")):
+    # Grand totals are submitted per column row (a `col_total` select parallel
+    # to the row's `col` value), so both lists pair up by position.
+    total_ops = to_list(raw.get("col_total"))
+    totals: dict[str, str] = {}
+    for index, value in enumerate(to_list(raw.get("col"))):
         spec = parse_column_spec(value)
-        if spec is not None:
-            column_specs.append(spec)
+        if spec is None:
+            continue
+        column_specs.append(spec)
+        op = total_ops[index].strip() if index < len(total_ops) else ""
+        if op in TOTAL_OPS:
+            # Keyed by the resolved column key — the key the grid renders by.
+            totals[spec if isinstance(spec, str) else _rel_key(spec)] = op
     if not column_specs:
         # Legacy form: flat base-attribute slugs.
         column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
@@ -68,6 +85,8 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         "filters": filters,
         "advanced_filter": str(raw.get("advanced_filter", "")).lower()
         in ("on", "true", "1", "yes"),
+        "record_actions": str(raw.get("record_actions", "")).lower() in ("on", "true", "1", "yes"),
+        "totals": totals,
     }
     if sort_value:
         # Any view column may be the sort column: the form submits the same
@@ -145,13 +164,23 @@ def _describe_filters(filters: list[dict], columns: list) -> list[dict]:
 
 
 def _view_detail_context(
-    db: Session, view: View, entity: Entity, can_manage_views: bool, cache: dict | None = None
+    db: Session,
+    view: View,
+    entity: Entity,
+    can_manage_views: bool,
+    user: User,
+    cache: dict | None = None,
 ) -> dict:
     records, columns = apply_config(
         entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db, cache=cache
     )
     rows = build_view_rows(db, entity, records, columns, cache=cache)
     config = view.config or {}
+    can_create = has_capability(user, CREATE_RECORD)
+    can_update = has_capability(user, UPDATE_RECORD)
+    can_delete = has_capability(user, DELETE_RECORD)
+    record_actions = bool(config.get("record_actions"))
+    totals = build_totals(db, entity, records, columns, config, cache=cache)
     return {
         "view": view,
         "entity": entity,
@@ -163,6 +192,14 @@ def _view_detail_context(
         "filter_op_label": filter_op_label,
         "active_filters": _describe_filters(config.get("filters", []), columns),
         "filter_options": _filter_options(columns),
+        # Record actions: opt-in per view, then gated by the user's capabilities.
+        "record_actions": record_actions,
+        "can_create": can_create,
+        "can_update": can_update,
+        "can_delete": can_delete,
+        "show_actions": record_actions and (can_update or can_delete),
+        "column_totals": totals,
+        "has_totals": bool(totals),
     }
 
 
@@ -263,7 +300,7 @@ def view_detail(
     return render(
         request,
         "views/detail.html",
-        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS), cache),
+        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS), user, cache),
     )
 
 
@@ -294,7 +331,7 @@ async def view_filters_post(
         # In HTMX mode the error belongs next to the filter bar, not on a
         # fresh page load — return the detail fragment with an inline error.
         if request.headers.get("HX-Request"):
-            context = _view_detail_context(db, view, entity, True, {})
+            context = _view_detail_context(db, view, entity, True, user, {})
             context["filter_error"] = message
             return render(request, "views/detail_body.html", context)
         return redirect_with_flash(f"/views/{view.id}", message, category="error", request=request)
@@ -334,7 +371,9 @@ async def view_filters_post(
 
     if request.headers.get("HX-Request"):
         return render(
-            request, "views/detail_body.html", _view_detail_context(db, view, entity, True, {})
+            request,
+            "views/detail_body.html",
+            _view_detail_context(db, view, entity, True, user, {}),
         )
     return redirect_with_flash(f"/views/{view.id}", "Filters updated.")
 

@@ -13,6 +13,7 @@ from app.db import get_session
 from app.flash import redirect_with_flash
 from app.models.dashboard import DashboardWidget
 from app.models.user import User
+from app.services.aggregates import aggregate, format_total, is_numeric_attribute, to_decimal
 from app.services.record_service import (
     build_rows,
     count_records,
@@ -25,15 +26,13 @@ from app.templates import render
 
 router = APIRouter()
 
-# Allowed dashboard widget widths and their grid span classes.
-WIDGET_WIDTHS = {"1/4", "1/2", "3/4", "full"}
-WIDGET_WIDTH_CLASSES = {
-    "1/4": "widget-span-1",
-    "1/2": "widget-span-2",
-    "3/4": "widget-span-3",
-    "full": "widget-span-4",
-}
-WIDGET_TYPES = {"table", "count"}
+# Widget widths are spans of the dashboard's 12-column grid (1 = narrowest,
+# 12 = full row) — the Bootstrap-style model users expect.
+DEFAULT_WIDGET_SPAN = "6"
+# Widths stored before the 12-column grid, mapped to their equivalent span.
+LEGACY_WIDGET_WIDTHS = {"1/4": "3", "1/2": "6", "3/4": "9", "full": "12"}
+WIDGET_WIDTH_CLASSES = {str(n): f"widget-span-{n}" for n in range(1, 13)}
+WIDGET_TYPES = {"table", "count", "sum"}
 
 
 def _load_widgets(db: Session) -> list[DashboardWidget]:
@@ -93,6 +92,51 @@ def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, c
     return count_records(db, widget.entity_id)
 
 
+def _render_sum_widget(
+    db: Session, widget: DashboardWidget, entities: list, cache: dict
+) -> dict[str, str] | None:
+    """Sum one numeric attribute over the (optionally view-filtered) records."""
+    if widget.entity_id is None:
+        return None
+    entity = get_entity_with_attributes(db, widget.entity_id)
+    if entity is None:
+        return None
+    field = str((widget.config or {}).get("field") or "")
+    attr = next((a for a in entity.attributes if a.slug == field), None)
+    if attr is None or not is_numeric_attribute(attr):
+        return None
+    records = list_records(db, widget.entity_id)
+    view = widget.view
+    if view is not None and view.entity_id == widget.entity_id:
+        records, _ = apply_config(entity, records, view.config, entities, db=db, cache=cache)
+    values = [
+        value
+        for value in (to_decimal(record.data.get(attr.slug)) for record in records)
+        if value is not None
+    ]
+    return {"value": format_total(aggregate(values, "sum")), "label": attr.name}
+
+
+def _numeric_fields(entities: list) -> list[dict]:
+    """Numeric attributes per entity — the sum widget's field options.
+
+    Embedded in the widget forms as JSON so the field select follows the
+    chosen entity without a round-trip.
+    """
+    return [
+        {
+            "id": entity.id,
+            "name": entity.name,
+            "fields": [
+                {"slug": attr.slug, "name": attr.name}
+                for attr in entity.attributes
+                if is_numeric_attribute(attr)
+            ],
+        }
+        for entity in entities
+    ]
+
+
 def _next_sort_order(db: Session) -> int:
     current = db.execute(
         select(func.coalesce(func.max(DashboardWidget.sort_order), 0))
@@ -101,7 +145,17 @@ def _next_sort_order(db: Session) -> int:
 
 
 def _parse_width(value: str) -> str:
-    return value if value in WIDGET_WIDTHS else "1/2"
+    """Normalise a submitted width to a 1-12 span (legacy tokens included)."""
+    value = (value or "").strip()
+    if value in LEGACY_WIDGET_WIDTHS:
+        return LEGACY_WIDGET_WIDTHS[value]
+    if value.isdigit() and 1 <= int(value) <= 12:
+        return value
+    return DEFAULT_WIDGET_SPAN
+
+
+def _width_class(width: str) -> str:
+    return WIDGET_WIDTH_CLASSES.get(_parse_width(width), f"widget-span-{DEFAULT_WIDGET_SPAN}")
 
 
 def _parse_ids(entity_id: str | None, view_id: str | None) -> tuple[int | None, int | None]:
@@ -118,7 +172,26 @@ def _parse_ids(entity_id: str | None, view_id: str | None) -> tuple[int | None, 
 def _validate_widget_type(widget_type: str) -> str | None:
     """Return the type when valid, else an error message."""
     if widget_type not in WIDGET_TYPES:
-        return f"Unknown widget type '{widget_type}'; expected 'table' or 'count'."
+        return f"Unknown widget type '{widget_type}'; expected 'table', 'count' or 'sum'."
+    return None
+
+
+def _validate_sum_field(
+    db: Session, widget_type: str, entity_id: int | None, field: str
+) -> str | None:
+    """A sum widget must name a numeric attribute of its entity."""
+    if widget_type != "sum":
+        return None
+    if entity_id is None:
+        return "A sum widget needs an entity."
+    entity = get_entity_with_attributes(db, entity_id)
+    if entity is None:
+        return "Unknown entity for this widget."
+    attr = next((a for a in entity.attributes if a.slug == field), None)
+    if attr is None:
+        return "Choose the numeric field to summarize."
+    if not is_numeric_attribute(attr):
+        return f"'{attr.name}' is not a numeric field."
     return None
 
 
@@ -143,13 +216,15 @@ def dashboard(
             data = _render_table_widget(db, widget, entities, cache)
         elif widget.widget_type == "count":
             data = _render_count_widget(db, widget, entities, cache)
+        elif widget.widget_type == "sum":
+            data = _render_sum_widget(db, widget, entities, cache)
         else:
             continue
         widgets_data.append(
             {
                 "widget": widget,
                 "data": data,
-                "width_class": WIDGET_WIDTH_CLASSES.get(widget.width, "widget-span-2"),
+                "width_class": _width_class(widget.width),
             }
         )
 
@@ -169,13 +244,15 @@ def dashboard_config(
     user: User = Depends(require_capability(MANAGE_DASHBOARD)),
     db: Session = Depends(get_session),
 ):
+    entities = list_entities(db)
     return render(
         request,
         "dashboard/config.html",
         {
             "widgets": _load_widgets(db),
-            "entities": list_entities(db),
+            "entities": entities,
             "views": list_views(db),
+            "numeric_fields": _numeric_fields(entities),
         },
     )
 
@@ -189,7 +266,8 @@ def create_widget(
     widget_type: str = Form(...),
     entity_id: str = Form(""),
     view_id: str = Form(""),
-    width: str = Form("1/2"),
+    field: str = Form(""),
+    width: str = Form(DEFAULT_WIDGET_SPAN),
 ):
     type_error = _validate_widget_type(widget_type)
     if type_error is not None:
@@ -197,6 +275,12 @@ def create_widget(
             "/dashboard/config", type_error, category="error", request=request
         )
     eid, vid = _parse_ids(entity_id, view_id)
+    field = field.strip()
+    field_error = _validate_sum_field(db, widget_type, eid, field)
+    if field_error is not None:
+        return redirect_with_flash(
+            "/dashboard/config", field_error, category="error", request=request
+        )
     db.add(
         DashboardWidget(
             title=title.strip(),
@@ -205,6 +289,7 @@ def create_widget(
             view_id=vid,
             sort_order=_next_sort_order(db),
             width=_parse_width(width),
+            config={"field": field} if widget_type == "sum" else {},
         )
     )
     db.commit()
@@ -221,10 +306,16 @@ def edit_widget_page(
     widget = db.get(DashboardWidget, widget_id)
     if widget is None:
         raise HTTPException(status_code=404)
+    entities = list_entities(db)
     return render(
         request,
         "dashboard/widget_form.html",
-        {"widget": widget, "entities": list_entities(db), "views": list_views(db)},
+        {
+            "widget": widget,
+            "entities": entities,
+            "views": list_views(db),
+            "numeric_fields": _numeric_fields(entities),
+        },
     )
 
 
@@ -238,7 +329,8 @@ def update_widget(
     widget_type: str = Form(...),
     entity_id: str = Form(""),
     view_id: str = Form(""),
-    width: str = Form("1/2"),
+    field: str = Form(""),
+    width: str = Form(DEFAULT_WIDGET_SPAN),
 ):
     widget = db.get(DashboardWidget, widget_id)
     if widget is None:
@@ -249,11 +341,18 @@ def update_widget(
             "/dashboard/config", type_error, category="error", request=request
         )
     eid, vid = _parse_ids(entity_id, view_id)
+    field = field.strip()
+    field_error = _validate_sum_field(db, widget_type, eid, field)
+    if field_error is not None:
+        return redirect_with_flash(
+            "/dashboard/config", field_error, category="error", request=request
+        )
     widget.title = title.strip()
     widget.widget_type = widget_type
     widget.entity_id = eid
     widget.view_id = vid
     widget.width = _parse_width(width)
+    widget.config = {"field": field} if widget_type == "sum" else {}
     db.commit()
     return redirect_with_flash("/dashboard/config", "Widget updated.")
 

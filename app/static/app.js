@@ -797,6 +797,122 @@
   }
   initAdvancedFilter(document);
 
+  // Dashboard widget form: the sum-field select lists the numeric attributes
+  // of the selected entity (the entity -> numeric fields map is embedded in
+  // the page as JSON, so switching entities needs no round-trip).
+  function initWidgetForm() {
+    var entitySel = document.getElementById('widget-entity');
+    var fieldSel = document.getElementById('widget-field');
+    var dataEl = document.getElementById('numeric-fields');
+    if (!entitySel || !fieldSel || !dataEl) return;
+    var entities = [];
+    try { entities = JSON.parse(dataEl.textContent || '[]') || []; } catch (e) { return; }
+
+    function rebuild() {
+      var current = fieldSel.value;
+      var match = null;
+      entities.forEach(function (entity) {
+        if (String(entity.id) === entitySel.value) match = entity;
+      });
+      var fields = (match && match.fields) || [];
+      fieldSel.innerHTML = '';
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = fields.length ? '— field —' : '— no numeric fields —';
+      fieldSel.appendChild(placeholder);
+      fields.forEach(function (f) {
+        var option = document.createElement('option');
+        option.value = f.slug;
+        option.textContent = f.name;
+        if (f.slug === current) option.selected = true;
+        fieldSel.appendChild(option);
+      });
+    }
+
+    entitySel.addEventListener('change', rebuild);
+    if (entitySel.value) rebuild();
+  }
+  initWidgetForm();
+
+  // Sticky horizontal scrollbar: when a grid is wider than the viewport AND
+  // extends below the fold, its own scrollbar sits at the end of the content
+  // and cannot be reached without scrolling the page to the bottom. A proxy
+  // element mirrors the wrap's horizontal scroll and stays pinned to the
+  // bottom of the visible area; it hides once the natural scrollbar is on
+  // screen (grid bottom above the viewport bottom) or the grid is not wider
+  // than its container.
+  var stickyScrollbars = [];
+
+  function initStickyScrollbar(wrap) {
+    if (wrap.dataset.stickyScrollInit) return;
+    wrap.dataset.stickyScrollInit = '1';
+    var proxy = document.createElement('div');
+    proxy.className = 'sticky-scrollbar';
+    proxy.setAttribute('aria-hidden', 'true');
+    var inner = document.createElement('div');
+    inner.className = 'sticky-scrollbar-inner';
+    proxy.appendChild(inner);
+    document.body.appendChild(proxy);
+    wrap.addEventListener('scroll', function () {
+      if (proxy.scrollLeft !== wrap.scrollLeft) proxy.scrollLeft = wrap.scrollLeft;
+    });
+    proxy.addEventListener('scroll', function () {
+      if (wrap.scrollLeft !== proxy.scrollLeft) wrap.scrollLeft = proxy.scrollLeft;
+    });
+    stickyScrollbars.push({ wrap: wrap, proxy: proxy, inner: inner });
+  }
+
+  function updateStickyScrollbars() {
+    var viewport = window.innerHeight || document.documentElement.clientHeight;
+    for (var i = stickyScrollbars.length - 1; i >= 0; i--) {
+      var entry = stickyScrollbars[i];
+      if (!entry.wrap.isConnected) {
+        // The grid was replaced by an htmx swap: drop the stale proxy.
+        entry.proxy.remove();
+        stickyScrollbars.splice(i, 1);
+        continue;
+      }
+      var wrap = entry.wrap;
+      var rect = wrap.getBoundingClientRect();
+      var overflows = wrap.scrollWidth > wrap.clientWidth + 1;
+      var belowFold = rect.top < viewport && rect.bottom > viewport + 1;
+      if (!overflows || !belowFold) {
+        entry.proxy.classList.remove('visible');
+        continue;
+      }
+      entry.proxy.style.left = rect.left + 'px';
+      entry.proxy.style.width = rect.width + 'px';
+      entry.inner.style.width = wrap.scrollWidth + 'px';
+      entry.proxy.classList.add('visible');
+      if (entry.proxy.scrollLeft !== wrap.scrollLeft) {
+        entry.proxy.scrollLeft = wrap.scrollLeft;
+      }
+    }
+  }
+
+  var stickyFrame = null;
+  function scheduleStickyUpdate() {
+    if (stickyFrame) return;
+    stickyFrame = window.requestAnimationFrame(function () {
+      stickyFrame = null;
+      updateStickyScrollbars();
+    });
+  }
+
+  function initStickyScrollbars(root) {
+    (root || document).querySelectorAll('.table-wrap').forEach(initStickyScrollbar);
+    scheduleStickyUpdate();
+  }
+
+  initStickyScrollbars(document);
+  window.addEventListener('scroll', scheduleStickyUpdate, { passive: true });
+  window.addEventListener('resize', scheduleStickyUpdate, { passive: true });
+  // Swapped-in grids (view detail, modal fragments) get their own proxy.
+  document.body.addEventListener('htmx:afterSettle', function (e) {
+    var target = e.detail && e.detail.target;
+    initStickyScrollbars(target && target.querySelectorAll ? target : document);
+  });
+
   // API token user filter (admin page): client-side row filter on the user
   // column, persisted in the shared UI state.
   function applyTokenFilter(select) {

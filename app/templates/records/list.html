@@ -28,27 +28,17 @@
     <table class="table" id="records-table" data-sortable data-grid-key="records-{{ entity.id }}">
       <thead>
         <tr>
+          {% if can_update %}<th class="no-sort"></th>{% endif %}
           {% for attr in entity.attributes %}<th>{{ attr.name }}</th>{% endfor %}
           <th class="muted">Created at</th>
           <th class="muted">Created by</th>
           <th class="muted">Last modified at</th>
           <th class="muted">Last modified by</th>
-          {% if can_update %}<th class="no-sort"></th>{% endif %}
         </tr>
       </thead>
       <tbody>
         {% for row in rows %}
         <tr>
-          {% for attr in entity.attributes %}
-          <td>
-            {% set href = row.link_hrefs.get(attr.slug) if row.link_hrefs else none %}
-            {{ grid_cell(row.cells[attr.slug], href, attr.with_copy_button) }}
-          </td>
-          {% endfor %}
-          <td class="muted">{{ row.record.created_at | datetime_display }}</td>
-          <td class="muted">{{ user_names.get(row.record.created_by, "—") }}</td>
-          <td class="muted">{{ row.record.updated_at | datetime_display }}</td>
-          <td class="muted">{{ user_names.get(row.record.updated_by, "—") }}</td>
           {% if can_update %}
           <td class="row-actions">
             <div class="row-actions-inner">
@@ -63,6 +53,16 @@
             </div>
           </td>
           {% endif %}
+          {% for attr in entity.attributes %}
+          <td>
+            {% set href = row.link_hrefs.get(attr.slug) if row.link_hrefs else none %}
+            {{ grid_cell(row.cells[attr.slug], href, attr.with_copy_button) }}
+          </td>
+          {% endfor %}
+          <td class="muted">{{ row.record.created_at | datetime_display }}</td>
+          <td class="muted">{{ user_names.get(row.record.created_by, "—") }}</td>
+          <td class="muted">{{ row.record.updated_at | datetime_display }}</td>
+          <td class="muted">{{ user_names.get(row.record.updated_by, "—") }}</td>
         </tr>
         {% endfor %}
       </tbody>

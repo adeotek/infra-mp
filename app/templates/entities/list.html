@@ -13,15 +13,11 @@
 <div class="table-wrap">
 <table class="table" data-sortable data-grid-key="entities">
   <thead>
-    <tr><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th><th class="no-sort"></th></tr>
+    <tr><th class="no-sort"></th><th>Name</th><th>Slug</th><th>Attributes</th><th>Records</th></tr>
   </thead>
   <tbody>
   {% for e in entities %}
     <tr>
-      <td><a href="/entities/{{ e.id }}">{{ e.name }}</a></td>
-      <td class="muted">{{ e.slug }}</td>
-      <td>{{ e.attributes|length }}</td>
-      <td>{{ record_counts.get(e.id, 0) }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
           <a href="/entities/{{ e.id }}" class="action-btn" title="Attributes"><i class="fa-solid fa-list" aria-hidden="true"></i></a>
@@ -31,6 +27,10 @@
           <a href="/entities/{{ e.id }}/records" class="action-btn" title="Records" aria-label="Records"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></a>
         </div>
       </td>
+      <td><a href="/entities/{{ e.id }}">{{ e.name }}</a></td>
+      <td class="muted">{{ e.slug }}</td>
+      <td>{{ e.attributes|length }}</td>
+      <td>{{ record_counts.get(e.id, 0) }}</td>
     </tr>
   {% endfor %}
   </tbody>
