@@ -142,10 +142,7 @@ def apply_config(
     referenced entities' records are loaded once, not per column.
     """
     attrs_by_slug = {a.slug: a for a in entity.attributes}
-    columns = _resolve_columns(entity, config.get("columns"), entities)
-    # Calculated columns are derived from the resolved columns, so they are
-    # appended after them and share their keys/values.
-    columns = _resolve_calculated_columns(columns, config.get("calculated"))
+    columns = _resolve_columns(entity, _column_specs(config, entity), entities)
     filters = config.get("filters", [])
     entities_by_id = {e.id: e for e in entities or []}
     # The related context must cover filter columns too, not just the visible
@@ -620,80 +617,104 @@ def parse_column_spec(value: str) -> str | dict | None:
     return None
 
 
+def _column_specs(config: dict, entity: Entity) -> list[Any]:
+    """The view's column specs in display order.
+
+    Calculated columns are ordinary entries of ``columns`` (dicts carrying a
+    ``kind``), so they can sit anywhere in the order. Configs written before
+    that shape — or hand-written ones — may keep them in a separate
+    ``calculated`` list instead; those are treated as appended at the end, which
+    is where the old resolver put them.
+    """
+    specs = list(config.get("columns") or [])
+    legacy = [spec for spec in (config.get("calculated") or []) if isinstance(spec, dict)]
+    if not specs and legacy:
+        # No explicit column list: the resolver would show every base
+        # attribute, so make that explicit before appending the calculated ones.
+        specs = [a.slug for a in entity.attributes]
+    return specs + legacy if specs else []
+
+
 def _resolve_columns(
     entity: Entity,
     column_specs: list[Any] | None,
     entities: list[Entity] | None,
 ) -> list[ViewColumn]:
+    """Resolve column specs into display columns, in the order given.
+
+    Calculated columns resolve in a second pass — they may reference a column
+    that comes after them — but keep their position in the list.
+    """
     by_slug = {a.slug: a for a in entity.attributes}
     if not column_specs:
         return _base_columns(entity)
     entities_by_id = {e.id: e for e in entities or []}
-    resolved: list[ViewColumn] = []
-    for spec in column_specs:
+    resolved: list[tuple[int, ViewColumn]] = []
+    calculated: list[tuple[int, dict]] = []
+    for index, spec in enumerate(column_specs):
         if isinstance(spec, str):
             attr = by_slug.get(spec)
             if attr is not None:
-                resolved.append(ViewColumn(key=attr.slug, label=attr.name, attr=attr))
+                resolved.append((index, ViewColumn(key=attr.slug, label=attr.name, attr=attr)))
         elif isinstance(spec, dict):
+            if spec.get("kind") in CALC_KINDS:
+                calculated.append((index, spec))
+                continue
             column = _resolve_related_column(entity, spec, entities_by_id)
             if column is not None:
-                resolved.append(column)
-    return resolved or _base_columns(entity)
+                resolved.append((index, column))
+    available = {column.key for _, column in resolved}
+    for ordinal, (index, spec) in enumerate(calculated):
+        column = _calculated_column(spec, ordinal, available)
+        if column is not None:
+            resolved.append((index, column))
+    resolved.sort(key=lambda entry: entry[0])
+    return [column for _, column in resolved] or _base_columns(entity)
 
 
 def _base_columns(entity: Entity) -> list[ViewColumn]:
     return [ViewColumn(key=a.slug, label=a.name, attr=a) for a in entity.attributes]
 
 
-def _resolve_calculated_columns(columns: list[ViewColumn], specs: Any) -> list[ViewColumn]:
-    """Append the view's calculated columns to ``columns``.
+def _calculated_column(spec: dict, ordinal: int, available: set[str]) -> ViewColumn | None:
+    """Resolve one calculated-column spec against the view's other columns.
 
-    Specs whose kind/label is missing or whose references cannot be resolved
-    against the view's own columns are skipped (view configs are lenient by
-    design — the same rule related-column specs follow).
+    Specs whose kind/label is missing or whose references cannot be resolved are
+    skipped (view configs are lenient by design — the same rule related-column
+    specs follow). ``ordinal`` is the spec's rank among the view's calculated
+    columns; it only has to keep the cell keys unique.
     """
-    if not isinstance(specs, list) or not specs:
-        return list(columns)
-    available = {column.key for column in columns}
-    resolved: list[ViewColumn] = []
-    for index, spec in enumerate(specs):
-        if not isinstance(spec, dict):
-            continue
-        label = str(spec.get("label") or "").strip()
-        kind = spec.get("kind")
-        if not label or kind not in CALC_KINDS:
-            continue
-        if kind == "concat":
-            parts = [
-                part
-                for part in spec.get("parts") or []
-                if isinstance(part, str) and part in available
-            ]
-            if not parts:
-                continue
-            calc = {
-                "kind": "concat",
-                "label": label,
-                "parts": parts,
-                "separator": str(spec.get("separator") or ""),
-            }
-        else:
-            try:
-                node = parse_formula(str(spec.get("expr") or ""))
-            except FormulaError:
-                continue
-            references = formula_references(node)
-            if not references or not references <= available:
-                continue
-            calc = {
-                "kind": "formula",
-                "label": label,
-                "expr": str(spec["expr"]).strip(),
-                "node": node,
-            }
-        resolved.append(ViewColumn(key=f"calc:{index}", label=label, attr=None, calc=calc))
-    return list(columns) + resolved
+    label = str(spec.get("label") or "").strip()
+    kind = spec.get("kind")
+    if not label or kind not in CALC_KINDS:
+        return None
+    if kind == "concat":
+        parts = [
+            part for part in spec.get("parts") or [] if isinstance(part, str) and part in available
+        ]
+        if not parts:
+            return None
+        calc = {
+            "kind": "concat",
+            "label": label,
+            "parts": parts,
+            "separator": str(spec.get("separator") or ""),
+        }
+    else:
+        try:
+            node = parse_formula(str(spec.get("expr") or ""))
+        except FormulaError:
+            return None
+        references = formula_references(node)
+        if not references or not references <= available:
+            return None
+        calc = {
+            "kind": "formula",
+            "label": label,
+            "expr": str(spec["expr"]).strip(),
+            "node": node,
+        }
+    return ViewColumn(key=f"calc:{ordinal}", label=label, attr=None, calc=calc)
 
 
 def _resolve_related_column(

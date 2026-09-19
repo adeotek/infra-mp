@@ -1,7 +1,10 @@
 """Calculated view columns: formula engine, concatenation, and HTTP wiring.
 
-A view's ``config["calculated"]`` list holds text joins (``kind: concat``) and
-arithmetic formulas (``kind: formula``) over the view's own columns.
+Calculated columns are ordinary entries of a view's ``config["columns"]`` — dicts
+carrying ``kind: concat`` or ``kind: formula`` — so they keep their place in the
+column order and reorder alongside the standard columns. A separate
+``config["calculated"]`` list (the older shape) still resolves, appended at the
+end, which is where that shape always put them.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from app.services.schema_service import (
     get_entity_with_attributes,
     list_entities,
 )
-from app.services.view_service import apply_config, build_view_rows
+from app.services.view_service import apply_config, build_totals, build_view_rows
 
 
 def _reload(db_session, entity):
@@ -476,7 +479,10 @@ def test_edit_form_replays_the_calculated_columns(client, login):
         calc=[_calc_row({"kind": "formula", "label": "Total", "expr": "{price} * {qty}"})],
     )
     html = client.get("/views/1/edit").text
-    assert '"calculated"' in html
+    # The stored spec rides inside `columns` (one ordered list). The form also
+    # still replays a legacy `calculated` list, so both keys are in the config.
+    assert '"columns"' in html
+    assert '"kind": "formula"' in html
     assert '"label": "Total"' in html
     assert '"expr": "{price} * {qty}"' in html
     assert 'id="calc-row-template"' in html
@@ -539,3 +545,144 @@ def test_dashboard_widget_shows_calculated_columns(client, login):
     html = client.get("/dashboard").text
     assert '<th class="num">Total</th>' in html
     assert "20.5" in html
+
+
+# --------------------------------------------------------------------------- #
+# One ordered list: calculated columns reorder with the standard ones
+# --------------------------------------------------------------------------- #
+
+
+def _concat(label, parts, separator=""):
+    return {"kind": "concat", "label": label, "parts": parts, "separator": separator}
+
+
+def test_calculated_column_keeps_its_place_in_the_column_order(db_session, shop):
+    config = {"columns": ["name", _concat("Where", ["name", "room"], " · "), "room"]}
+    columns, rows = _grid(db_session, shop, config)
+    assert [column.label for column in columns] == ["Name", "Where", "Room"]
+    assert [column.key for column in columns] == ["name", "calc:0", "room"]
+    assert _by_name(rows)["Chair"]["calc:0"] == "Chair · A1"
+
+
+def test_calculated_column_can_reference_a_column_defined_after_it(db_session, shop):
+    # The formula row comes first, `price`/`quantity` only later in the list.
+    config = {
+        "columns": [
+            {"kind": "formula", "label": "Total", "expr": "{price} * {quantity}"},
+            "name",
+            "price",
+            "quantity",
+        ]
+    }
+    columns, rows = _grid(db_session, shop, config)
+    assert [column.label for column in columns] == ["Total", "Name", "Price", "Quantity"]
+    assert _by_name(rows)["Chair"]["calc:0"] == "20.5"
+
+
+def test_reordering_the_specs_reorders_the_grid(db_session, shop):
+    first = {"columns": ["name", _concat("Where", ["room"]), "room"]}
+    second = {"columns": [_concat("Where", ["room"]), "room", "name"]}
+    assert [c.label for c in _grid(db_session, shop, first)[0]] == ["Name", "Where", "Room"]
+    assert [c.label for c in _grid(db_session, shop, second)[0]] == ["Where", "Room", "Name"]
+
+
+def test_a_skipped_calculated_column_leaves_the_others_in_place(db_session, shop):
+    config = {
+        "columns": [
+            "name",
+            {"kind": "formula", "label": "Broken", "expr": "{nope} * 2"},
+            _concat("Where", ["room"]),
+            "room",
+            "price",
+        ]
+    }
+    columns, _ = _grid(db_session, shop, config)
+    assert [column.label for column in columns] == ["Name", "Where", "Room", "Price"]
+
+
+def test_legacy_calculated_list_still_appends_in_place_of_the_merged_row(db_session, shop):
+    config = {
+        "columns": ["name", "room"],
+        "calculated": [_concat("Where", ["name", "room"])],
+    }
+    columns, _ = _grid(db_session, shop, config)
+    assert [column.label for column in columns] == ["Name", "Room", "Where"]
+
+
+def test_totals_are_keyed_by_column_not_by_position(db_session, shop):
+    config = {
+        "columns": [
+            "room",
+            _concat("Where", ["room"]),
+            "price",
+        ],
+        "totals": {"price": "sum"},
+    }
+    columns, _ = _grid(db_session, shop, config)
+    assert [column.label for column in columns] == ["Room", "Where", "Price"]
+    totals = build_totals(db_session, shop, list_records(db_session, shop.id), columns, config)
+    # The calculated column carries no total, the numeric one keeps its op even
+    # though it is not the first column.
+    assert list(totals) == ["price"]
+    assert totals["price"]["op"] == "sum"
+    assert totals["price"]["value"] == "109.75"
+
+
+def test_view_form_submits_a_shared_order_for_both_row_kinds(client, login):
+    _seed(client, login)
+    resp = _create_view(
+        client,
+        col=["base:name", "base:price", "base:qty"],
+        calc=[_calc_row({"kind": "formula", "label": "Total", "expr": "{price} * {qty}"})],
+        col_order=["calc:0", "col:0", "col:1", "col:2"],
+    )
+    assert resp.status_code == 303
+    html = client.get("/views/1").text
+    assert html.index('<th class="num">Total</th>') < html.index("<th>Name</th>")
+    assert html.index("<th>Name</th>") < html.index('<th class="num">Price</th>')
+    assert html.index('<th class="num">Price</th>') < html.index('<th class="num">Qty</th>')
+
+
+def test_submitted_order_is_stored_as_one_column_list(client, login):
+    _seed(client, login)
+    _create_view(
+        client,
+        col=["base:name", "base:price"],
+        calc=[_calc_row(_concat("Where", ["name"]))],
+        col_order=["col:0", "calc:0", "col:1"],
+    )
+    stored = client.get("/views/1/edit").text
+    # `columns` carries the calculated spec in its submitted position and the
+    # legacy key is gone: one list, one order.
+    config_json = stored.split("var CONFIG = ", 1)[1].split(";\n", 1)[0]
+    config = json.loads(config_json)
+    assert config["columns"][0] == "name"
+    assert config["columns"][1]["kind"] == "concat"
+    assert config["columns"][2] == "price"
+    assert "calculated" not in config
+
+
+def test_grand_totals_survive_an_interleaved_calculated_row(client, login):
+    _seed(client, login)
+    _create_view(
+        client,
+        col=["base:name", "base:price"],
+        col_total=["", "sum"],
+        calc=[_calc_row(_concat("Where", ["name"]))],
+        col_order=["calc:0", "col:0", "col:1"],
+    )
+    html = client.get("/views/1").text
+    assert "109.75" in html  # 10.25 + 99.50, on the Price column
+
+
+def test_view_form_lists_one_ordered_column_container(client, login):
+    _seed(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert 'id="columns"' in html
+    assert 'id="calculated"' not in html
+    assert 'name="col_order"' in html
+    assert html.count('id="calc-row-template"') == 1
+    # Both row kinds are added to the same list, so ▲▼ and drag reorder across
+    # them; the tokens keep the submitted order in sync with the DOM.
+    assert "syncColumnOrder" in html
+    assert 'class="row-move col-move" data-dir="up"' in html

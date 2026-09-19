@@ -539,6 +539,12 @@ def test_edit_view_form_defaults_record_actions_to_off(client, login):
     assert not _checkbox_is_checked(html, "record_actions")
 
 
+def test_view_form_offers_record_actions_before_advanced_filters(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert html.index("record_actions") < html.index("advanced_filter")
+
+
 def test_record_actions_can_be_switched_off_again(client, login):
     _seed_server(client, login)
     _create_view(client, record_actions="on")

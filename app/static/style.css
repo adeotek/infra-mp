@@ -786,6 +786,8 @@ tr.dragging { opacity: 0.4; }
   margin-bottom: 0.5rem;
 }
 .calc-row input, .calc-row select { margin-top: 0; width: auto; }
+.calc-row .drag-handle { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.calc-row.dragging { opacity: 0.4; }
 .calc-row .calc-label { min-width: 12rem; }
 .calc-row .calc-expr { min-width: 18rem; }
 .calc-concat, .calc-formula {

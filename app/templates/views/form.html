@@ -19,23 +19,19 @@
 
   <fieldset class="form-section">
     <legend>Columns</legend>
-    <p class="muted">Add a column row per attribute. Rows may follow reference hops to parent or
-      child entities (any depth) and end on one of their attributes. Leave empty to show every
+    <p class="muted">One row per column, in display order — drag a row by its handle (or use ▲▼)
+      to reorder, calculated rows included. Rows may follow reference hops to parent or child
+      entities (any depth) and end on one of their attributes; leave empty to show every
       attribute. Numeric columns can carry a grand total (sum / average / min / max) over the
       view's filtered rows.</p>
+    <p class="muted">A <strong>calculated</strong> row derives its value per record:
+      <strong>Text</strong> joins the display value of two or more rows, with an optional
+      separator; <strong>Number</strong> evaluates an arithmetic formula over numeric rows —
+      <code>+ - * /</code>, parentheses, unary minus and <code>round(value, digits)</code> —
+      referencing a column by its key in braces, e.g. <code>round({price} * {quantity}, 2)</code>.
+      An empty result shows the em dash.</p>
     <div id="columns"></div>
     <button type="button" id="add-column" class="btn">Add column</button>
-  </fieldset>
-
-  <fieldset class="form-section">
-    <legend>Calculated columns</legend>
-    <p class="muted">Derived columns computed for every row. <strong>Text</strong> joins the
-      display value of two or more columns, with an optional separator. <strong>Number</strong>
-      evaluates an arithmetic formula over numeric columns:<br>
-      <code>+ - * /</code>, parentheses, unary minus and <code>round(value, digits)</code> —
-      reference a column by its key in braces, e.g. <code>round({price} * {quantity}, 2)</code>.
-      A row with an empty value shows the em dash.</p>
-    <div id="calculated"></div>
     <button type="button" id="add-calculated" class="btn">Add calculated column</button>
     <p class="muted" id="calc-tokens"></p>
   </fieldset>
@@ -60,20 +56,20 @@
   </fieldset>
 
   <label class="checkbox-label">
-    <input type="checkbox" name="advanced_filter" id="advanced-filter-toggle"
-           {% if cfg.get('advanced_filter') %}checked{% endif %}>
-    Advanced filters
-  </label>
-  <p class="muted">Show the interactive filter bar on the view page instead of the
-    standard filter rows below. Each filter is applied as soon as it is added.</p>
-
-  <label class="checkbox-label">
     <input type="checkbox" name="record_actions" id="record-actions-toggle"
            {% if view is none or cfg.get('record_actions') %}checked{% endif %}>
     Record actions (add, edit, delete)
   </label>
   <p class="muted">Show the Add record button and the per-row Edit / Delete buttons on
     the view page. Buttons appear only for actions your role allows.</p>
+
+  <label class="checkbox-label">
+    <input type="checkbox" name="advanced_filter" id="advanced-filter-toggle"
+           {% if cfg.get('advanced_filter') %}checked{% endif %}>
+    Advanced filters
+  </label>
+  <p class="muted">Show the interactive filter bar on the view page instead of the
+    standard filter rows below. Each filter is applied as soon as it is added.</p>
 
   <fieldset class="form-section" id="filters-section">
     <legend>Standard filters</legend>
@@ -107,7 +103,7 @@
 </form>
 
 <template id="column-row-template">
-  <div class="column-row" draggable="true">
+  <div class="column-row" data-col-row draggable="true">
     <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
     <div class="col-hops"></div>
     <select class="col-attr" aria-label="Attribute"></select>
@@ -117,6 +113,7 @@
       </select>
     </label>
     <input type="hidden" name="col" value="">
+    <input type="hidden" name="col_order" value="">
     <span class="row-move-group" aria-label="Move column">
       <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
       <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
@@ -126,7 +123,8 @@
 </template>
 
 <template id="calc-row-template">
-  <div class="calc-row">
+  <div class="calc-row" data-col-row draggable="true">
+    <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
     <input type="text" class="calc-label" placeholder="Header (e.g. Yearly cost)">
     <select class="calc-kind" aria-label="Calculation">
       <option value="concat">Text — join columns</option>
@@ -140,6 +138,11 @@
       <input type="text" class="calc-expr" placeholder="e.g. round({price} * 12, 2)">
     </span>
     <input type="hidden" name="calc" value="">
+    <input type="hidden" name="col_order" value="">
+    <span class="row-move-group" aria-label="Move row">
+      <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
+      <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
+    </span>
     <button type="button" class="btn btn-ghost remove-calc">Remove</button>
   </div>
 </template>
@@ -454,9 +457,21 @@
       storedSortEncoding = '';
     }
 
-    // Replay stored columns on edit.
-    (CONFIG.columns || []).forEach(loadColumn);
+    // Replay stored rows on edit: standard and calculated rows share one list,
+    // so the stored order is kept. Calculated specs live inside `columns`
+    // (current shape) or in the legacy `calculated` list (appended, as the
+    // server resolves them).
+    (CONFIG.columns || []).forEach(function (spec) {
+      if (isCalculatedSpec(spec)) {
+        loadCalcRow(spec);
+      } else {
+        loadColumn(spec);
+      }
+    });
+    (CONFIG.calculated || []).forEach(loadCalcRow);
     rebuildSortOptions();
+    rebuildCalcPickers();
+    syncColumnOrder();
 
     columnsBox.addEventListener('change', function (e) {
       var row = e.target.closest('.column-row');
@@ -476,15 +491,16 @@
     });
 
     columnsBox.addEventListener('click', function (e) {
-      if (e.target.classList.contains('remove-column')) {
-        e.target.closest('.column-row').remove();
+      if (e.target.classList.contains('remove-column') || e.target.classList.contains('remove-calc')) {
+        e.target.closest('[data-col-row]').remove();
         rebuildSortOptions();
         rebuildCalcPickers();
+        syncColumnOrder();
         return;
       }
       var moveBtn = e.target.closest('.col-move');
       if (!moveBtn) return;
-      var row = moveBtn.closest('.column-row');
+      var row = moveBtn.closest('[data-col-row]');
       var dir = moveBtn.getAttribute('data-dir');
       if (dir === 'up' && row.previousElementSibling) {
         row.parentNode.insertBefore(row, row.previousElementSibling);
@@ -493,20 +509,21 @@
       }
       rebuildSortOptions();
       rebuildCalcPickers();
+      syncColumnOrder();
     });
 
-    // Column reordering: drag by the handle (rows are form-local, so the DOM
-    // order is what gets submitted — no server round-trip needed).
-    // dragstart fires on the draggable row itself, never on the handle span
-    // that was pressed — so the "handle-only" gate must be decided earlier,
-    // on mousedown, where e.target is still the element under the pointer.
+    // Row reordering: drag by the handle — standard and calculated rows share
+    // the same list, so any row can move past any other. dragstart fires on the
+    // draggable row itself, never on the handle span that was pressed — so the
+    // "handle-only" gate must be decided earlier, on mousedown, where e.target
+    // is still the element under the pointer.
     var dragRow = null;
     var dragArmed = false;
     columnsBox.addEventListener('mousedown', function (e) {
-      dragArmed = !!(e.target.closest('.drag-handle') && e.target.closest('.column-row'));
+      dragArmed = !!(e.target.closest('.drag-handle') && e.target.closest('[data-col-row]'));
     });
     columnsBox.addEventListener('dragstart', function (e) {
-      dragRow = e.target.closest('.column-row');
+      dragRow = e.target.closest('[data-col-row]');
       if (!dragRow || !dragArmed) {
         dragRow = null;
         e.preventDefault();
@@ -522,7 +539,7 @@
       if (!dragRow) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      var row = e.target.closest('.column-row');
+      var row = e.target.closest('[data-col-row]');
       if (!row || row === dragRow) return;
       var rect = row.getBoundingClientRect();
       var after = (e.clientY - rect.top) > (rect.height / 2);
@@ -535,26 +552,53 @@
       dragRow = null;
       rebuildSortOptions();
       rebuildCalcPickers();
+      syncColumnOrder();
     });
 
     document.getElementById('add-column').addEventListener('click', function () {
       newColumnRow();
       rebuildSortOptions();
       rebuildCalcPickers();
+      syncColumnOrder();
     });
     document.getElementById('view-form').addEventListener('submit', function () {
       columnsBox.querySelectorAll('.column-row').forEach(serializeColumnRow);
       serializeCalcRows();
       rebuildSortOptions();
+      syncColumnOrder();
     });
 
     // --- Calculated columns -------------------------------------------------
-    // Each row serialises itself into one hidden `calc` input (JSON): the row
-    // controls are unnamed, so a row with missing pieces simply submits
-    // nothing — the same pattern the column builder uses for `col`.
-    var calcBox = document.getElementById('calculated');
+    // Calculated rows live in the same list as the standard ones, so the drag
+    // order covers every column. Each row serialises itself into one hidden
+    // `calc` input (JSON): the row controls are unnamed, so a row with missing
+    // pieces simply submits nothing — the same pattern the standard rows use.
     var calcTemplate = document.getElementById('calc-row-template');
     var calcTokens = document.getElementById('calc-tokens');
+
+    function isCalculatedSpec(spec) {
+      return !!spec && typeof spec === 'object' &&
+        (spec.kind === 'concat' || spec.kind === 'formula');
+    }
+
+    // One token per row, in DOM order: `col:<n>` counts the standard rows,
+    // `calc:<n>` the calculated ones, so the server can rebuild the shared
+    // display order from the two payload lists.
+    function syncColumnOrder() {
+      var colIndex = 0;
+      var calcIndex = 0;
+      columnsBox.querySelectorAll('[data-col-row]').forEach(function (row) {
+        var hidden = row.querySelector('input[name="col_order"]');
+        if (!hidden) return;
+        if (row.classList.contains('calc-row')) {
+          hidden.value = 'calc:' + calcIndex;
+          calcIndex += 1;
+        } else {
+          hidden.value = 'col:' + colIndex;
+          colIndex += 1;
+        }
+      });
+    }
 
     function columnChoices() {
       var choices = [];
@@ -574,7 +618,7 @@
 
     function rebuildCalcPickers() {
       var choices = columnChoices();
-      calcBox.querySelectorAll('.calc-row').forEach(function (row) {
+      columnsBox.querySelectorAll('.calc-row').forEach(function (row) {
         var select = row.querySelector('.calc-parts');
         var selected = Array.prototype.map.call(select.selectedOptions, function (o) {
           return o.value;
@@ -632,39 +676,18 @@
     }
 
     function serializeCalcRows() {
-      calcBox.querySelectorAll('.calc-row').forEach(serializeCalcRow);
+      columnsBox.querySelectorAll('.calc-row').forEach(serializeCalcRow);
     }
 
     function newCalcRow() {
       var row = calcTemplate.content.cloneNode(true).firstElementChild;
-      calcBox.appendChild(row);
+      columnsBox.appendChild(row);
       syncCalcRow(row);
       return row;
     }
 
-    document.getElementById('add-calculated').addEventListener('click', function () {
-      newCalcRow();
-      rebuildCalcPickers();
-    });
-    calcBox.addEventListener('change', function (e) {
-      var row = e.target.closest('.calc-row');
-      if (!row) return;
-      if (e.target.classList.contains('calc-kind')) syncCalcRow(row);
-      serializeCalcRow(row);
-    });
-    calcBox.addEventListener('input', function (e) {
-      var row = e.target.closest('.calc-row');
-      if (row) serializeCalcRow(row);
-    });
-    calcBox.addEventListener('click', function (e) {
-      if (e.target.classList.contains('remove-calc')) {
-        e.target.closest('.calc-row').remove();
-      }
-    });
-
-    // Replay the stored calculated columns (after the column rows exist, so
-    // the reference pickers can list them).
-    (CONFIG.calculated || []).forEach(function (spec) {
+    // Fill a row from a stored spec (used when replaying an edit).
+    function loadCalcRow(spec) {
       var row = newCalcRow();
       row.querySelector('.calc-label').value = spec.label || '';
       row.querySelector('.calc-kind').value = spec.kind === 'formula' ? 'formula' : 'concat';
@@ -679,8 +702,24 @@
         });
       }
       serializeCalcRow(row);
+      return row;
+    }
+
+    document.getElementById('add-calculated').addEventListener('click', function () {
+      newCalcRow();
+      rebuildCalcPickers();
+      syncColumnOrder();
     });
-    rebuildCalcPickers();
+    columnsBox.addEventListener('change', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (!row) return;
+      if (e.target.classList.contains('calc-kind')) syncCalcRow(row);
+      serializeCalcRow(row);
+    });
+    columnsBox.addEventListener('input', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (row) serializeCalcRow(row);
+    });
 
     // Filters
     var filterBox = document.getElementById('filters');

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
@@ -48,23 +49,7 @@ router = APIRouter()
 
 
 def _config_from_form(raw: dict, entity: Entity) -> dict:
-    column_specs = []
-    # Grand totals are submitted per column row (a `col_total` select parallel
-    # to the row's `col` value), so both lists pair up by position.
-    total_ops = to_list(raw.get("col_total"))
-    totals: dict[str, str] = {}
-    for index, value in enumerate(to_list(raw.get("col"))):
-        spec = parse_column_spec(value)
-        if spec is None:
-            continue
-        column_specs.append(spec)
-        op = total_ops[index].strip() if index < len(total_ops) else ""
-        if op in TOTAL_OPS:
-            # Keyed by the resolved column key — the key the grid renders by.
-            totals[spec if isinstance(spec, str) else _rel_key(spec)] = op
-    if not column_specs:
-        # Legacy form: flat base-attribute slugs.
-        column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
+    column_specs, totals = _columns_from_form(raw)
     sort_value = str(raw.get("sort_col", "") or raw.get("sort_slug", "") or "").strip()
     sort_dir = raw.get("sort_dir") if raw.get("sort_dir") in ("asc", "desc") else "asc"
 
@@ -90,7 +75,6 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         in ("on", "true", "1", "yes"),
         "record_actions": str(raw.get("record_actions", "")).lower() in ("on", "true", "1", "yes"),
         "totals": totals,
-        "calculated": _calculated_from_form(raw, column_specs),
     }
     if sort_value:
         # Any view column may be the sort column: the form submits the same
@@ -116,54 +100,104 @@ def _column_keys(specs: list) -> list[str]:
     return keys
 
 
-def _calculated_from_form(raw: dict, column_specs: list) -> list[dict]:
-    """Parse the calculated-column rows (one JSON object per form row).
+def _columns_from_form(raw: dict) -> tuple[list, dict[str, str]]:
+    """The view's columns in display order, plus the grand-total map.
+
+    Standard and calculated rows share one list: the form submits a
+    ``col_order`` token per row — ``col:<n>`` for the n-th standard row,
+    ``calc:<n>`` for the n-th calculated one — so a single drag order covers
+    both. Grand totals arrive in a ``col_total`` select parallel to the standard
+    rows' ``col`` values. Submissions without the tokens keep the old shape:
+    standard columns first, calculated ones appended.
+    """
+    col_values = to_list(raw.get("col"))
+    total_values = to_list(raw.get("col_total"))
+    calc_values = to_list(raw.get("calc"))
+    order = [token.strip() for token in to_list(raw.get("col_order")) if token.strip()]
+    if not order:
+        order = [f"col:{index}" for index in range(len(col_values))]
+        order += [f"calc:{index}" for index in range(len(calc_values))]
+
+    # Rows in display order, payloads still raw: calculated rows are validated
+    # after the standard ones (a row may reference a column defined later on).
+    entries: list[tuple[str, Any]] = []
+    totals: dict[str, str] = {}
+    for token in order:
+        kind, _, index_text = token.partition(":")
+        if not index_text.isdigit():
+            continue
+        index = int(index_text)
+        if kind == "calc":
+            if 0 <= index < len(calc_values):
+                entries.append(("calc", calc_values[index]))
+            continue
+        if kind != "col" or not 0 <= index < len(col_values):
+            continue
+        spec = parse_column_spec(col_values[index])
+        if spec is None:
+            continue
+        entries.append(("col", spec))
+        op = total_values[index].strip() if index < len(total_values) else ""
+        if op in TOTAL_OPS:
+            # Keyed by the resolved column key — the key the grid renders by.
+            totals[spec if isinstance(spec, str) else _rel_key(spec)] = op
+
+    if not entries:
+        # Legacy form: flat base-attribute slugs.
+        return [v for v in to_list(raw.get("columns")) if v.strip()], totals
+    known = set(_column_keys([spec for kind, spec in entries if kind == "col"]))
+    column_specs: list = []
+    for kind, payload in entries:
+        if kind == "calc":
+            spec = _calculated_spec(payload, known)
+            if spec is not None:
+                column_specs.append(spec)
+        else:
+            column_specs.append(payload)
+    return column_specs, totals
+
+
+def _calculated_spec(value: str, known: set[str]) -> dict | None:
+    """Parse one calculated-column form row (a JSON object).
 
     Rows referencing columns that are not part of the view are dropped, except
     for a formula that references an unknown column or does not parse: that
     raises :class:`FormulaError` so the form can show the mistake instead of
     silently saving a column that would never render.
     """
-    known = set(_column_keys(column_specs))
-    specs: list[dict] = []
-    for value in to_list(raw.get("calc")):
-        text = value.strip()
-        if not text:
-            continue
-        try:
-            row = json.loads(text)
-        except json.JSONDecodeError:
-            continue  # an unparseable row is an empty row
-        if not isinstance(row, dict):
-            continue
-        label = str(row.get("label") or "").strip()
-        kind = row.get("kind")
-        if not label or kind not in CALC_KINDS:
-            continue
-        if kind == "concat":
-            parts = [str(part) for part in row.get("parts") or [] if str(part) in known]
-            if not parts:
-                continue
-            specs.append(
-                {
-                    "kind": "concat",
-                    "label": label,
-                    "parts": parts,
-                    "separator": str(row.get("separator") or ""),
-                }
-            )
-            continue
-        expr = str(row.get("expr") or "").strip()
-        if not expr:
-            continue
-        node = parse_formula(expr)
-        unknown = sorted(formula_references(node) - known)
-        if unknown:
-            raise FormulaError(
-                f"Calculated column '{label}': {unknown[0]!r} is not one of the view's columns."
-            )
-        specs.append({"kind": "formula", "label": label, "expr": expr})
-    return specs
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        row = json.loads(text)
+    except json.JSONDecodeError:
+        return None  # an unparseable row is an empty row
+    if not isinstance(row, dict):
+        return None
+    label = str(row.get("label") or "").strip()
+    kind = row.get("kind")
+    if not label or kind not in CALC_KINDS:
+        return None
+    if kind == "concat":
+        parts = [str(part) for part in row.get("parts") or [] if str(part) in known]
+        if not parts:
+            return None
+        return {
+            "kind": "concat",
+            "label": label,
+            "parts": parts,
+            "separator": str(row.get("separator") or ""),
+        }
+    expr = str(row.get("expr") or "").strip()
+    if not expr:
+        return None
+    node = parse_formula(expr)
+    unknown = sorted(formula_references(node) - known)
+    if unknown:
+        raise FormulaError(
+            f"Calculated column '{label}': {unknown[0]!r} is not one of the view's columns."
+        )
+    return {"kind": "formula", "label": label, "expr": expr}
 
 
 def _icon_from_form(raw: dict) -> str:
