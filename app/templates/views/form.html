@@ -171,6 +171,10 @@
     var CONFIG = {{ (current_config or {}) | tojson }};
     var columnsBox = document.getElementById('columns');
     var columnTemplate = document.getElementById('column-row-template');
+    // Declared up here: the row replay further down builds both row kinds, so
+    // these must be assigned before it runs.
+    var calcTemplate = document.getElementById('calc-row-template');
+    var calcTokens = document.getElementById('calc-tokens');
 
     function ent(id) { return GRAPH.entities[String(id)] || null; }
 
@@ -573,8 +577,7 @@
     // order covers every column. Each row serialises itself into one hidden
     // `calc` input (JSON): the row controls are unnamed, so a row with missing
     // pieces simply submits nothing — the same pattern the standard rows use.
-    var calcTemplate = document.getElementById('calc-row-template');
-    var calcTokens = document.getElementById('calc-tokens');
+    // (`calcTemplate`/`calcTokens` are declared at the top of this block.)
 
     function isCalculatedSpec(spec) {
       return !!spec && typeof spec === 'object' &&
