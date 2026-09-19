@@ -156,7 +156,14 @@ def _extract_database(content: bytes, max_db_bytes: int) -> bytes:
 
 
 def _is_valid_database(db_bytes: bytes) -> bool:
-    """True when the bytes form a SQLite DB containing the core ``users`` table."""
+    """True when the bytes form a SQLite DB safe to restore.
+
+    Beyond ``quick_check`` + the core ``users`` table, objects containing
+    executable SQL (triggers, views) are rejected: the app never creates
+    them, and a restored trigger (e.g. ``AFTER UPDATE ON records ... UPDATE
+    users SET password_hash = ...``) would run under app privileges on later
+    writes.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         probe = Path(tmpdir) / "probe.db"
         probe.write_bytes(db_bytes)
@@ -165,27 +172,53 @@ def _is_valid_database(db_bytes: bytes) -> bool:
             try:
                 if conn.execute("PRAGMA quick_check").fetchone() != ("ok",):
                     return False
-                return (
-                    conn.execute(
-                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
-                    ).fetchone()
-                    is not None
-                )
+                if not conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+                ).fetchone():
+                    return False
+                hostile = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type IN ('trigger', 'view') LIMIT 1"
+                ).fetchone()
+                return hostile is None
             finally:
                 conn.close()
         except sqlite3.DatabaseError:
             return False
 
 
+def _snapshot_before_restore(db_path: Path) -> Path | None:
+    """Copy the live DB aside before a restore overwrites it.
+
+    A restore is irreversible by design (the file is replaced, sessions are
+    dropped); this preserves the previous state so a bad/failed restore can
+    be recovered by the operator. Returns the snapshot path, or None when the
+    live DB does not exist yet (first boot).
+    """
+    if not db_path.exists():
+        return None
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    snapshot = db_path.parent / f"{db_path.stem}.pre-restore-{stamp}{db_path.suffix}"
+    source = sqlite3.connect(str(db_path))
+    try:
+        target = sqlite3.connect(str(snapshot))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+    return snapshot
+
+
 def _swap_database(request: Request, db_bytes: bytes) -> None:
     """Atomically replace the live SQLite file and reset its connections.
 
-    Serialised by :data:`_restore_lock`: the swap (dispose + replace + WAL
-    cleanup) must not overlap another restore. Requests already in flight when
-    the swap starts hold connections to the old file — their writes land in
-    the replaced inode and are lost; performing a restore while the app has
-    active traffic is documented as an operator trade-off (the flow forces a
-    re-login afterwards).
+    Serialised by :data:`_restore_lock`: the swap (dispose + snapshot +
+    replace + WAL cleanup) must not overlap another restore. Requests already
+    in flight when the swap starts hold connections to the old file — their
+    writes land in the replaced inode and are lost; performing a restore
+    while the app has active traffic is documented as an operator trade-off
+    (the flow forces a re-login afterwards).
     """
     with _restore_lock:
         _swap_database_locked(request, db_bytes)
@@ -194,10 +227,15 @@ def _swap_database(request: Request, db_bytes: bytes) -> None:
 def _swap_database_locked(request: Request, db_bytes: bytes) -> None:
     engine = request.app.state.engine
     db_path = _db_path(request)
+    logger.info("Database restore started (target: %s)", db_path)
 
     # Close pooled connections so the file can be replaced; the engine reconnects
     # to the new file on the next request.
     engine.dispose()
+
+    snapshot_path = _snapshot_before_restore(db_path)
+    if snapshot_path is not None:
+        logger.info("Pre-restore snapshot written to %s", snapshot_path)
 
     fd, tmp_name = tempfile.mkstemp(dir=db_path.parent, suffix=".db")
     try:

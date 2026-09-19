@@ -50,6 +50,18 @@ def _records_url(entity_id: int) -> str:
     return f"/entities/{entity_id}/records"
 
 
+def get_live_record(db, record_id: int):
+    """The record when it exists and is not soft-deleted, else ``None``.
+
+    Soft-deleted records stay in the DB but the UI presents them as deleted;
+    editing or re-deleting them would silently mutate supposedly-gone data.
+    """
+    record = get_record(db, record_id)
+    if record is None or record.deleted_at is not None:
+        return None
+    return record
+
+
 def _return_target(raw_next: Any, entity_id: int) -> str:
     """Where a record mutation lands: the page it was started from.
 
@@ -222,7 +234,7 @@ def edit_record_page(
     user: User = Depends(require_capability(UPDATE_RECORD)),
     db: Session = Depends(get_session),
 ):
-    record = get_record(db, record_id)
+    record = get_live_record(db, record_id)
     if record is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, record.entity_id)
@@ -250,7 +262,7 @@ async def update_record_post(
     user: User = Depends(require_capability(UPDATE_RECORD)),
     db: Session = Depends(get_session),
 ):
-    record = get_record(db, record_id)
+    record = get_live_record(db, record_id)
     if record is None:
         raise HTTPException(status_code=404)
     entity = get_entity_with_attributes(db, record.entity_id)
@@ -271,7 +283,7 @@ def delete_record_post(
     user: User = Depends(require_capability(DELETE_RECORD)),
     db: Session = Depends(get_session),
 ):
-    record = get_record(db, record_id)
+    record = get_live_record(db, record_id)
     if record is None:
         raise HTTPException(status_code=404)
     entity_id = record.entity_id

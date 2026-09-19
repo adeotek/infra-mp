@@ -44,6 +44,7 @@
     }
     toast.textContent = message;
     toast.className = 'toast' + (variant ? ' toast-' + variant : '');
+    toast.setAttribute('role', variant === 'error' ? 'alert' : 'status');
     toast.classList.add('show');
     clearTimeout(showToast._timer);
     showToast._timer = setTimeout(function () {
@@ -65,10 +66,14 @@
 
   // Modal/entity forms return 400 + error fragments; htmx 2 discards 4xx
   // responses by default, which made validation errors invisible. Allow
-  // 4xx swaps into fragment targets.
+  // 4xx swaps into fragment targets, but only for HTML responses — the CSRF
+  // middleware rejects with bare JSON ({detail: ...}), and swapping raw JSON
+  // into a fragment target would paste it as text into the page.
   document.body.addEventListener('htmx:beforeSwap', function (e) {
     if (e.detail.xhr && e.detail.xhr.status >= 400 && e.detail.xhr.status < 500) {
-      e.detail.shouldSwap = true;
+      var type = (e.detail.xhr.getResponseHeader('Content-Type') || '');
+      e.detail.isError = false;
+      e.detail.shouldSwap = type.indexOf('text/html') !== -1;
     }
   });
 
@@ -206,11 +211,16 @@
     });
   }
 
+  // Hover overlays only make sense for a fine pointer: on touch devices a tap
+  // fires mouseover, opening off-screen fixed-positioned overlays.
+  var hoverCapable = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   document.addEventListener('mouseover', function (e) {
+    if (!hoverCapable) return;
     var section = e.target.closest('.sidebar-collapsed .nav-section');
     if (section) openSectionOverlay(section);
   });
   document.addEventListener('mouseout', function (e) {
+    if (!hoverCapable) return;
     var section = e.target.closest('.sidebar-collapsed .nav-section');
     if (!section) return;
     if (section.contains(e.relatedTarget)) return;
@@ -1155,8 +1165,9 @@
     }
   });
 
-  // Flash messages: dismiss button and URL cleanup (the ?flash= query param
-  // is stripped so reloads don't re-show stale messages).
+  // Flash messages: dismiss button and URL cleanup (the ?flash=&flash_type=
+  // params are stripped so reloads don't re-show stale messages — other query
+  // params (entity_id, next, ...) must survive, they carry page state).
   document.addEventListener('click', function (e) {
     var closeBtn = e.target.closest('.flash-close');
     if (closeBtn) {
@@ -1164,7 +1175,11 @@
     }
   });
   if (window.location.search.indexOf('flash=') !== -1) {
-    var cleanUrl = window.location.pathname;
+    var params = new URLSearchParams(window.location.search);
+    params.delete('flash');
+    params.delete('flash_type');
+    var qs = params.toString();
+    var cleanUrl = window.location.pathname + (qs ? '?' + qs : '');
     try { window.history.replaceState(null, '', cleanUrl); } catch (err) { /* ignore */ }
   }
 })();

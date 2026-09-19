@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from sqlalchemy import func, select
@@ -124,12 +125,34 @@ def _validate_definition(data: AttributeCreate, db: Session) -> None:
             raise SchemaError("Reference attributes require a target entity.")
         if db.get(Entity, data.reference_entity_id) is None:
             raise SchemaError("Reference target entity does not exist.")
+        if data.cardinality == "many" and data.is_key:
+            # The entity-key tuple would hold a list (unhashable) — key
+            # lookups in CSV import and duplicate checks would crash.
+            raise SchemaError("A many-reference attribute cannot be part of the entity key.")
 
     if data.default_value not in (None, ""):
         try:
             coerce_value(data.data_type, data.default_value)
         except ValidationError as exc:
             raise SchemaError(f"Invalid default value: {exc}") from exc
+
+    if (
+        data.data_type == DataType.REFERENCE
+        and data.default_value not in (None, "")
+        and data.cardinality == "many"
+    ):
+        reference_default = str(data.default_value).strip()
+        for token in re.split(r"[|;]", reference_default):
+            token = token.strip()
+            if not token:
+                continue
+            if not token.isdigit():
+                raise SchemaError(
+                    "Default value for a many-reference attribute must be record ids "
+                    "separated by '|' (e.g. '1|3|5')."
+                )
+        if not reference_default:
+            raise SchemaError("Default value for a many-reference attribute is empty.")
 
 
 def _next_sort_order(db: Session, entity_id: int) -> int:

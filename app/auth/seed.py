@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -55,8 +56,31 @@ def seed_admin(db: Session, settings: Settings) -> None:
         return
 
     if not settings.admin_password:
-        # NOTE: the generated password is deliberately logged so the operator
-        # can log in on first boot — it is visible in container logs and any
-        # log collector. Change it immediately or pin INFRAMP_ADMIN_PASSWORD.
-        print(f"[infra-mp] Seeded admin user '{settings.admin_username}' with password: {password}")
-        print("[infra-mp] Log in and change it, or set INFRAMP_ADMIN_PASSWORD and restart.")
+        # Log that a generated password exists — but NEVER its value: stdout
+        # lands in container logs and log collectors, where a credential
+        # would be exposed to anyone with log access. The value goes to a
+        # 0600 file inside the data directory instead.
+        try:
+            data_dir = Path(settings.data_dir)
+            data_dir.mkdir(parents=True, exist_ok=True)
+            cred_file = data_dir / "initial-admin-password.txt"
+            cred_file.write_text(
+                f"admin = {settings.admin_username} = {password}\n"
+                "(delete this file after signing in)\n",
+                encoding="utf-8",
+            )
+            cred_file.chmod(0o600)
+            print(
+                f"[infra-mp] Seeded admin user '{settings.admin_username}' with a generated "
+                f"password, written to {cred_file} (permissions 0600)."
+            )
+            print(
+                "[infra-mp] Log in, change it, then delete the file — or set "
+                "INFRAMP_ADMIN_PASSWORD and restart."
+            )
+        except OSError:
+            print(
+                "[infra-mp] Seeded admin user, but the generated password could not be "
+                "written to disk. Set INFRAMP_ADMIN_PASSWORD and restart, or reset the "
+                "admin user manually."
+            )

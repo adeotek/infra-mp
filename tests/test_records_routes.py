@@ -486,6 +486,8 @@ def test_record_mutations_default_to_the_records_list(client, login):
 
 def test_unsafe_next_targets_fall_back_to_the_records_list(client, login):
     _seed_server(client, login)
+    # Each payload needs a fresh live record: deleting 1 twice is now a 404
+    # (soft-deleted records are immutable).
     for payload in (
         "//evil.example.com",
         "https://evil.example.com",
@@ -493,9 +495,28 @@ def test_unsafe_next_targets_fall_back_to_the_records_list(client, login):
         "evil.example.com",
     ):
         _seed_record(client)
-        resp = client.post("/records/1/delete", data={"next": payload}, follow_redirects=False)
+        list_page = client.get("/entities/1/records").text
+        import re as _re
+
+        match = _re.search(r"/records/(\d+)/delete", list_page)
+        assert match, "no delete link found on the records page"
+        record_id = match.group(1)
+        resp = client.post(
+            f"/records/{record_id}/delete", data={"next": payload}, follow_redirects=False
+        )
         assert resp.status_code == 303
         assert _target(resp.headers["location"]) == "/entities/1/records", payload
+
+
+def test_soft_deleted_record_mutations_return_404(client, login):
+    _seed_server(client, login)
+    _seed_record(client)
+    assert client.post("/records/1/delete", data={}, follow_redirects=False).status_code == 303
+    # The record still exists in the DB, but it is deleted — no re-delete,
+    # no edit.
+    assert client.post("/records/1/delete", data={}, follow_redirects=False).status_code == 404
+    resp = client.post("/records/1/edit", data={"name": "x"}, follow_redirects=False)
+    assert resp.status_code == 404
 
 
 def test_new_record_form_carries_the_return_target(client, login):

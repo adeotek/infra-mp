@@ -109,6 +109,11 @@ def _safe_cell(value: Any) -> str:
         return "'" + cell
     if cell.startswith("-") and not _NUMERIC.match(cell):
         return "'" + cell
+    # Tab / CR before a formula defeats _safe_cell's "=" test in LibreOffice
+    # (it trims leading whitespace before formula detection, so "\t=CMD()"
+    # executes on open — OWASP CSV injection).
+    if cell.startswith("\t") or cell.startswith("\r"):
+        return "'" + cell
     return cell
 
 
@@ -124,6 +129,8 @@ def _unmark_formula_cell(cell: str) -> str:
     if cell.startswith("'") and len(cell) > 1:
         rest = cell[1:]
         if rest.startswith(("=", "+", "@")) or (rest.startswith("-") and not _NUMERIC.match(rest)):
+            return rest
+        if rest.startswith(("\t", "\r")):
             return rest
     return cell
 
@@ -318,6 +325,13 @@ def import_record_rows(
                     continue
                 old_key = canonical_key_values(existing, key_attrs)
                 old_unique = {attr.slug: existing.data.get(attr.slug) for attr in unique_attrs}
+                # Preserve values for inactive attributes (the same semantics
+                # as update_record: the form/CSV never submits them).
+                inactive_slugs = {a.slug for a in attributes if not a.is_active}
+                for slug in inactive_slugs:
+                    data.pop(slug, None)
+                    if slug in existing.data:
+                        data[slug] = existing.data[slug]
                 existing.data = data
                 existing.updated_by = user_id
                 db.flush()
@@ -413,6 +427,12 @@ def _resolve_reference_cell(
         if not token:
             continue
         if token.isdigit():
+            # A digit-only token can still be a legit TITLE (e.g. record named
+            # "1001"): prefer an exact title match; fall back to id lookup.
+            matches = by_title.get(token.lower(), [])
+            if len(matches) == 1:
+                resolved.append(matches[0])
+                continue
             record_id = int(token)
             if record_id in known_ids:
                 resolved.append(record_id)

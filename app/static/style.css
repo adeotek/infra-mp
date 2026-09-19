@@ -1,11 +1,12 @@
 /* InfraMP — light (default) theme variables */
 :root {
+  color-scheme: light dark; /* native controls (date pickers, selects) follow the theme */
   --bg: #f5f6f8;
   --surface: #ffffff;
   --surface-2: #fafbfc;
   --border: #e2e5ea;
   --text: #1a1d21;
-  --muted: #6b7280;
+  --muted: #5f6672;
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --teal: #0d9488;
@@ -23,11 +24,11 @@
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.10);
   --radius: 8px;
   --topbar-height: 56px;
-  /* Button fills (white text must hit WCAG AA 4.5:1). */
+  /* Button fills (white text must hit WCAG AA 4.5:1; #0d9488 was 3.74:1). */
   --btn-primary: #2563eb;
   --btn-primary-hover: #1d4ed8;
-  --btn-teal: #0d9488;
-  --btn-teal-hover: #0f766e;
+  --btn-teal: #0f766e;
+  --btn-teal-hover: #115e59;
   --btn-danger: #dc2626;
   /* Shared DANGER hover red, used by the .btn-danger fill AND the row danger
      icons: one step lighter than --btn-danger (#dc2626 -> #ef4444), mirroring
@@ -71,7 +72,7 @@
   --btn-primary: #2563eb;
   --btn-primary-hover: #3b82f6;
   --btn-teal: #0f766e;
-  --btn-teal-hover: #0d9488;
+  --btn-teal-hover: #14b8a6;
   --btn-danger: #dc2626;
   /* Same value as in :root (see the comment there): the danger hover red is
      shared by the Delete fill and the row danger icons, and is
@@ -861,8 +862,27 @@ code {
     transition: transform 0.2s ease;
   }
   body.sidebar-open .sidebar { transform: translateX(0); }
-  /* The desktop icon-rail is meaningless on a phone: always show labels. */
+  /* The desktop icon-rail is meaningless on a phone: always show labels AND
+     keep section items visible — the desktop-collapsed .nav-section-items
+     {display:none} + hover-overlay pattern must not hide drawer content. */
   .sidebar-collapsed .sidebar { width: min(280px, 85vw); }
+  /* Neutralise the desktop collapsed-rail rules inside the drawer: items are
+     rendered in-flow (never as hover overlays) on the phone. */
+  .sidebar-collapsed .nav-section {
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-collapsed .nav-section-items,
+  .sidebar-collapsed .nav-section.overlay-open .nav-section-items {
+    position: static;
+    display: flex;
+    left: auto;
+    top: auto;
+    min-width: 0;
+    max-width: none;
+    box-shadow: none;
+    overflow: visible;
+  }
   .brand-text, .nav-label { display: inline; }
   .sidebar-collapsed .brand-text, .sidebar-collapsed .nav-label,
   .sidebar-collapsed .nav-section-items .nav-label { display: inline; }

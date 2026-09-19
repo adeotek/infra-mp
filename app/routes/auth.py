@@ -51,7 +51,7 @@ def _same_origin(request: Request) -> bool:
             return False
         if parsed.scheme not in ("http", "https") or not parsed.hostname:
             return False
-        if parsed.hostname.lower() != host.partition(":")[0]:
+        if parsed.hostname.lower() != urlsplit(f"//{host}").hostname:
             return False
     return True
 

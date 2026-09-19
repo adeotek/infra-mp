@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -183,7 +184,24 @@ def validate_record_data(
                 errors.append((attr.slug, f"{attr.name} is required."))
                 continue
             if attr.default_value is not None:
-                data[attr.slug] = attr.default_value
+                # Reference defaults are stored raw in the schema (ids entered
+                # as strings); coerce them so records get canonical values.
+                if attr.data_type_enum == DataType.REFERENCE:
+                    default = attr.default_value
+                    # Many-ref defaults come from the schema form as "1|3|5"
+                    # strings; split them so records store list[int].
+                    if (
+                        attr.cardinality == "many"
+                        and isinstance(default, str)
+                        and not isinstance(default, list)
+                    ):
+                        default = [t.strip() for t in re.split(r"[|;]", default) if t.strip()]
+                    try:
+                        data[attr.slug] = _coerce_reference(attr, default)
+                    except (ValidationError, ValueError):
+                        data[attr.slug] = attr.default_value
+                else:
+                    data[attr.slug] = attr.default_value
             continue
 
         if attr.is_unique:
@@ -462,6 +480,12 @@ def _display_cell(attr: Attribute, value: Any, titles: dict[int, dict[int, str]]
         if cardinality == "many":
             ids = value if isinstance(value, list) else []
             return ", ".join(target_titles.get(i, f"#{i}") for i in ids) or "—"
+        if isinstance(value, list):
+            # Legacy/corrupt row: a one-cardinality ref holding a list would
+            # crash the dict lookup (unhashable list) — degrade to first id.
+            value = value[0] if value else None
+            if value is None:
+                return "—"
         return target_titles.get(value, f"#{value}")
     if attr.data_type == DataType.DECIMAL.value and isinstance(value, float):
         # Legacy rows stored float(decimal) — normalise the representation.

@@ -29,6 +29,8 @@ services:
       INFRAMP_SESSION_COOKIE_NAME: ${INFRAMP_SESSION_COOKIE_NAME:-infra_mp_session}
       INFRAMP_SESSION_TTL_DAYS: ${INFRAMP_SESSION_TTL_DAYS:-7}
       INFRAMP_COOKIE_SECURE: ${INFRAMP_COOKIE_SECURE:-}
+      # Set this (e.g. in a .env file) to the hostnames/IPs clients actually use
+      # — leaving "*" disables TrustedHost validation (Host-header trust).
       INFRAMP_ALLOWED_HOSTS: ${INFRAMP_ALLOWED_HOSTS:-*}
       INFRAMP_TRUSTED_PROXY_IPS: ${INFRAMP_TRUSTED_PROXY_IPS:-}
       INFRAMP_HSTS_ENABLED: ${INFRAMP_HSTS_ENABLED:-false}
@@ -39,7 +41,8 @@ services:
       INFRAMP_MAX_BACKUP_DB_BYTES: ${INFRAMP_MAX_BACKUP_DB_BYTES:-262144000}
       INFRAMP_ADMIN_USERNAME: ${INFRAMP_ADMIN_USERNAME:-admin}
       # Set this (e.g. in a .env file) to pin the initial admin password;
-      # otherwise a random one is generated and printed on first start.
+      # otherwise a random one is generated and written to a 0600 file in
+      # /data on first start.
       INFRAMP_ADMIN_PASSWORD: ${INFRAMP_ADMIN_PASSWORD:-}
       INFRAMP_ADMIN_DISPLAY_NAME: ${INFRAMP_ADMIN_DISPLAY_NAME:-Administrator}
       INFRAMP_DEBUG: ${INFRAMP_DEBUG:-false}
