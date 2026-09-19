@@ -93,9 +93,16 @@ def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, c
 
 
 def _render_sum_widget(
-    db: Session, widget: DashboardWidget, entities: list, cache: dict
-) -> dict[str, str] | None:
-    """Sum one numeric attribute over the (optionally view-filtered) records."""
+    db: Session,
+    widget: DashboardWidget,
+    entities: list,
+    cache: dict,
+) -> str | None:
+    """Sum one numeric attribute over the (optionally view-filtered) records.
+
+    Returns the formatted total, or ``None`` when the widget's field is missing
+    or no longer numeric (the card explains that instead of showing a number).
+    """
     if widget.entity_id is None:
         return None
     entity = get_entity_with_attributes(db, widget.entity_id)
@@ -114,7 +121,7 @@ def _render_sum_widget(
         for value in (to_decimal(record.data.get(attr.slug)) for record in records)
         if value is not None
     ]
-    return {"value": format_total(aggregate(values, "sum")), "label": attr.name}
+    return format_total(aggregate(values, "sum"))
 
 
 def _numeric_fields(entities: list) -> list[dict]:

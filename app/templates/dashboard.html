@@ -13,7 +13,10 @@
   <section class="widget {{ w.width_class }}">
     {% set widget_title = w.widget.title or (w.widget.view.name if w.widget.view else (w.widget.entity.name if w.widget.entity else 'Widget')) %}
     <h2>
-      {% if w.widget.entity %}
+      {% if w.widget.view %}
+      {# A view-bound widget links to the view: that is the data it shows. #}
+      <a href="/views/{{ w.widget.view.id }}" class="widget-title-link">{{ widget_title }}</a>
+      {% elif w.widget.entity %}
       <a href="/entities/{{ w.widget.entity.id }}/records" class="widget-title-link">{{ widget_title }}</a>
       {% else %}
       {{ widget_title }}
@@ -21,9 +24,9 @@
     </h2>
     {% if w.widget.widget_type == 'count' %}
     <div class="stat-value">{{ w.data }}</div>
-    {% elif w.widget.widget_type == 'sum' and w.data %}
-    <div class="stat-value">{{ w.data.value }}</div>
-    <p class="muted">Sum of {{ w.data.label }}</p>
+    {% elif w.widget.widget_type == 'sum' and w.data is not none %}
+    {# Same markup as a count widget: the title describes the value. #}
+    <div class="stat-value">{{ w.data }}</div>
     {% elif w.widget.widget_type == 'sum' %}
     <p class="muted">No numeric field selected for this widget.</p>
     {% elif w.data %}

@@ -1,5 +1,7 @@
 """HTTP tests for the dashboard and widget routes."""
 
+import re
+
 
 def _seed_server(client, login):
     login()
@@ -249,6 +251,22 @@ def test_widget_title_links_to_entity_records(client, login):
     assert 'href="/entities/1/records" class="widget-title-link">Servers</a>' in html
 
 
+def test_widget_title_links_to_the_view_when_one_is_bound(client, login):
+    """A view-bound widget opens the view — that is the data it renders."""
+    _seed_server(client, login)
+    client.post("/views", data={"name": "All", "entity_id": "1"}, follow_redirects=False)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "Servers", "widget_type": "count", "entity_id": "1", "view_id": "1"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    grid = html[html.index('<div class="widget-grid">') :]
+    heading = grid[grid.index("<h2>") : grid.index("</h2>")]
+    assert 'href="/views/1" class="widget-title-link">Servers</a>' in heading
+    assert "/entities/1/records" not in heading
+
+
 def test_widget_without_entity_title_is_not_a_link(client, login):
     login()
     client.post(
@@ -430,7 +448,31 @@ def test_create_sum_widget_totals_the_field(client, login):
     assert resp.status_code == 303
     html = client.get("/dashboard").text
     assert '<div class="stat-value">14.75</div>' in html
-    assert "Sum of Price" in html
+    # Same card markup as a count widget: the title names the value, so no
+    # caption under it.
+    assert "Sum of" not in html
+
+
+def test_sum_widget_card_matches_a_count_widget(client, login):
+    """Both stat widgets render one bare .stat-value, nothing else."""
+    _seed_cost_server(client, login)
+    for widget_type, field in (("sum", "price"), ("count", "")):
+        client.post(
+            "/dashboard/widgets",
+            data={
+                "title": widget_type,
+                "widget_type": widget_type,
+                "entity_id": "1",
+                "view_id": "",
+                "field": field,
+            },
+            follow_redirects=False,
+        )
+    html = client.get("/dashboard").text
+    assert html.count('<div class="stat-value">') == 2
+    assert '<p class="muted">Sum of' not in html
+    rendered = re.findall(r'<div class="stat-value">([^<]+)</div>', html)
+    assert set(rendered) == {"14.75", "2"}
 
 
 def test_sum_widget_sums_integer_fields(client, login):
