@@ -475,6 +475,9 @@
     (CONFIG.calculated || []).forEach(loadCalcRow);
     rebuildSortOptions();
     rebuildCalcPickers();
+    // The reference pickers only hold every column once the whole list is
+    // replayed, so stored selections are restored after that.
+    columnsBox.querySelectorAll('.calc-row').forEach(applyStoredParts);
     syncColumnOrder();
 
     columnsBox.addEventListener('change', function (e) {
@@ -689,23 +692,31 @@
       return row;
     }
 
-    // Fill a row from a stored spec (used when replaying an edit).
+    // Fill a row from a stored spec (used when replaying an edit). The
+    // reference selections are applied by `applyStoredParts` once every row
+    // exists — a calculated row may sit above the columns it references.
     function loadCalcRow(spec) {
       var row = newCalcRow();
+      row._spec = spec;
       row.querySelector('.calc-label').value = spec.label || '';
       row.querySelector('.calc-kind').value = spec.kind === 'formula' ? 'formula' : 'concat';
       row.querySelector('.calc-sep').value = spec.separator || '';
       row.querySelector('.calc-expr').value = spec.expr || '';
       syncCalcRow(row);
       rebuildCalcPickers();
-      if (spec.parts) {
+      serializeCalcRow(row);
+      return row;
+    }
+
+    function applyStoredParts(row) {
+      var spec = row._spec;
+      if (spec && spec.parts) {
         var select = row.querySelector('.calc-parts');
         Array.prototype.forEach.call(select.options, function (option) {
           option.selected = spec.parts.indexOf(option.value) !== -1;
         });
       }
       serializeCalcRow(row);
-      return row;
     }
 
     document.getElementById('add-calculated').addEventListener('click', function () {
