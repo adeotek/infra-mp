@@ -60,24 +60,18 @@
   <table class="table" id="tokens-table" data-user-filter>
     <thead>
       <tr>
+        <th class="no-sort"></th>
         <th>Name</th>
         <th>User</th>
         <th>Token</th>
         <th>Created</th>
         <th>Expires</th>
         <th>Last used</th>
-        <th class="no-sort"></th>
       </tr>
     </thead>
     <tbody>
       {% for token, token_user in tokens %}
       <tr data-user-id="{{ token.user_id }}">
-        <td>{{ token.name }}{% if not token.is_active %} <span class="muted">(revoked)</span>{% endif %}</td>
-        <td>{{ token_user.username }}</td>
-        <td><code>{{ token.token_prefix }}…</code></td>
-        <td>{{ token.created_at | datetime_display }}</td>
-        <td>{{ token.expires_at | datetime_display if token.expires_at else '—' }}</td>
-        <td>{{ token.last_used_at | datetime_display if token.last_used_at else '—' }}</td>
         <td class="row-actions">
           <div class="row-actions-inner">
           {% if token.is_active %}
@@ -100,6 +94,12 @@
           {% endif %}
           </div>
         </td>
+        <td>{{ token.name }}{% if not token.is_active %} <span class="muted">(revoked)</span>{% endif %}</td>
+        <td>{{ token_user.username }}</td>
+        <td><code>{{ token.token_prefix }}…</code></td>
+        <td>{{ token.created_at | datetime_display }}</td>
+        <td>{{ token.expires_at | datetime_display if token.expires_at else '—' }}</td>
+        <td>{{ token.last_used_at | datetime_display if token.last_used_at else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>

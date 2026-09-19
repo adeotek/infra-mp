@@ -1,5 +1,7 @@
 """HTTP tests for the dashboard and widget routes."""
 
+import re
+
 
 def _seed_server(client, login):
     login()
@@ -139,13 +141,30 @@ def test_create_widget_with_width(client, login):
             "widget_type": "count",
             "entity_id": "1",
             "view_id": "",
-            "width": "full",
+            "width": "12",
         },
         follow_redirects=False,
     )
     html = client.get("/dashboard").text
-    assert "widget-span-4" in html
-    assert "<td>Full</td>" in client.get("/dashboard/config").text
+    assert "widget-span-12" in html
+    assert "<td>12 / 12</td>" in client.get("/dashboard/config").text
+
+
+def test_create_widget_accepts_legacy_width_tokens(client, login):
+    """Widths stored before the 12-column grid still round-trip to their span."""
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "W",
+            "widget_type": "count",
+            "entity_id": "1",
+            "view_id": "",
+            "width": "full",
+        },
+        follow_redirects=False,
+    )
+    assert "widget-span-12" in client.get("/dashboard").text
 
 
 def test_create_widget_defaults_to_half_width(client, login):
@@ -156,8 +175,8 @@ def test_create_widget_defaults_to_half_width(client, login):
         follow_redirects=False,
     )
     html = client.get("/dashboard").text
-    assert "widget-span-2" in html
-    assert "widget-span-4" not in html
+    assert "widget-span-6" in html
+    assert "widget-span-12" not in html
 
 
 def test_create_widget_invalid_width_defaults_to_half(client, login):
@@ -173,7 +192,30 @@ def test_create_widget_invalid_width_defaults_to_half(client, login):
         },
         follow_redirects=False,
     )
-    assert "widget-span-2" in client.get("/dashboard").text
+    assert "widget-span-6" in client.get("/dashboard").text
+
+
+def test_create_widget_out_of_range_width_defaults_to_half(client, login):
+    _seed_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "W",
+            "widget_type": "count",
+            "entity_id": "1",
+            "view_id": "",
+            "width": "13",
+        },
+        follow_redirects=False,
+    )
+    assert "widget-span-6" in client.get("/dashboard").text
+
+
+def test_widget_widths_offer_all_twelve_spans(client, login):
+    login()
+    html = client.get("/dashboard/config").text
+    for n in range(1, 13):
+        assert f'<option value="{n}"' in html
 
 
 def test_update_widget_width(client, login):
@@ -190,12 +232,12 @@ def test_update_widget_width(client, login):
             "widget_type": "count",
             "entity_id": "1",
             "view_id": "",
-            "width": "3/4",
+            "width": "9",
         },
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert "widget-span-3" in client.get("/dashboard").text
+    assert "widget-span-9" in client.get("/dashboard").text
 
 
 def test_widget_title_links_to_entity_records(client, login):
@@ -207,6 +249,22 @@ def test_widget_title_links_to_entity_records(client, login):
     )
     html = client.get("/dashboard").text
     assert 'href="/entities/1/records" class="widget-title-link">Servers</a>' in html
+
+
+def test_widget_title_links_to_the_view_when_one_is_bound(client, login):
+    """A view-bound widget opens the view — that is the data it renders."""
+    _seed_server(client, login)
+    client.post("/views", data={"name": "All", "entity_id": "1"}, follow_redirects=False)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "Servers", "widget_type": "count", "entity_id": "1", "view_id": "1"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard").text
+    grid = html[html.index('<div class="widget-grid">') :]
+    heading = grid[grid.index("<h2>") : grid.index("</h2>")]
+    assert 'href="/views/1" class="widget-title-link">Servers</a>' in heading
+    assert "/entities/1/records" not in heading
 
 
 def test_widget_without_entity_title_is_not_a_link(client, login):
@@ -338,3 +396,196 @@ def test_table_widget_without_copy_flag_has_no_copy_button(client, login):
     html = client.get("/dashboard").text
     assert "web01" in html
     assert "copy-btn" not in html
+
+
+# --------------------------------------------------------------------------- #
+# Sum widgets
+# --------------------------------------------------------------------------- #
+
+
+def _seed_cost_server(client, login):
+    """Entity 1: Name (text) + Price (decimal) + Qty (integer); two records."""
+    login()
+    client.post("/entities", data={"name": "Server"}, follow_redirects=False)
+    client.post(
+        "/entities/1/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Price", "data_type": "decimal"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/attributes",
+        data={"name": "Qty", "data_type": "integer"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/records",
+        data={"name": "a", "price": "10.25", "qty": "2"},
+        follow_redirects=False,
+    )
+    client.post(
+        "/entities/1/records",
+        data={"name": "b", "price": "4.50", "qty": "3"},
+        follow_redirects=False,
+    )
+
+
+def test_create_sum_widget_totals_the_field(client, login):
+    _seed_cost_server(client, login)
+    resp = client.post(
+        "/dashboard/widgets",
+        data={
+            "title": "Spend",
+            "widget_type": "sum",
+            "entity_id": "1",
+            "view_id": "",
+            "field": "price",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    html = client.get("/dashboard").text
+    assert '<div class="stat-value">14.75</div>' in html
+    # Same card markup as a count widget: the title names the value, so no
+    # caption under it.
+    assert "Sum of" not in html
+
+
+def test_sum_widget_card_matches_a_count_widget(client, login):
+    """Both stat widgets render one bare .stat-value, nothing else."""
+    _seed_cost_server(client, login)
+    for widget_type, field in (("sum", "price"), ("count", "")):
+        client.post(
+            "/dashboard/widgets",
+            data={
+                "title": widget_type,
+                "widget_type": widget_type,
+                "entity_id": "1",
+                "view_id": "",
+                "field": field,
+            },
+            follow_redirects=False,
+        )
+    html = client.get("/dashboard").text
+    assert html.count('<div class="stat-value">') == 2
+    assert '<p class="muted">Sum of' not in html
+    rendered = re.findall(r'<div class="stat-value">([^<]+)</div>', html)
+    assert set(rendered) == {"14.75", "2"}
+
+
+def test_sum_widget_sums_integer_fields(client, login):
+    _seed_cost_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": "qty"},
+        follow_redirects=False,
+    )
+    assert '<div class="stat-value">5</div>' in client.get("/dashboard").text
+
+
+def test_sum_widget_honours_its_view_filters(client, login):
+    _seed_cost_server(client, login)
+    client.post(
+        "/views",
+        data={
+            "name": "Expensive",
+            "entity_id": "1",
+            "filter_slug": ["price"],
+            "filter_op": ["gte"],
+            "filter_value": ["10"],
+        },
+        follow_redirects=False,
+    )
+    client.post(
+        "/dashboard/widgets",
+        data={
+            "widget_type": "sum",
+            "entity_id": "1",
+            "view_id": "1",
+            "field": "price",
+        },
+        follow_redirects=False,
+    )
+    assert '<div class="stat-value">10.25</div>' in client.get("/dashboard").text
+
+
+def test_sum_widget_without_values_shows_zero(client, login):
+    _seed_cost_server(client, login)
+    client.post("/entities/1/records", data={"name": "c"}, follow_redirects=False)
+    client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": "price"},
+        follow_redirects=False,
+    )
+    # _seed_cost_server seeded 14.75 of prices; the third record adds nothing.
+    assert '<div class="stat-value">14.75</div>' in client.get("/dashboard").text
+
+
+def test_sum_widget_rejects_a_non_numeric_field(client, login):
+    from urllib.parse import unquote
+
+    _seed_cost_server(client, login)
+    resp = client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": "name"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "not a numeric field" in unquote(resp.headers["location"])
+    assert "<code>sum</code>" not in client.get("/dashboard/config").text
+
+
+def test_sum_widget_requires_a_field(client, login):
+    from urllib.parse import unquote
+
+    _seed_cost_server(client, login)
+    resp = client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": ""},
+        follow_redirects=False,
+    )
+    assert "Choose the numeric field" in unquote(resp.headers["location"])
+
+
+def test_sum_widget_requires_an_entity(client, login):
+    from urllib.parse import unquote
+
+    _seed_cost_server(client, login)
+    resp = client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "", "view_id": "", "field": "price"},
+        follow_redirects=False,
+    )
+    assert "needs an entity" in unquote(resp.headers["location"])
+
+
+def test_edit_page_preselects_the_sum_field(client, login):
+    _seed_cost_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": "price"},
+        follow_redirects=False,
+    )
+    html = client.get("/dashboard/widgets/1/edit").text
+    assert 'value="price" selected' in html
+    assert "numeric-fields" in html
+
+
+def test_changing_a_widget_away_from_sum_clears_its_field(client, login):
+    _seed_cost_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"widget_type": "sum", "entity_id": "1", "view_id": "", "field": "price"},
+        follow_redirects=False,
+    )
+    resp = client.post(
+        "/dashboard/widgets/1/edit",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    config = client.get("/dashboard/config").text
+    assert "<code>sum</code>" not in config
+    assert "14.75" not in client.get("/dashboard").text

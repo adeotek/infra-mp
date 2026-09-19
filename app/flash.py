@@ -10,6 +10,18 @@ from fastapi.responses import RedirectResponse, Response
 from app.templates import is_htmx
 
 
+def safe_next(value: str | None, default: str) -> str:
+    """Allow only relative redirect targets (prevents open redirects).
+
+    ``//host`` is protocol-relative; ``/\\host`` is the same once browsers
+    normalise backslashes in URL paths, so both are rejected. Anything else
+    that is not a rooted path falls back to ``default``.
+    """
+    if value and value.startswith("/") and not value.startswith(("//", "/\\")):
+        return value
+    return default
+
+
 def redirect_with_flash(
     url: str,
     message: str,

@@ -481,3 +481,152 @@ def test_sidebar_active_state_on_records_pages(client, login):
     detail = client.get("/entities/1").text
     assert 'href="/entities" class="nav-item nav-sub active"' in detail
     assert 'href="/entities/1/records" class="nav-item nav-sub"' in detail
+
+
+# --------------------------------------------------------------------------- #
+# Record actions (per view)
+# --------------------------------------------------------------------------- #
+
+
+def _create_view(client, **extra):
+    data = {"name": "V", "entity_id": "1", "col": ["base:cores"], **extra}
+    return client.post("/views", data=data, follow_redirects=False)
+
+
+def _checkbox_is_checked(html: str, name: str) -> bool:
+    index = html.index(f'name="{name}"')
+    return "checked" in html[index : index + 80]
+
+
+def test_view_record_actions_are_off_by_default(client, login):
+    _seed_server(client, login)
+    _create_view(client)
+    html = client.get("/views/1").text
+    assert "Add record" not in html
+    assert 'class="row-actions"' not in html
+
+
+def test_view_record_actions_add_button_and_row_buttons(client, login):
+    _seed_server(client, login)
+    _create_view(client, record_actions="on")
+    html = client.get("/views/1").text
+    assert "Add record" in html
+    # One actions cell per row (alpha and bravo).
+    assert html.count('class="row-actions"') == 2
+    assert "action-btn action-btn-edit" in html
+    assert "action-btn action-btn-danger" in html
+    assert 'action="/records/1/delete"' in html
+
+
+def test_view_record_actions_column_comes_first(client, login):
+    _seed_server(client, login)
+    _create_view(client, record_actions="on")
+    html = client.get("/views/1").text
+    table = html[html.index('<table class="table"') :]
+    assert table.index('class="no-sort"') < table.index('<th class="num">Cores</th>')
+
+
+def test_new_view_form_defaults_record_actions_to_on(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert _checkbox_is_checked(html, "record_actions")
+
+
+def test_edit_view_form_defaults_record_actions_to_off(client, login):
+    _seed_server(client, login)
+    _create_view(client)
+    html = client.get("/views/1/edit").text
+    assert not _checkbox_is_checked(html, "record_actions")
+
+
+def test_view_form_offers_record_actions_before_advanced_filters(client, login):
+    _seed_server(client, login)
+    html = client.get("/views/new", params={"entity_id": 1}).text
+    assert html.index("record_actions") < html.index("advanced_filter")
+
+
+def test_record_actions_can_be_switched_off_again(client, login):
+    _seed_server(client, login)
+    _create_view(client, record_actions="on")
+    client.post(
+        "/views/1/edit",
+        data={"name": "V", "entity_id": "1", "col": ["base:cores"]},
+        follow_redirects=False,
+    )
+    html = client.get("/views/1").text
+    assert "Add record" not in html
+    assert 'class="row-actions"' not in html
+
+
+# --------------------------------------------------------------------------- #
+# Grand totals
+# --------------------------------------------------------------------------- #
+
+
+def test_view_totals_render_in_the_footer(client, login):
+    _seed_server(client, login)
+    _create_view(client, col_total=["sum"])
+    html = client.get("/views/1").text
+    assert "<tfoot>" in html
+    assert 'class="total-cell num" title="sum"' in html and "<strong>12</strong>" in html
+
+
+def test_view_totals_follow_the_filters(client, login):
+    _seed_server(client, login)
+    _create_view(
+        client,
+        col_total=["sum"],
+        filter_slug=["name"],
+        filter_op=["eq"],
+        filter_value=["alpha"],
+    )
+    html = client.get("/views/1").text
+    assert 'class="total-cell num" title="sum"' in html and "<strong>4</strong>" in html
+
+
+def test_view_totals_are_skipped_for_text_columns(client, login):
+    _seed_server(client, login)
+    _create_view(client, col=["base:name"], col_total=["sum"])
+    html = client.get("/views/1").text
+    assert "<tfoot>" not in html
+
+
+def test_view_without_totals_has_no_footer(client, login):
+    _seed_server(client, login)
+    _create_view(client)
+    assert "<tfoot>" not in client.get("/views/1").text
+
+
+def test_view_edit_form_replays_the_stored_total(client, login):
+    _seed_server(client, login)
+    _create_view(client, col_total=["avg"])
+    html = client.get("/views/1/edit").text
+    assert '"totals": {"cores": "avg"}' in html
+
+
+def test_view_totals_survive_an_advanced_filter_rerender(client, login):
+    _seed_server(client, login)
+    _create_view(client, col_total=["sum"], advanced_filter="on")
+    html = client.post(
+        "/views/1/filters",
+        data={"action": "add", "col": "quick", "value": "alpha"},
+        headers={"HX-Request": "true"},
+    ).text
+    assert 'class="total-cell num" title="sum"' in html and "<strong>4</strong>" in html
+
+
+def test_totals_need_a_matching_column_row(client, login):
+    """A `col_total` without a paired `col` (or with a dud op) is ignored."""
+    _seed_server(client, login)
+    _create_view(client, col=[], col_total=["sum"])
+    assert "<tfoot>" not in client.get("/views/1").text
+
+
+def test_view_action_links_carry_the_return_target(client, login):
+    """Add/edit/delete started on a view page come back to that view."""
+    _seed_server(client, login)
+    _create_view(client, record_actions="on")
+    html = client.get("/views/1").text
+    assert "/entities/1/records/new?next=/views/1" in html
+    assert "/records/1/edit?next=/views/1" in html
+    assert '<input type="hidden" name="next" value="/views/1">' in html

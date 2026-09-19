@@ -15,15 +15,24 @@
       <input type="text" name="title" placeholder="e.g. Active servers">
     </label>
     <label>Type
-      <select name="widget_type">
+      <select name="widget_type" id="widget-type">
         <option value="table">Table</option>
         <option value="count">Count</option>
+        <option value="sum">Sum (numeric field)</option>
       </select>
     </label>
     <label>Entity
-      <select name="entity_id">
+      <select name="entity_id" id="widget-entity">
         <option value="">— none —</option>
         {% for e in entities %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Field (sum widgets)
+      <select name="field" id="widget-field">
+        <option value="">— none —</option>
+        {% for e in numeric_fields %}
+        {% for f in e.fields %}<option value="{{ f.slug }}">{{ e.name }} · {{ f.name }}</option>{% endfor %}
+        {% endfor %}
       </select>
     </label>
     <label>View (optional filter)
@@ -32,12 +41,9 @@
         {% for v in views %}<option value="{{ v.id }}">{{ v.name }} ({{ v.entity.name if v.entity else '—' }})</option>{% endfor %}
       </select>
     </label>
-    <label>Width
+    <label>Width (12-column grid)
       <select name="width">
-        <option value="1/4">1/4</option>
-        <option value="1/2" selected>1/2</option>
-        <option value="3/4">3/4</option>
-        <option value="full">Full</option>
+        {% for n in range(1, 13) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} / 12</option>{% endfor %}
       </select>
     </label>
   </div>
@@ -53,15 +59,11 @@
 {% endif %}
 <div class="table-wrap">
 <table class="table" id="widgets-table" data-reorder-url="/dashboard/widgets/reorder">
-  <thead><tr><th class="no-sort drag-handle-col" aria-hidden="true"></th><th>Title</th><th>Type</th><th>Entity</th><th>Width</th><th class="no-sort"></th></tr></thead>
+  <thead><tr><th class="no-sort drag-handle-col" aria-hidden="true"></th><th class="no-sort"></th><th>Title</th><th>Type</th><th>Entity</th><th>Width</th></tr></thead>
   <tbody>
   {% for w in widgets %}
     <tr draggable="true" data-id="{{ w.id }}">
       <td class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i><span class="row-move-group"><button type="button" class="row-move" data-move="up" title="Move up" aria-label="Move up"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button><button type="button" class="row-move" data-move="down" title="Move down" aria-label="Move down"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button></span></td>
-      <td>{{ w.title or '—' }}</td>
-      <td><code>{{ w.widget_type }}</code></td>
-      <td>{{ w.entity.name if w.entity else '—' }}</td>
-      <td>{{ "Full" if w.width == "full" else w.width }}</td>
       <td class="row-actions">
         <div class="row-actions-inner">
           <a href="/dashboard/widgets/{{ w.id }}/edit" class="action-btn action-btn-edit" title="Edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
@@ -72,6 +74,10 @@
           </form>
         </div>
       </td>
+      <td>{{ w.title or '—' }}</td>
+      <td><code>{{ w.widget_type }}</code>{% if w.widget_type == 'sum' and w.config.get('field') %} <span class="muted">{{ w.config.get('field') }}</span>{% endif %}</td>
+      <td>{{ w.entity.name if w.entity else '—' }}</td>
+      <td>{{ w.width }} / 12</td>
     </tr>
   {% endfor %}
   </tbody>
@@ -80,4 +86,7 @@
 {% else %}
 <p class="muted">No widgets yet.</p>
 {% endif %}
+
+{# Numeric attributes per entity: the sum field select follows the entity. #}
+<script type="application/json" id="numeric-fields">{{ numeric_fields | tojson }}</script>
 {% endblock %}

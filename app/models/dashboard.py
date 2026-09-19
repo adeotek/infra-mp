@@ -29,8 +29,9 @@ class DashboardWidget(TimestampMixin, Base):
         ForeignKey("views.id", ondelete="SET NULL"), nullable=True
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    # Dashboard grid width: "1/4", "1/2", "3/4", or "full".
-    width: Mapped[str] = mapped_column(String(16), default="1/2")
+    # Dashboard grid width: a 1-12 span of the dashboard's 12-column grid
+    # ("6" = half a row, "12" = full row).
+    width: Mapped[str] = mapped_column(String(16), default="6")
     config: Mapped[dict] = mapped_column(JSON, default=dict)
 
     entity: Mapped[Entity | None] = relationship()

@@ -428,3 +428,103 @@ def test_record_form_copy_button_hidden_while_its_field_is_empty(client, login):
     edit_html = client.get("/records/1/edit").text
     assert 'class="copy-btn"' in edit_html
     assert 'class="copy-btn hidden"' not in edit_html
+
+
+# --------------------------------------------------------------------------- #
+# Source-aware redirects: the record form and row actions carry a `next`
+# target, so add/edit/delete return to the page they were started from
+# (default: the entity's records list).
+# --------------------------------------------------------------------------- #
+
+
+def _target(location: str) -> str:
+    """Redirect target with the flash query string stripped."""
+    return location.split("?")[0]
+
+
+def _seed_record(client):
+    client.post("/entities/1/records", data={"name": "web01", "cores": "8"}, follow_redirects=False)
+
+
+def test_create_record_returns_to_the_source_page(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/entities/1/records",
+        data={"name": "web01", "cores": "8", "next": "/views/1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert _target(resp.headers["location"]) == "/views/1"
+
+
+def test_update_record_returns_to_the_source_page(client, login):
+    _seed_server(client, login)
+    _seed_record(client)
+    resp = client.post(
+        "/records/1/edit",
+        data={"name": "web02", "cores": "4", "next": "/views/3"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert _target(resp.headers["location"]) == "/views/3"
+
+
+def test_delete_record_returns_to_the_source_page(client, login):
+    _seed_server(client, login)
+    _seed_record(client)
+    resp = client.post("/records/1/delete", data={"next": "/views/2"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert _target(resp.headers["location"]) == "/views/2"
+
+
+def test_record_mutations_default_to_the_records_list(client, login):
+    _seed_server(client, login)
+    _seed_record(client)
+    resp = client.post("/records/1/delete", data={}, follow_redirects=False)
+    assert _target(resp.headers["location"]) == "/entities/1/records"
+
+
+def test_unsafe_next_targets_fall_back_to_the_records_list(client, login):
+    _seed_server(client, login)
+    for payload in (
+        "//evil.example.com",
+        "https://evil.example.com",
+        "/\\evil.example.com",
+        "evil.example.com",
+    ):
+        _seed_record(client)
+        resp = client.post("/records/1/delete", data={"next": payload}, follow_redirects=False)
+        assert resp.status_code == 303
+        assert _target(resp.headers["location"]) == "/entities/1/records", payload
+
+
+def test_new_record_form_carries_the_return_target(client, login):
+    _seed_server(client, login)
+    html = client.get("/entities/1/records/new", params={"next": "/views/4"}).text
+    assert '<input type="hidden" name="next" value="/views/4">' in html
+    assert "Back to view" in html
+
+
+def test_edit_record_form_carries_the_return_target(client, login):
+    _seed_server(client, login)
+    _seed_record(client)
+    html = client.get("/records/1/edit", params={"next": "/views/4"}).text
+    assert '<input type="hidden" name="next" value="/views/4">' in html
+
+
+def test_record_form_defaults_to_the_records_list(client, login):
+    _seed_server(client, login)
+    html = client.get("/entities/1/records/new").text
+    assert '<input type="hidden" name="next" value="/entities/1/records">' in html
+    assert "Back to records" in html
+
+
+def test_record_form_keeps_the_source_after_a_validation_error(client, login):
+    _seed_server(client, login)
+    resp = client.post(
+        "/entities/1/records",
+        data={"name": "", "cores": "8", "next": "/views/9"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert '<input type="hidden" name="next" value="/views/9">' in resp.text

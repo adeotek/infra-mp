@@ -14,6 +14,7 @@ from app.services.schema_service import (
 )
 from app.services.view_service import (
     apply_config,
+    build_totals,
     build_view_graph,
     build_view_rows,
     create_view,
@@ -445,9 +446,9 @@ def test_build_view_graph(db_session, ref_graph):
     assert [h["ref"] for h in graph["entities"][str(rack.id)]["down"]] == ["rack"]
     assert [h["ref"] for h in graph["entities"][str(nic.id)]["down"]] == ["nics"]
     assert server_node["attrs"] == [
-        {"slug": "name", "name": "Name"},
-        {"slug": "rack", "name": "Rack"},
-        {"slug": "nics", "name": "NICs"},
+        {"slug": "name", "name": "Name", "type": "text"},
+        {"slug": "rack", "name": "Rack", "type": "reference"},
+        {"slug": "nics", "name": "NICs", "type": "reference"},
     ]
 
 
@@ -584,3 +585,119 @@ def test_related_link_column_many_all_is_plain_text(db_session, link_graph):
     # Exactly one reached URL -> linkable.
     assert rows["A"]["cells"][key] == "https://p1.example.com"
     assert rows["A"]["link_hrefs"][key] == "https://p1.example.com"
+
+
+# --------------------------------------------------------------------------- #
+# Grand totals
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def costs(db_session):
+    """Servers with a decimal Price and integer Cores; one row without a price."""
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="Cores", data_type=DataType.INTEGER))
+    add_attribute(db_session, entity, AttributeCreate(name="Price", data_type=DataType.DECIMAL))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    for name, cores, price in [("a", 4, "1200.50"), ("b", 16, "0.50"), ("c", 10, "5")]:
+        create_record(
+            db_session, entity, entity.attributes, {"name": name, "cores": cores, "price": price}
+        )
+    return entity
+
+
+def _totals(db_session, entity, config):
+    records, columns = apply_config(
+        entity,
+        list_records(db_session, entity.id),
+        config,
+        list_entities(db_session),
+        db=db_session,
+    )
+    return build_totals(db_session, entity, records, columns, config)
+
+
+def test_totals_sum_min_max_avg(db_session, costs):
+    assert _totals(db_session, costs, {"totals": {"cores": "sum"}}) == {
+        "cores": {"op": "sum", "value": "30"}
+    }
+    assert _totals(db_session, costs, {"totals": {"cores": "min"}})["cores"]["value"] == "4"
+    assert _totals(db_session, costs, {"totals": {"cores": "max"}})["cores"]["value"] == "16"
+    assert _totals(db_session, costs, {"totals": {"cores": "avg"}})["cores"]["value"] == "10"
+
+
+def test_totals_format_with_separators_and_no_trailing_zeros(db_session, costs):
+    totals = _totals(db_session, costs, {"totals": {"price": "sum"}})
+    assert totals["price"] == {"op": "sum", "value": "1,206"}
+    assert _totals(db_session, costs, {"totals": {"price": "avg"}})["price"]["value"] == "402"
+    assert _totals(db_session, costs, {"totals": {"price": "min"}})["price"]["value"] == "0.5"
+    assert _totals(db_session, costs, {"totals": {"price": "max"}})["price"]["value"] == "1,200.5"
+
+
+def test_totals_follow_the_view_filters(db_session, costs):
+    config = {
+        "filters": [{"col": "cores", "op": "gte", "value": "10"}],
+        "totals": {"cores": "sum"},
+    }
+    assert _totals(db_session, costs, config)["cores"]["value"] == "26"
+
+
+def test_totals_skip_non_numeric_and_unknown_ops(db_session, costs):
+    config = {"totals": {"name": "sum", "cores": "median", "missing": "sum"}}
+    assert _totals(db_session, costs, config) == {}
+
+
+def test_totals_empty_result_has_no_entry(db_session, costs):
+    config = {
+        "filters": [{"col": "name", "op": "eq", "value": "nothing"}],
+        "totals": {"cores": "sum"},
+    }
+    assert _totals(db_session, costs, config) == {}
+
+
+def test_totals_without_config_are_empty(db_session, costs):
+    assert _totals(db_session, costs, {}) == {}
+
+
+def test_totals_over_a_related_column(db_session):
+    rack = create_entity(db_session, EntityCreate(name="Rack"))
+    add_attribute(db_session, rack, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, rack, AttributeCreate(name="Capacity", data_type=DataType.INTEGER))
+    server = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, server, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(
+        db_session,
+        server,
+        AttributeCreate(
+            name="Rack",
+            data_type=DataType.REFERENCE,
+            reference_entity_id=rack.id,
+            cardinality="one",
+        ),
+    )
+    rack = get_entity_with_attributes(db_session, rack.id)
+    server = get_entity_with_attributes(db_session, server.id)
+    r1 = create_record(db_session, rack, rack.attributes, {"name": "R1", "capacity": 10})
+    r2 = create_record(db_session, rack, rack.attributes, {"name": "R2", "capacity": 4})
+    for name, target in [("a", r1.id), ("b", r1.id), ("c", r2.id)]:
+        create_record(db_session, server, server.attributes, {"name": name, "rack": target})
+
+    config = {
+        "columns": [
+            {
+                "path": [{"dir": "up", "ref": "rack", "to": rack.id, "many": "first"}],
+                "attr": "capacity",
+            }
+        ],
+    }
+    records, columns = apply_config(
+        server,
+        list_records(db_session, server.id),
+        config,
+        list_entities(db_session),
+        db=db_session,
+    )
+    key = columns[0].key
+    totals = build_totals(db_session, server, records, columns, {**config, "totals": {key: "sum"}})
+    assert totals[key]["value"] == "24"

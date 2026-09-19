@@ -19,11 +19,22 @@
 
   <fieldset class="form-section">
     <legend>Columns</legend>
-    <p class="muted">Add a column row per attribute. Rows may follow reference hops to parent or
-      child entities (any depth) and end on one of their attributes. Leave empty to show every
-      attribute.</p>
+    <p class="muted">One row per column, in display order — drag a row by its handle (or use ▲▼)
+      to reorder, calculated rows included. Rows may follow reference hops to parent or child
+      entities (any depth) and end on one of their attributes; leave empty to show every
+      attribute. Numeric columns can carry a grand total (sum / average / min / max) over the
+      view's filtered rows.</p>
+    <p class="muted">A <strong>calculated</strong> row derives its value per record from one
+      expression: literal text with <code>{column-key}</code> references.
+      <strong>Text</strong> joins the referenced cells — the text between references acts as the
+      separator (<code>{name} - {room}</code> → <code>Chair - A1</code>), empty cells are
+      skipped. <strong>Number</strong> evaluates an arithmetic formula: <code>+ - * /</code>,
+      parentheses, unary minus and <code>round(value, digits)</code>, e.g.
+      <code>round({price} * {quantity}, 2)</code>. An empty result shows the em dash.</p>
     <div id="columns"></div>
     <button type="button" id="add-column" class="btn">Add column</button>
+    <button type="button" id="add-calculated" class="btn">Add calculated column</button>
+    <p class="muted" id="calc-tokens"></p>
   </fieldset>
 
   <fieldset class="form-section">
@@ -44,6 +55,14 @@
     <p class="muted">Any view column can be the default sort. Pick one of the columns
       added above — the list updates as you edit the columns.</p>
   </fieldset>
+
+  <label class="checkbox-label">
+    <input type="checkbox" name="record_actions" id="record-actions-toggle"
+           {% if view is none or cfg.get('record_actions') %}checked{% endif %}>
+    Record actions (add, edit, delete)
+  </label>
+  <p class="muted">Show the Add record button and the per-row Edit / Delete buttons on
+    the view page. Buttons appear only for actions your role allows.</p>
 
   <label class="checkbox-label">
     <input type="checkbox" name="advanced_filter" id="advanced-filter-toggle"
@@ -85,16 +104,41 @@
 </form>
 
 <template id="column-row-template">
-  <div class="column-row" draggable="true">
+  <div class="column-row" data-col-row draggable="true">
     <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
     <div class="col-hops"></div>
     <select class="col-attr" aria-label="Attribute"></select>
+    <label class="col-total-label">Total
+      <select class="col-total" name="col_total" aria-label="Grand total">
+        <option value="">— none —</option>
+      </select>
+    </label>
     <input type="hidden" name="col" value="">
+    <input type="hidden" name="col_order" value="">
     <span class="row-move-group" aria-label="Move column">
       <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
       <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
     </span>
     <button type="button" class="btn btn-ghost remove-column">Remove</button>
+  </div>
+</template>
+
+<template id="calc-row-template">
+  <div class="calc-row" data-col-row draggable="true">
+    <span class="drag-handle" title="Drag to reorder"><i class="fa-solid fa-grip-vertical"></i></span>
+    <input type="text" class="calc-label" placeholder="Header (e.g. Yearly cost)">
+    <select class="calc-kind" aria-label="Calculation">
+      <option value="concat">Text — join columns</option>
+      <option value="formula">Number — formula</option>
+    </select>
+    <input type="text" class="calc-expr" placeholder="e.g. {name} - {room}">
+    <input type="hidden" name="calc" value="">
+    <input type="hidden" name="col_order" value="">
+    <span class="row-move-group" aria-label="Move row">
+      <button type="button" class="row-move col-move" data-dir="up" title="Move up">▲</button>
+      <button type="button" class="row-move col-move" data-dir="down" title="Move down">▼</button>
+    </span>
+    <button type="button" class="btn btn-ghost remove-calc">Remove</button>
   </div>
 </template>
 
@@ -122,6 +166,10 @@
     var CONFIG = {{ (current_config or {}) | tojson }};
     var columnsBox = document.getElementById('columns');
     var columnTemplate = document.getElementById('column-row-template');
+    // Declared up here: the row replay further down builds both row kinds, so
+    // these must be assigned before it runs.
+    var calcTemplate = document.getElementById('calc-row-template');
+    var calcTokens = document.getElementById('calc-tokens');
 
     function ent(id) { return GRAPH.entities[String(id)] || null; }
 
@@ -226,6 +274,49 @@
       }
       attrSel.innerHTML = '';
       attrSel.appendChild(attrOptions(current, prevAttr));
+      row._nodeId = current;
+      syncTotalOptions(row);
+    }
+
+    // --- Grand total select: only numeric terminal attributes offer ops ---
+    var TOTAL_OPS = [['sum', 'Sum'], ['avg', 'Average'], ['min', 'Min'], ['max', 'Max']];
+    var NUMERIC_TYPES = ['integer', 'decimal'];
+
+    function attrTypeOf(nodeId, slug) {
+      var found = null;
+      ((ent(nodeId) && ent(nodeId).attrs) || []).forEach(function (a) {
+        if (a.slug === slug) found = a;
+      });
+      return found ? found.type : null;
+    }
+
+    function syncTotalOptions(row) {
+      var sel = row.querySelector('.col-total');
+      if (!sel) return;
+      var attr = row.querySelector('.col-attr').value;
+      var numeric = !!attr && NUMERIC_TYPES.indexOf(attrTypeOf(row._nodeId, attr)) !== -1;
+      var previous = sel.value;
+      sel.innerHTML = '';
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = '\u2014 none \u2014';
+      sel.appendChild(none);
+      if (numeric) {
+        TOTAL_OPS.forEach(function (pair) {
+          var option = document.createElement('option');
+          option.value = pair[0];
+          option.textContent = pair[1];
+          sel.appendChild(option);
+        });
+        if (previous) sel.value = previous;
+      }
+      // Non-numeric columns keep the (empty) select so the per-row pairing
+      // with the `col` field survives: disabled fields are not submitted.
+      sel.classList.toggle('total-na', !numeric);
+    }
+
+    function totalKeyOf(encoding) {
+      return encoding.indexOf('base:') === 0 ? encoding.slice(5) : encoding;
     }
 
     function readColumnState(row) {
@@ -263,6 +354,7 @@
       var row = newColumnRow();
       if (typeof spec === 'string') {
         row.querySelector('.col-attr').value = spec;
+        applyStoredTotal(row);
         return;
       }
       (spec.path || []).forEach(function (hop) {
@@ -277,6 +369,17 @@
         renderColumnRow(row);
       });
       if (spec.attr) row.querySelector('.col-attr').value = spec.attr;
+      applyStoredTotal(row);
+    }
+
+    // Replay the grand total stored for this row's column, when it has one.
+    function applyStoredTotal(row) {
+      syncTotalOptions(row);
+      serializeColumnRow(row);
+      var encoding = row.querySelector('input[name="col"]').value;
+      var op = (CONFIG.totals || {})[totalKeyOf(encoding)];
+      var sel = row.querySelector('.col-total');
+      if (sel && op) sel.value = op;
     }
 
     // --- Sort column select: mirrors the current column rows ---
@@ -353,9 +456,21 @@
       storedSortEncoding = '';
     }
 
-    // Replay stored columns on edit.
-    (CONFIG.columns || []).forEach(loadColumn);
+    // Replay stored rows on edit: standard and calculated rows share one list,
+    // so the stored order is kept. Calculated specs live inside `columns`
+    // (current shape) or in the legacy `calculated` list (appended, as the
+    // server resolves them).
+    (CONFIG.columns || []).forEach(function (spec) {
+      if (isCalculatedSpec(spec)) {
+        loadCalcRow(spec);
+      } else {
+        loadColumn(spec);
+      }
+    });
+    (CONFIG.calculated || []).forEach(loadCalcRow);
     rebuildSortOptions();
+    rebuildCalcPickers();
+    syncColumnOrder();
 
     columnsBox.addEventListener('change', function (e) {
       var row = e.target.closest('.column-row');
@@ -367,19 +482,24 @@
         renderColumnRow(row);
       } else if (e.target.classList.contains('col-many')) {
         row._state = readColumnState(row);
+      } else if (e.target.classList.contains('col-attr')) {
+        syncTotalOptions(row);
       }
       rebuildSortOptions();
+      rebuildCalcPickers();
     });
 
     columnsBox.addEventListener('click', function (e) {
-      if (e.target.classList.contains('remove-column')) {
-        e.target.closest('.column-row').remove();
+      if (e.target.classList.contains('remove-column') || e.target.classList.contains('remove-calc')) {
+        e.target.closest('[data-col-row]').remove();
         rebuildSortOptions();
+        rebuildCalcPickers();
+        syncColumnOrder();
         return;
       }
       var moveBtn = e.target.closest('.col-move');
       if (!moveBtn) return;
-      var row = moveBtn.closest('.column-row');
+      var row = moveBtn.closest('[data-col-row]');
       var dir = moveBtn.getAttribute('data-dir');
       if (dir === 'up' && row.previousElementSibling) {
         row.parentNode.insertBefore(row, row.previousElementSibling);
@@ -387,20 +507,22 @@
         row.parentNode.insertBefore(row.nextElementSibling, row);
       }
       rebuildSortOptions();
+      rebuildCalcPickers();
+      syncColumnOrder();
     });
 
-    // Column reordering: drag by the handle (rows are form-local, so the DOM
-    // order is what gets submitted — no server round-trip needed).
-    // dragstart fires on the draggable row itself, never on the handle span
-    // that was pressed — so the "handle-only" gate must be decided earlier,
-    // on mousedown, where e.target is still the element under the pointer.
+    // Row reordering: drag by the handle — standard and calculated rows share
+    // the same list, so any row can move past any other. dragstart fires on the
+    // draggable row itself, never on the handle span that was pressed — so the
+    // "handle-only" gate must be decided earlier, on mousedown, where e.target
+    // is still the element under the pointer.
     var dragRow = null;
     var dragArmed = false;
     columnsBox.addEventListener('mousedown', function (e) {
-      dragArmed = !!(e.target.closest('.drag-handle') && e.target.closest('.column-row'));
+      dragArmed = !!(e.target.closest('.drag-handle') && e.target.closest('[data-col-row]'));
     });
     columnsBox.addEventListener('dragstart', function (e) {
-      dragRow = e.target.closest('.column-row');
+      dragRow = e.target.closest('[data-col-row]');
       if (!dragRow || !dragArmed) {
         dragRow = null;
         e.preventDefault();
@@ -416,7 +538,7 @@
       if (!dragRow) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      var row = e.target.closest('.column-row');
+      var row = e.target.closest('[data-col-row]');
       if (!row || row === dragRow) return;
       var rect = row.getBoundingClientRect();
       var after = (e.clientY - rect.top) > (rect.height / 2);
@@ -428,15 +550,143 @@
       dragRow.classList.remove('dragging');
       dragRow = null;
       rebuildSortOptions();
+      rebuildCalcPickers();
+      syncColumnOrder();
     });
 
     document.getElementById('add-column').addEventListener('click', function () {
       newColumnRow();
       rebuildSortOptions();
+      rebuildCalcPickers();
+      syncColumnOrder();
     });
     document.getElementById('view-form').addEventListener('submit', function () {
       columnsBox.querySelectorAll('.column-row').forEach(serializeColumnRow);
+      serializeCalcRows();
       rebuildSortOptions();
+      syncColumnOrder();
+    });
+
+    // --- Calculated columns -------------------------------------------------
+    // Calculated rows live in the same list as the standard ones, so the drag
+    // order covers every column. Each row serialises itself into one hidden
+    // `calc` input (JSON): the row controls are unnamed, so a row with missing
+    // pieces simply submits nothing — the same pattern the standard rows use.
+    // (`calcTemplate`/`calcTokens` are declared at the top of this block.)
+
+    function isCalculatedSpec(spec) {
+      return !!spec && typeof spec === 'object' &&
+        (spec.kind === 'concat' || spec.kind === 'formula');
+    }
+
+    // One token per row, in DOM order: `col:<n>` counts the standard rows,
+    // `calc:<n>` the calculated ones, so the server can rebuild the shared
+    // display order from the two payload lists.
+    function syncColumnOrder() {
+      var colIndex = 0;
+      var calcIndex = 0;
+      columnsBox.querySelectorAll('[data-col-row]').forEach(function (row) {
+        var hidden = row.querySelector('input[name="col_order"]');
+        if (!hidden) return;
+        if (row.classList.contains('calc-row')) {
+          hidden.value = 'calc:' + calcIndex;
+          calcIndex += 1;
+        } else {
+          hidden.value = 'col:' + colIndex;
+          colIndex += 1;
+        }
+      });
+    }
+
+    function columnChoices() {
+      var choices = [];
+      columnsBox.querySelectorAll('.column-row').forEach(function (row) {
+        var encoding = columnEncodingOfRow(row);
+        if (!encoding) return;
+        choices.push({ value: totalKeyOf(encoding), label: sortLabelForRow(row) });
+      });
+      return choices;
+    }
+
+    function syncCalcRow(row) {
+      var kind = row.querySelector('.calc-kind').value;
+      row.querySelector('.calc-expr').placeholder = kind === 'concat'
+        ? 'e.g. {name} - {room}'
+        : 'e.g. round({price} * 12, 2)';
+    }
+
+    // Text expressions are the definition mode for both kinds, so a stored
+    // spec is one expression. Specs saved with the old shape (a parts list and
+    // a separator) read back as their template.
+    function calcExprOfSpec(spec) {
+      if (spec.expr) return spec.expr;
+      if (!spec.parts || !spec.parts.length) return '';
+      return spec.parts.map(function (part) { return '{' + part + '}'; })
+        .join(spec.separator || '');
+    }
+
+    function rebuildCalcPickers() {
+      var choices = columnChoices();
+      if (calcTokens) {
+        calcTokens.textContent = choices.length
+          ? 'Columns you can reference: ' + choices.map(function (c) {
+              return '{' + c.value + '} = ' + c.label;
+            }).join(' · ')
+          : 'Add a column above to reference it in an expression.';
+      }
+    }
+
+    function serializeCalcRow(row) {
+      var hidden = row.querySelector('input[name="calc"]');
+      var label = row.querySelector('.calc-label').value.trim();
+      var expr = row.querySelector('.calc-expr').value.trim();
+      if (!label || !expr) {
+        hidden.value = '';
+        return;
+      }
+      hidden.value = JSON.stringify({
+        label: label,
+        kind: row.querySelector('.calc-kind').value,
+        expr: expr
+      });
+    }
+
+    function serializeCalcRows() {
+      columnsBox.querySelectorAll('.calc-row').forEach(serializeCalcRow);
+    }
+
+    function newCalcRow() {
+      var row = calcTemplate.content.cloneNode(true).firstElementChild;
+      columnsBox.appendChild(row);
+      syncCalcRow(row);
+      return row;
+    }
+
+    // Fill a row from a stored spec (used when replaying an edit).
+    function loadCalcRow(spec) {
+      var row = newCalcRow();
+      row.querySelector('.calc-label').value = spec.label || '';
+      row.querySelector('.calc-kind').value = spec.kind === 'formula' ? 'formula' : 'concat';
+      row.querySelector('.calc-expr').value = calcExprOfSpec(spec);
+      syncCalcRow(row);
+      serializeCalcRow(row);
+      return row;
+    }
+
+    document.getElementById('add-calculated').addEventListener('click', function () {
+      newCalcRow();
+      rebuildCalcPickers();
+      syncColumnOrder();
+    });
+    columnsBox.addEventListener('change', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (!row) return;
+      if (e.target.classList.contains('calc-kind')) syncCalcRow(row);
+      serializeCalcRow(row);
+    });
+    columnsBox.addEventListener('input', function (e) {
+      var row = e.target.closest('.calc-row');
+      if (row) serializeCalcRow(row);
     });
 
     // Filters

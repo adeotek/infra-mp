@@ -2,24 +2,44 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_capability
-from app.auth.permissions import MANAGE_VIEWS, has_capability
+from app.auth.permissions import (
+    CREATE_RECORD,
+    DELETE_RECORD,
+    MANAGE_VIEWS,
+    UPDATE_RECORD,
+    has_capability,
+)
 from app.db import get_session
 from app.flash import redirect_with_flash
 from app.form import parse_form, to_list
 from app.models.entity import Entity
 from app.models.user import User
 from app.models.view import View
+from app.services.aggregates import TOTAL_OPS
+from app.services.calculated import (
+    CALC_KINDS,
+    FormulaError,
+    concat_expr_from_parts,
+    concat_references,
+    formula_references,
+    parse_concat,
+    parse_formula,
+)
 from app.services.csv_service import export_view_csv
 from app.services.record_service import list_records
 from app.services.schema_service import get_entity_with_attributes, list_entities
 from app.services.view_service import (
     FILTER_OPS,
     apply_config,
+    build_totals,
     build_view_graph,
     build_view_rows,
     column_spec_string,
@@ -37,14 +57,7 @@ router = APIRouter()
 
 
 def _config_from_form(raw: dict, entity: Entity) -> dict:
-    column_specs = []
-    for value in to_list(raw.get("col")):
-        spec = parse_column_spec(value)
-        if spec is not None:
-            column_specs.append(spec)
-    if not column_specs:
-        # Legacy form: flat base-attribute slugs.
-        column_specs = [v for v in to_list(raw.get("columns")) if v.strip()]
+    column_specs, totals = _columns_from_form(raw)
     sort_value = str(raw.get("sort_col", "") or raw.get("sort_slug", "") or "").strip()
     sort_dir = raw.get("sort_dir") if raw.get("sort_dir") in ("asc", "desc") else "asc"
 
@@ -68,6 +81,8 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         "filters": filters,
         "advanced_filter": str(raw.get("advanced_filter", "")).lower()
         in ("on", "true", "1", "yes"),
+        "record_actions": str(raw.get("record_actions", "")).lower() in ("on", "true", "1", "yes"),
+        "totals": totals,
     }
     if sort_value:
         # Any view column may be the sort column: the form submits the same
@@ -80,6 +95,117 @@ def _config_from_form(raw: dict, entity: Entity) -> dict:
         elif sort_value in {a.slug for a in entity.attributes}:
             config["sort"] = {"slug": sort_value, "dir": sort_dir}
     return config
+
+
+def _column_keys(specs: list) -> list[str]:
+    """Canonical key of each resolved column spec (the keys calculated columns use)."""
+    keys = []
+    for spec in specs:
+        if isinstance(spec, str):
+            keys.append(spec)
+        elif isinstance(spec, dict):
+            keys.append(_rel_key(spec))
+    return keys
+
+
+def _columns_from_form(raw: dict) -> tuple[list, dict[str, str]]:
+    """The view's columns in display order, plus the grand-total map.
+
+    Standard and calculated rows share one list: the form submits a
+    ``col_order`` token per row — ``col:<n>`` for the n-th standard row,
+    ``calc:<n>`` for the n-th calculated one — so a single drag order covers
+    both. Grand totals arrive in a ``col_total`` select parallel to the standard
+    rows' ``col`` values. Submissions without the tokens keep the old shape:
+    standard columns first, calculated ones appended.
+    """
+    col_values = to_list(raw.get("col"))
+    total_values = to_list(raw.get("col_total"))
+    calc_values = to_list(raw.get("calc"))
+    order = [token.strip() for token in to_list(raw.get("col_order")) if token.strip()]
+    if not order:
+        order = [f"col:{index}" for index in range(len(col_values))]
+        order += [f"calc:{index}" for index in range(len(calc_values))]
+
+    # Rows in display order, payloads still raw: calculated rows are validated
+    # after the standard ones (a row may reference a column defined later on).
+    entries: list[tuple[str, Any]] = []
+    totals: dict[str, str] = {}
+    for token in order:
+        kind, _, index_text = token.partition(":")
+        if not index_text.isdigit():
+            continue
+        index = int(index_text)
+        if kind == "calc":
+            if 0 <= index < len(calc_values):
+                entries.append(("calc", calc_values[index]))
+            continue
+        if kind != "col" or not 0 <= index < len(col_values):
+            continue
+        spec = parse_column_spec(col_values[index])
+        if spec is None:
+            continue
+        entries.append(("col", spec))
+        op = total_values[index].strip() if index < len(total_values) else ""
+        if op in TOTAL_OPS:
+            # Keyed by the resolved column key — the key the grid renders by.
+            totals[spec if isinstance(spec, str) else _rel_key(spec)] = op
+
+    if not entries:
+        # Legacy form: flat base-attribute slugs.
+        return [v for v in to_list(raw.get("columns")) if v.strip()], totals
+    known = set(_column_keys([spec for kind, spec in entries if kind == "col"]))
+    column_specs: list = []
+    for kind, payload in entries:
+        if kind == "calc":
+            spec = _calculated_spec(payload, known)
+            if spec is not None:
+                column_specs.append(spec)
+        else:
+            column_specs.append(payload)
+    return column_specs, totals
+
+
+def _calculated_spec(value: str, known: set[str]) -> dict | None:
+    """Parse one calculated-column form row (a JSON object).
+
+    Both kinds take a single expression (``expr``): literal text with ``{…}``
+    column references for text, an arithmetic formula for numbers. Rows
+    referencing columns that are not part of the view are dropped, except when
+    the expression names an unknown column or does not parse: that raises
+    :class:`FormulaError` so the form can show the mistake instead of silently
+    saving a column that would never render. A legacy ``parts``/``separator``
+    row (the old text shape) is read as the equivalent template.
+    """
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        row = json.loads(text)
+    except json.JSONDecodeError:
+        return None  # an unparseable row is an empty row
+    if not isinstance(row, dict):
+        return None
+    label = str(row.get("label") or "").strip()
+    kind = row.get("kind")
+    if not label or kind not in CALC_KINDS:
+        return None
+    is_text = kind == "concat"
+    expr = str(row.get("expr") or "").strip()
+    if is_text and not expr:
+        expr = concat_expr_from_parts(row)
+    if not expr:
+        return None
+    if is_text:
+        node = parse_concat(expr)
+        unknown = sorted(concat_references(node) - known)
+    else:
+        node = parse_formula(expr)
+        unknown = sorted(formula_references(node) - known)
+    if unknown:
+        raise FormulaError(
+            f"Calculated column '{label}': {unknown[0]!r} is not one of the view's columns."
+        )
+    return {"kind": kind, "label": label, "expr": expr}
 
 
 def _icon_from_form(raw: dict) -> str:
@@ -109,6 +235,8 @@ def _filter_options(columns: list) -> list[dict]:
     options = []
     for column in columns:
         attr = column.attr
+        if attr is None:
+            continue  # calculated columns cannot be filtered on
         options.append(
             {
                 "value": column_spec_string(column),
@@ -145,13 +273,23 @@ def _describe_filters(filters: list[dict], columns: list) -> list[dict]:
 
 
 def _view_detail_context(
-    db: Session, view: View, entity: Entity, can_manage_views: bool, cache: dict | None = None
+    db: Session,
+    view: View,
+    entity: Entity,
+    can_manage_views: bool,
+    user: User,
+    cache: dict | None = None,
 ) -> dict:
     records, columns = apply_config(
         entity, list_records(db, view.entity_id), view.config, list_entities(db), db=db, cache=cache
     )
     rows = build_view_rows(db, entity, records, columns, cache=cache)
     config = view.config or {}
+    can_create = has_capability(user, CREATE_RECORD)
+    can_update = has_capability(user, UPDATE_RECORD)
+    can_delete = has_capability(user, DELETE_RECORD)
+    record_actions = bool(config.get("record_actions"))
+    totals = build_totals(db, entity, records, columns, config, cache=cache)
     return {
         "view": view,
         "entity": entity,
@@ -163,6 +301,14 @@ def _view_detail_context(
         "filter_op_label": filter_op_label,
         "active_filters": _describe_filters(config.get("filters", []), columns),
         "filter_options": _filter_options(columns),
+        # Record actions: opt-in per view, then gated by the user's capabilities.
+        "record_actions": record_actions,
+        "can_create": can_create,
+        "can_update": can_update,
+        "can_delete": can_delete,
+        "show_actions": record_actions and (can_update or can_delete),
+        "column_totals": totals,
+        "has_totals": bool(totals),
     }
 
 
@@ -237,11 +383,20 @@ async def create_view_post(
             {**_view_form_context(db, entity, None), "error": "Name is required."},
             status_code=400,
         )
+    try:
+        config = _merged_config(None, _config_from_form(raw, entity))
+    except FormulaError as exc:
+        return render(
+            request,
+            "views/form.html",
+            {**_view_form_context(db, entity, None), "error": str(exc)},
+            status_code=400,
+        )
     view = create_view(
         db,
         entity,
         name,
-        _merged_config(None, _config_from_form(raw, entity)),
+        config,
         icon=_icon_from_form(raw),
         user_id=user.id,
     )
@@ -263,7 +418,7 @@ def view_detail(
     return render(
         request,
         "views/detail.html",
-        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS), cache),
+        _view_detail_context(db, view, entity, has_capability(user, MANAGE_VIEWS), user, cache),
     )
 
 
@@ -294,7 +449,7 @@ async def view_filters_post(
         # In HTMX mode the error belongs next to the filter bar, not on a
         # fresh page load — return the detail fragment with an inline error.
         if request.headers.get("HX-Request"):
-            context = _view_detail_context(db, view, entity, True, {})
+            context = _view_detail_context(db, view, entity, True, user, {})
             context["filter_error"] = message
             return render(request, "views/detail_body.html", context)
         return redirect_with_flash(f"/views/{view.id}", message, category="error", request=request)
@@ -334,7 +489,9 @@ async def view_filters_post(
 
     if request.headers.get("HX-Request"):
         return render(
-            request, "views/detail_body.html", _view_detail_context(db, view, entity, True, {})
+            request,
+            "views/detail_body.html",
+            _view_detail_context(db, view, entity, True, user, {}),
         )
     return redirect_with_flash(f"/views/{view.id}", "Filters updated.")
 
@@ -397,11 +554,20 @@ async def update_view_post(
             {**_view_form_context(db, entity, view), "error": "Name is required."},
             status_code=400,
         )
+    try:
+        config = _merged_config(view.config, _config_from_form(raw, entity))
+    except FormulaError as exc:
+        return render(
+            request,
+            "views/form.html",
+            {**_view_form_context(db, entity, view), "error": str(exc)},
+            status_code=400,
+        )
     update_view(
         db,
         view,
         name,
-        _merged_config(view.config, _config_from_form(raw, entity)),
+        config,
         icon=_icon_from_form(raw),
     )
     return redirect_with_flash(f"/views/{view.id}", f"View '{view.name}' updated.")

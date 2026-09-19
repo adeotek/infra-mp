@@ -492,6 +492,9 @@ form input:focus, form select:focus, form textarea:focus,
 .table th { background: var(--surface-2); font-weight: 600; }
 .table tr:last-child td { border-bottom: none; }
 .table tbody tr:hover { background: var(--hover); }
+/* Numeric columns (integer/decimal attributes and formula columns) align
+   right in every grid, spreadsheet-style. */
+.table th.num, .table td.num { text-align: right; }
 
 /* Sortable column headers (click cycles none -> asc -> desc). */
 th.sortable { cursor: pointer; user-select: none; }
@@ -499,6 +502,14 @@ th.sortable:hover { color: var(--primary); }
 .sort-indicator { margin-left: 0.35rem; font-size: 0.8em; opacity: 0.45; }
 th.sorted-asc .sort-indicator,
 th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
+
+/* Grand totals (view grids): the footer row shares the header's surface; the
+   cells show the bare value (the aggregation op lives in the cell's title). */
+.table tfoot td {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+}
 
 /* -------------------------------------------------------------- Utilities */
 .hidden { display: none !important; }
@@ -614,6 +625,25 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
    overflows horizontally instead of squeezing the columns. */
 .table-wrap .table th,
 .table-wrap .table td { white-space: nowrap; }
+
+/* Sticky horizontal scrollbar: a grid wider than the viewport that also
+   extends below the fold pins a proxy scrollbar to the bottom of the visible
+   area (JS mirrors the wrap's horizontal scroll), so panning a long grid no
+   longer requires scrolling to its end. Hidden while the natural scrollbar is
+   on screen (grid bottom above the viewport bottom). */
+.sticky-scrollbar {
+  position: fixed;
+  bottom: 0;
+  height: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  z-index: 120;
+  display: none;
+}
+.sticky-scrollbar.visible { display: block; }
+.sticky-scrollbar-inner { height: 1px; }
 
 /* --------------------------------------- Advanced filters (view detail) */
 .advanced-filter { margin: 0 0 1rem; }
@@ -732,14 +762,41 @@ tr.dragging { opacity: 0.4; }
 .column-row input { margin-top: 0; }
 .column-row .drag-handle { align-self: stretch; display: flex; align-items: center; justify-content: center; }
 .column-row.dragging { opacity: 0.4; }
+.column-row .col-total-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.column-row .col-total { min-width: 7rem; }
+.column-row .col-total.total-na { color: var(--muted); }
 .col-hops { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .btn-ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn-ghost:hover { border-color: var(--border); color: var(--danger); text-decoration: none; }
 
+/* --------------------------------------------------- Calculated column builder */
+.calc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.calc-row input, .calc-row select { margin-top: 0; width: auto; }
+.calc-row .drag-handle { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+.calc-row.dragging { opacity: 0.4; }
+.calc-row .calc-label { min-width: 12rem; }
+.calc-row .calc-expr { min-width: 20rem; }
+#calc-tokens { font-size: 0.8rem; }
+
 /* --------------------------------------------------------- Dashboard widgets */
+/* Widget widths are 1-12 spans of a 12-column grid, Bootstrap-style. */
 .widget-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(12, 1fr);
   gap: 1.25rem;
   align-items: start;
 }
@@ -753,13 +810,23 @@ tr.dragging { opacity: 0.4; }
 .widget-span-2 { grid-column: span 2; }
 .widget-span-3 { grid-column: span 3; }
 .widget-span-4 { grid-column: span 4; }
+.widget-span-5 { grid-column: span 5; }
+.widget-span-6 { grid-column: span 6; }
+.widget-span-7 { grid-column: span 7; }
+.widget-span-8 { grid-column: span 8; }
+.widget-span-9 { grid-column: span 9; }
+.widget-span-10 { grid-column: span 10; }
+.widget-span-11 { grid-column: span 11; }
+.widget-span-12 { grid-column: span 12; }
 .widget h2 { font-size: 1rem; margin: 0 0 0.75rem; }
 .widget-title-link { color: inherit; text-decoration: none; }
 .widget-title-link:hover { color: var(--primary); text-decoration: underline; }
 .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
 @media (max-width: 960px) {
   .widget-grid { grid-template-columns: 1fr; }
-  .widget-span-1, .widget-span-2, .widget-span-3, .widget-span-4 { grid-column: span 1; }
+  .widget-span-1, .widget-span-2, .widget-span-3, .widget-span-4,
+  .widget-span-5, .widget-span-6, .widget-span-7, .widget-span-8,
+  .widget-span-9, .widget-span-10, .widget-span-11, .widget-span-12 { grid-column: span 1; }
 }
 
 code {

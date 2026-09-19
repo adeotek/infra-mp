@@ -14,6 +14,24 @@ from app.models.entity import Entity
 from app.models.enums import DataType
 from app.models.record import Record
 from app.models.view import View
+from app.services.aggregates import (
+    TOTAL_OPS,
+    aggregate,
+    format_total,
+    is_numeric_attribute,
+    to_decimal,
+)
+from app.services.calculated import (
+    CALC_KINDS,
+    FormulaError,
+    concat_expr_from_parts,
+    concat_references,
+    evaluate_formula,
+    formula_references,
+    parse_concat,
+    parse_formula,
+    render_concat,
+)
 from app.services.record_service import (
     _display_cell,
     build_record_titles,
@@ -128,7 +146,7 @@ def apply_config(
     referenced entities' records are loaded once, not per column.
     """
     attrs_by_slug = {a.slug: a for a in entity.attributes}
-    columns = _resolve_columns(entity, config.get("columns"), entities)
+    columns = _resolve_columns(entity, _column_specs(config, entity), entities)
     filters = config.get("filters", [])
     entities_by_id = {e.id: e for e in entities or []}
     # The related context must cover filter columns too, not just the visible
@@ -232,7 +250,7 @@ def _match(
         if attr is None:
             return True  # unknown attribute -> no-op filter
         return _match_scalar(record.data.get(col), attr, raw_target, op, base_titles)
-    if column is None:
+    if column is None or column.attr is None:
         return True  # unresolvable related column -> no-op filter
     if not context:
         return True  # no db context -> related filters are skipped
@@ -272,17 +290,24 @@ def _match_scalar(
     if op in ("contains", "not_contains"):
         if isinstance(value, list):
             target = _coerce_filter_target(attr, raw_target)
-            hit = target in value
+            hit = any(_scalar_equal(attr, item, target) for item in value)
         else:
-            hit = str(raw_target).lower() in str(value).lower()
+            hit = str(raw_target).casefold() in str(value).casefold()
         return hit if op == "contains" else not hit
 
     target = _coerce_filter_target(attr, raw_target)
     if op == "eq":
-        return value == target
+        return _scalar_equal(attr, value, target)
     if op == "neq":
-        return value != target
+        return not _scalar_equal(attr, value, target)
     if op in ("gt", "gte", "lt", "lte"):
+        # Numeric attributes store canonical decimal *strings*, which must be
+        # ordered by value ("4.50" is smaller than "10", not the reverse).
+        if is_numeric_attribute(attr):
+            left_decimal, right_decimal = to_decimal(value), to_decimal(target)
+            if left_decimal is None or right_decimal is None:
+                return False
+            value, target = left_decimal, right_decimal
         try:
             if op == "gt":
                 return value > target
@@ -295,6 +320,23 @@ def _match_scalar(
         except TypeError:
             return False
     return True
+
+
+def _scalar_equal(attr: Attribute, left: Any, right: Any) -> bool:
+    """Equality used by ``eq``/``neq`` filters and list membership.
+
+    Text-like values compare case-insensitively — filters are typed by hand,
+    so "Active" must match "active" (and enums accept any casing). Numeric
+    attributes compare by value: decimals are stored as canonical strings, and
+    "12.5" must match a filter target of "12.50".
+    """
+    if is_numeric_attribute(attr):
+        left_decimal, right_decimal = to_decimal(left), to_decimal(right)
+        if left_decimal is not None and right_decimal is not None:
+            return left_decimal == right_decimal
+    if isinstance(left, str) and isinstance(right, str):
+        return left.casefold() == right.casefold()
+    return left == right
 
 
 def _related_filter_values(record: Record, column: ViewColumn, context: Any) -> list[Any]:
@@ -313,6 +355,8 @@ def _related_filter_values(record: Record, column: ViewColumn, context: Any) -> 
         if not current:
             return []
     attr = column.attr
+    if attr is None:
+        return []
     values: list[Any] = []
     for rec in current:
         value = rec.data.get(attr.slug)
@@ -345,13 +389,13 @@ def _match_reference(
         if isinstance(target, int):
             hit = value == target
         else:
-            hit = title_of(value).lower() == str(raw_target).lower()
+            hit = title_of(value).casefold() == str(raw_target).casefold()
         return hit if op == "eq" else not hit
     # contains / not_contains over the referenced title(s).
     if isinstance(value, list):
-        hit = any(str(raw_target).lower() in title_of(v).lower() for v in value)
+        hit = any(str(raw_target).casefold() in title_of(v).casefold() for v in value)
     else:
-        hit = str(raw_target).lower() in title_of(value).lower()
+        hit = str(raw_target).casefold() in title_of(value).casefold()
     return hit if op == "contains" else not hit
 
 
@@ -366,7 +410,7 @@ def _quick_match(
     """True when any cell (base attribute or related column) contains ``term``."""
     if not term:
         return True
-    term = term.lower()
+    term = term.casefold()
     for slug, value in record.data.items():
         if value is None:
             continue
@@ -381,7 +425,7 @@ def _quick_match(
             hay = [str(v) for v in value]
         else:
             hay = [str(value)]
-        if any(term in str(part).lower() for part in hay):
+        if any(term in str(part).casefold() for part in hay):
             return True
     if context:
         for column in columns_by_key.values():
@@ -391,7 +435,7 @@ def _quick_match(
             if value is None:
                 continue
             hay = value if isinstance(value, list) else [value]
-            if any(term in str(part).lower() for part in hay):
+            if any(term in str(part).casefold() for part in hay):
                 return True
     return False
 
@@ -438,9 +482,12 @@ def _apply_sort(
 
     reverse = sort_spec.get("dir") == "desc"
     if column.path is None:
-        with_value = [r for r in records if r.data.get(column.attr.slug) is not None]
-        without_value = [r for r in records if r.data.get(column.attr.slug) is None]
-        with_value.sort(key=lambda r: sort_value(r.data[column.attr.slug]), reverse=reverse)
+        attr = column.attr
+        if attr is None:
+            return records
+        with_value = [r for r in records if r.data.get(attr.slug) is not None]
+        without_value = [r for r in records if r.data.get(attr.slug) is None]
+        with_value.sort(key=lambda r: sort_value(r.data[attr.slug]), reverse=reverse)
         return with_value + without_value
 
     if db is None:
@@ -484,26 +531,54 @@ def sort_value(value: Any) -> tuple[int, Any, str]:
 
 @dataclass(frozen=True)
 class ViewColumn:
-    """A resolved view column: a base attribute or a related-entity attribute."""
+    """A resolved view column: a base attribute or a related-entity attribute.
+
+    Calculated columns (text joins, arithmetic formulas) carry ``attr=None``
+    and their spec in ``calc`` — they are rendered from the other columns'
+    values, never read from the record directly.
+    """
 
     key: str
     label: str
-    attr: Attribute
+    attr: Attribute | None
     # Resolved hops for related columns (dir/ref/to/many/name/to_name); None for base.
     path: list[dict[str, Any]] | None = None
+    # Normalised calculated-column spec ({"kind": "concat"|"formula", ...}).
+    calc: dict[str, Any] | None = None
 
     @property
     def slug(self) -> str:
         """Compatibility alias (base columns key by attribute slug)."""
         return self.key
 
+    @property
+    def with_copy_button(self) -> bool:
+        """Copy icon flag; calculated columns never carry one."""
+        return bool(self.attr and self.attr.with_copy_button)
+
+    @property
+    def is_calculated(self) -> bool:
+        return self.calc is not None
+
+    @property
+    def is_numeric(self) -> bool:
+        """Numeric columns align right in the grids (formulas count: they are
+        arithmetic results; text joins are not)."""
+        if self.attr is not None:
+            return self.attr.is_numeric
+        return bool(self.calc and self.calc.get("kind") == "formula")
+
 
 def column_spec_string(column: ViewColumn) -> str:
     """Encode a resolved column as a form-style spec (``parse_column_spec``-compatible)."""
+    if column.calc is not None:
+        # Calculated columns are not addressable as filter/sort columns.
+        return f"calc:{column.key}"
     if column.path is None:
         return f"base:{column.key}"
     hops = "/".join(f"{h['dir']}:{h['ref']}:{h['to']}:{h['many']}" for h in column.path)
-    return f"rel:{hops}→{column.attr.slug}"
+    slug = column.attr.slug if column.attr else column.key
+    return f"rel:{hops}→{slug}"
 
 
 def parse_column_spec(value: str) -> str | dict | None:
@@ -546,30 +621,104 @@ def parse_column_spec(value: str) -> str | dict | None:
     return None
 
 
+def _column_specs(config: dict, entity: Entity) -> list[Any]:
+    """The view's column specs in display order.
+
+    Calculated columns are ordinary entries of ``columns`` (dicts carrying a
+    ``kind``), so they can sit anywhere in the order. Configs written before
+    that shape — or hand-written ones — may keep them in a separate
+    ``calculated`` list instead; those are treated as appended at the end, which
+    is where the old resolver put them.
+    """
+    specs = list(config.get("columns") or [])
+    legacy = [spec for spec in (config.get("calculated") or []) if isinstance(spec, dict)]
+    if not specs and legacy:
+        # No explicit column list: the resolver would show every base
+        # attribute, so make that explicit before appending the calculated ones.
+        specs = [a.slug for a in entity.attributes]
+    return specs + legacy if specs else []
+
+
 def _resolve_columns(
     entity: Entity,
     column_specs: list[Any] | None,
     entities: list[Entity] | None,
 ) -> list[ViewColumn]:
+    """Resolve column specs into display columns, in the order given.
+
+    Calculated columns resolve in a second pass — they may reference a column
+    that comes after them — but keep their position in the list.
+    """
     by_slug = {a.slug: a for a in entity.attributes}
     if not column_specs:
         return _base_columns(entity)
     entities_by_id = {e.id: e for e in entities or []}
-    resolved: list[ViewColumn] = []
-    for spec in column_specs:
+    resolved: list[tuple[int, ViewColumn]] = []
+    calculated: list[tuple[int, dict]] = []
+    for index, spec in enumerate(column_specs):
         if isinstance(spec, str):
             attr = by_slug.get(spec)
             if attr is not None:
-                resolved.append(ViewColumn(key=attr.slug, label=attr.name, attr=attr))
+                resolved.append((index, ViewColumn(key=attr.slug, label=attr.name, attr=attr)))
         elif isinstance(spec, dict):
+            if spec.get("kind") in CALC_KINDS:
+                calculated.append((index, spec))
+                continue
             column = _resolve_related_column(entity, spec, entities_by_id)
             if column is not None:
-                resolved.append(column)
-    return resolved or _base_columns(entity)
+                resolved.append((index, column))
+    available = {column.key for _, column in resolved}
+    for ordinal, (index, spec) in enumerate(calculated):
+        column = _calculated_column(spec, ordinal, available)
+        if column is not None:
+            resolved.append((index, column))
+    resolved.sort(key=lambda entry: entry[0])
+    return [column for _, column in resolved] or _base_columns(entity)
 
 
 def _base_columns(entity: Entity) -> list[ViewColumn]:
     return [ViewColumn(key=a.slug, label=a.name, attr=a) for a in entity.attributes]
+
+
+def _calculated_column(spec: dict, ordinal: int, available: set[str]) -> ViewColumn | None:
+    """Resolve one calculated-column spec against the view's other columns.
+
+    Specs whose kind/label is missing or whose references cannot be resolved are
+    skipped (view configs are lenient by design — the same rule related-column
+    specs follow). ``ordinal`` is the spec's rank among the view's calculated
+    columns; it only has to keep the cell keys unique.
+    """
+    label = str(spec.get("label") or "").strip()
+    kind = spec.get("kind")
+    if not label or kind not in CALC_KINDS:
+        return None
+    if kind == "concat":
+        # Text expressions are the definition mode for both kinds; specs saved
+        # with the old parts/separator shape are read as their template.
+        expr = str(spec.get("expr") or "").strip() or concat_expr_from_parts(spec)
+        try:
+            node = parse_concat(expr)
+        except FormulaError:
+            return None
+        references = concat_references(node)
+        if not references or not references <= available:
+            return None
+        calc = {"kind": "concat", "label": label, "expr": expr, "node": node}
+    else:
+        try:
+            node = parse_formula(str(spec.get("expr") or ""))
+        except FormulaError:
+            return None
+        references = formula_references(node)
+        if not references or not references <= available:
+            return None
+        calc = {
+            "kind": "formula",
+            "label": label,
+            "expr": str(spec["expr"]).strip(),
+            "node": node,
+        }
+    return ViewColumn(key=f"calc:{ordinal}", label=label, attr=None, calc=calc)
 
 
 def _resolve_related_column(
@@ -664,7 +813,7 @@ def build_view_graph(db: Session, base_entity_id: int) -> dict:
         attrs = []
         up = []
         for attr in entity.attributes:
-            attrs.append({"slug": attr.slug, "name": attr.name})
+            attrs.append({"slug": attr.slug, "name": attr.name, "type": attr.data_type})
             if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
                 up.append(
                     {
@@ -694,34 +843,176 @@ def build_view_rows(
     columns: list[ViewColumn],
     cache: dict | None = None,
 ) -> list[dict[str, Any]]:
-    """Build display rows for a view, resolving related-entity columns."""
+    """Build display rows for a view, resolving related-entity columns.
+
+    Calculated columns are filled last: their inputs are the display cells of
+    the other columns (concatenation) and the raw stored values (formulas).
+    """
     base_titles = resolve_reference_titles(db, entity, cache=cache)
-    related = [c for c in columns if c.path is not None]
+    display_columns = [c for c in columns if c.calc is None]
+    calculated_columns = [c for c in columns if c.calc is not None]
+    related = [c for c in display_columns if c.path is not None]
     records_by_entity, reverse_index, terminal_titles = _related_context(
         db, entity, related, records, cache
     )
+    context = (records_by_entity, reverse_index, terminal_titles)
+    columns_by_key = {c.key: c for c in display_columns}
 
     rows: list[dict[str, Any]] = []
     for record in records:
         cells: dict[str, str] = {}
         link_hrefs: dict[str, str] = {}
-        for column in columns:
+        for column in display_columns:
+            attr = column.attr
+            if attr is None:  # pragma: no cover - display columns always carry an attr
+                continue
             if column.path is None:
-                cells[column.key] = _display_cell(
-                    column.attr, record.data.get(column.attr.slug), base_titles
-                )
-                if column.attr.data_type == DataType.LINK.value and record.data.get(
-                    column.attr.slug
-                ):
-                    link_hrefs[column.key] = record.data[column.attr.slug]
+                cells[column.key] = _display_cell(attr, record.data.get(attr.slug), base_titles)
+                if attr.data_type == DataType.LINK.value and record.data.get(attr.slug):
+                    link_hrefs[column.key] = record.data[attr.slug]
             else:
                 cells[column.key], href = _resolve_related_cell(
                     record, column, records_by_entity, reverse_index, terminal_titles
                 )
                 if href:
                     link_hrefs[column.key] = href
+        for column in calculated_columns:
+            cells[column.key] = _calculated_cell(column, record, context, cells, columns_by_key)
         rows.append({"record": record, "cells": cells, "link_hrefs": link_hrefs})
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# Calculated columns
+# --------------------------------------------------------------------------- #
+
+EMPTY_CELL = "—"
+
+
+def _calculated_cell(
+    column: ViewColumn,
+    record: Record,
+    context: tuple[
+        dict[int, dict[int, Record]],
+        dict[tuple[int, str], dict[int, list[int]]],
+        dict[int, dict[int, str]],
+    ],
+    cells: dict[str, str],
+    columns_by_key: dict[str, ViewColumn],
+) -> str:
+    """Render one calculated cell: a text template or an arithmetic formula."""
+    spec = column.calc or {}
+    if spec.get("kind") == "concat":
+        node = spec.get("node")
+        if node is None:  # pragma: no cover - resolver only stores parsed templates
+            return EMPTY_CELL
+        # The template reads display cells; an empty cell is an empty value.
+        values = {}
+        for key in concat_references(node):
+            value = cells.get(key)
+            values[key] = "" if value is None or value == EMPTY_CELL else value
+        text = render_concat(node, values)
+        return text if text else EMPTY_CELL
+
+    node = spec.get("node")
+    if node is None:  # pragma: no cover - resolver only stores parsed formulas
+        return EMPTY_CELL
+    values = {
+        key: _raw_column_value(record, columns_by_key[key], context)
+        for key in formula_references(node)
+        if key in columns_by_key
+    }
+    value = evaluate_formula(node, values)
+    return EMPTY_CELL if value is None else format_total(value)
+
+
+def _raw_column_value(
+    record: Record,
+    column: ViewColumn,
+    context: tuple[
+        dict[int, dict[int, Record]],
+        dict[tuple[int, str], dict[int, list[int]]],
+        dict[int, dict[int, str]],
+    ]
+    | None,
+) -> Any:
+    """The raw stored value a column reads for one record.
+
+    Base columns use the record's own value; related columns use their first
+    terminal value — the same value they sort by. ``None`` when unavailable.
+    """
+    if column.attr is None:
+        return None
+    if column.path is None:
+        return record.data.get(column.attr.slug)
+    if context is None:
+        return None
+    return _resolve_related_sort_value(record, column, context)
+
+
+# --------------------------------------------------------------------------- #
+# Grand totals (custom views)
+# --------------------------------------------------------------------------- #
+
+
+def build_totals(
+    db: Session,
+    entity: Entity,
+    records: list[Record],
+    columns: list[ViewColumn],
+    config: dict,
+    cache: dict | None = None,
+) -> dict[str, dict[str, str]]:
+    """Grand totals for the view's numeric columns, as the template consumes them.
+
+    ``config["totals"]`` maps a column key (base slug or ``rel:…`` key) to one
+    of :data:`TOTAL_OPS`; entries whose column is missing or not numeric are
+    ignored (view configs are lenient by design, same as column specs).
+    """
+    totals_spec = config.get("totals")
+    if not isinstance(totals_spec, dict) or not totals_spec:
+        return {}
+    wanted = [
+        column
+        for column in columns
+        if column.attr is not None
+        and totals_spec.get(column.key) in TOTAL_OPS
+        and is_numeric_attribute(column.attr)
+    ]
+    if not wanted:
+        return {}
+    # Related columns need the hop-resolution context; base columns do not.
+    context = (
+        _related_context(db, entity, wanted, records, cache)
+        if any(column.path is not None for column in wanted)
+        else None
+    )
+    totals: dict[str, dict[str, str]] = {}
+    for column in wanted:
+        op = totals_spec[column.key]
+        values = []
+        for record in records:
+            value = _column_numeric_value(record, column, context)
+            if value is not None:
+                values.append(value)
+        if not values:
+            continue
+        totals[column.key] = {"op": op, "value": format_total(aggregate(values, op))}
+    return totals
+
+
+def _column_numeric_value(
+    record: Record,
+    column: ViewColumn,
+    context: tuple[
+        dict[int, dict[int, Record]],
+        dict[tuple[int, str], dict[int, list[int]]],
+        dict[int, dict[int, str]],
+    ]
+    | None,
+) -> Any:
+    """The column's numeric value for one record (None when not numeric)."""
+    return to_decimal(_raw_column_value(record, column, context))
 
 
 def _related_context(
@@ -760,6 +1051,8 @@ def _related_context(
     terminal_titles: dict[int, dict[int, str]] = {}
     for column in columns:
         attr = column.attr
+        if attr is None:
+            continue
         if attr.data_type == DataType.REFERENCE.value and attr.reference_entity_id is not None:
             target_id = attr.reference_entity_id
             if target_id not in terminal_titles:
@@ -814,6 +1107,8 @@ def _resolve_related_cell(
             return "—", None
 
     attr = column.attr
+    if attr is None:
+        return "—", None
     if attr.data_type == DataType.REFERENCE.value:
         titles = terminal_titles.get(attr.reference_entity_id or -1, {})
         parts: list[str] = []
@@ -861,6 +1156,8 @@ def _resolve_related_sort_value(
             return None
 
     attr = column.attr
+    if attr is None:
+        return None
     for rec in current:
         value = rec.data.get(attr.slug)
         if value is None:

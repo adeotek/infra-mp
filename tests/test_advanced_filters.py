@@ -394,3 +394,59 @@ def test_operator_select_comes_last_in_builder(client, login):
     assert 'name="filter_op"' in html
     # The and/or select sits after every other builder control.
     assert html.index('name="filter_op"') > html.index('value="clear"')
+
+
+# --------------------------------------------------------------------------- #
+# Case-insensitive text comparison (quick filter and advanced filters)
+# --------------------------------------------------------------------------- #
+
+
+def test_quick_filter_is_case_insensitive(db_session, servers):
+    config = {"filters": [{"col": "quick", "op": "contains", "value": "ALPH"}]}
+    assert _names(db_session, servers, config) == {"alpha"}
+
+
+def test_text_eq_filter_is_case_insensitive(db_session, servers):
+    config = {"filters": [{"col": "name", "op": "eq", "value": "ALPHA"}]}
+    assert _names(db_session, servers, config) == {"alpha"}
+
+
+def test_text_neq_filter_is_case_insensitive(db_session, servers):
+    config = {"filters": [{"col": "name", "op": "neq", "value": "ALPHA"}]}
+    assert _names(db_session, servers, config) == {"bravo", "charlie"}
+
+
+def test_text_contains_filter_is_case_insensitive(db_session, servers):
+    config = {"filters": [{"col": "name", "op": "contains", "value": "RAV"}]}
+    assert _names(db_session, servers, config) == {"bravo"}
+
+
+def test_enum_eq_filter_accepts_any_casing(db_session, servers):
+    config = {"filters": [{"col": "status", "op": "eq", "value": "ACTIVE"}]}
+    assert _names(db_session, servers, config) == {"alpha", "charlie"}
+
+
+def test_decimal_eq_filter_matches_equivalent_representations(db_session):
+    """Canonical decimal strings are compared by value, not byte-for-byte."""
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="Price", data_type=DataType.DECIMAL))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"name": "a", "price": "12.5"})
+    create_record(db_session, entity, entity.attributes, {"name": "b", "price": "3"})
+    config = {"filters": [{"col": "price", "op": "eq", "value": "12.50"}]}
+    assert _names(db_session, entity, config) == {"a"}
+
+
+def test_decimal_gt_filter_orders_by_value_not_lexicographically(db_session):
+    """Canonical decimal strings must not be compared as text ("4.50" < "10")."""
+    entity = create_entity(db_session, EntityCreate(name="Server"))
+    add_attribute(db_session, entity, AttributeCreate(name="Name", data_type=DataType.TEXT))
+    add_attribute(db_session, entity, AttributeCreate(name="Price", data_type=DataType.DECIMAL))
+    entity = get_entity_with_attributes(db_session, entity.id)
+    create_record(db_session, entity, entity.attributes, {"name": "cheap", "price": "4.50"})
+    create_record(db_session, entity, entity.attributes, {"name": "pricey", "price": "10.25"})
+    config = {"filters": [{"col": "price", "op": "gte", "value": "10"}]}
+    assert _names(db_session, entity, config) == {"pricey"}
+    config = {"filters": [{"col": "price", "op": "lt", "value": "10"}]}
+    assert _names(db_session, entity, config) == {"cheap"}
