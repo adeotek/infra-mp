@@ -7,6 +7,7 @@ import logging
 import os
 import sqlite3
 import tempfile
+import threading
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DB_FILENAME = "infra-mp.db"
+
+# Restores swap the live DB file while other threads may hold connections; the
+# lock serialises concurrent restores so two admins cannot replace the file in
+# a race. (In-flight writes from BEFORE the swap still land in the replaced
+# file's old inode — restores are a rare admin action; see the route docstring.)
+_restore_lock = threading.Lock()
 
 
 def _db_path(request: Request) -> Path:
@@ -171,7 +178,20 @@ def _is_valid_database(db_bytes: bytes) -> bool:
 
 
 def _swap_database(request: Request, db_bytes: bytes) -> None:
-    """Atomically replace the live SQLite file and reset its connections."""
+    """Atomically replace the live SQLite file and reset its connections.
+
+    Serialised by :data:`_restore_lock`: the swap (dispose + replace + WAL
+    cleanup) must not overlap another restore. Requests already in flight when
+    the swap starts hold connections to the old file — their writes land in
+    the replaced inode and are lost; performing a restore while the app has
+    active traffic is documented as an operator trade-off (the flow forces a
+    re-login afterwards).
+    """
+    with _restore_lock:
+        _swap_database_locked(request, db_bytes)
+
+
+def _swap_database_locked(request: Request, db_bytes: bytes) -> None:
     engine = request.app.state.engine
     db_path = _db_path(request)
 

@@ -56,6 +56,11 @@ FILTER_OPS = [
     "not_null",
 ]
 
+# Related-column paths are capped: every hop multiplies the per-record walk
+# (fan-out × records), so an unbounded spec is a page-render DoS. Longer
+# specs are skipped leniently, like every other unresolvable column.
+MAX_REL_HOPS = 6
+
 _FILTER_OP_LABELS = {
     "eq": "equals",
     "neq": "does not equal",
@@ -615,7 +620,7 @@ def parse_column_spec(value: str) -> str | dict | None:
             if not ref:
                 return None
             hops.append({"dir": direction, "ref": ref, "to": target_id, "many": many})
-        if not hops or not attr:
+        if not hops or not attr or len(hops) > MAX_REL_HOPS:
             return None
         return {"path": hops, "attr": attr}
     return None
@@ -728,7 +733,7 @@ def _resolve_related_column(
 ) -> ViewColumn | None:
     """Resolve a related-column spec against the reference graph; None if invalid."""
     hops_spec = spec.get("path")
-    if not isinstance(hops_spec, list) or not hops_spec:
+    if not isinstance(hops_spec, list) or not hops_spec or len(hops_spec) > MAX_REL_HOPS:
         return None
     current = entity
     resolved_hops: list[dict[str, Any]] = []

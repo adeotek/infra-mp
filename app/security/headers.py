@@ -42,4 +42,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
+        # Authenticated HTML pages and the backup download (the entire
+        # database, hashes included) must never be stored in a browser or
+        # proxy cache. Static assets keep their own caching headers.
+        content_type = response.headers.get("content-type", "")
+        if request.url.path == "/settings/backup/download" or content_type.startswith("text/html"):
+            response.headers.setdefault("Cache-Control", "no-store")
         return response

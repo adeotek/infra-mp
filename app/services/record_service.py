@@ -133,6 +133,8 @@ def validate_record_data(
     exclude_record_id: int | None = None,
     enforce_key: bool = True,
     existing_records: list[Record] | None = None,
+    unique_index: dict[tuple[Any, Any], int] | None = None,
+    key_index: dict[tuple[Any, ...], int] | None = None,
 ) -> tuple[dict[str, Any], list[tuple[str | None, str]]]:
     """Validate raw form data against ``attributes``.
 
@@ -142,6 +144,14 @@ def validate_record_data(
     ``exclude_record_id`` skips one record in the uniqueness check (the record
     being edited). ``existing_records`` is an optional preloaded record list
     (CSV import reuses it across rows instead of re-querying per row).
+
+    ``unique_index`` and ``key_index`` are prebuilt O(1) lookup maps used by
+    bulk importers (CSV) so the duplicate/key checks stay constant-time per
+    row instead of scanning the whole record list: ``unique_index`` maps
+    ``(attribute slug, normalised value) -> record id`` (see
+    :func:`unique_value_key`), ``key_index`` maps the canonical entity-key
+    tuple -> record id. When either is ``None`` the corresponding check falls
+    back to the linear scan over ``existing_records``.
     """
     unique_attrs = [a for a in attributes if a.is_unique]
     key_attrs = [a for a in attributes if a.is_key]
@@ -176,9 +186,18 @@ def validate_record_data(
                 data[attr.slug] = attr.default_value
             continue
 
-        if attr.is_unique and _duplicate_value(existing_records, attr, value, exclude_record_id):
-            errors.append((attr.slug, f"{attr.name} must be unique."))
-            continue
+        if attr.is_unique:
+            duplicate = False
+            if unique_index is not None and not isinstance(value, list):
+                index_key = unique_value_key(attr, value)
+                if index_key is not None:
+                    other_id = unique_index.get((attr.slug, index_key))
+                    duplicate = other_id is not None and other_id != exclude_record_id
+            else:
+                duplicate = _duplicate_value(existing_records, attr, value, exclude_record_id)
+            if duplicate:
+                errors.append((attr.slug, f"{attr.name} must be unique."))
+                continue
 
         data[attr.slug] = value
 
@@ -189,12 +208,17 @@ def validate_record_data(
     # the key themselves (e.g. CSV import upserts) may skip the check.
     if enforce_key and key_attrs and not errors:
         key_values = _canonical_key_tuple(data, key_attrs)
-        for other in existing_records:
-            if exclude_record_id is not None and other.id == exclude_record_id:
-                continue
-            if _canonical_key_tuple(other.data, key_attrs) == key_values:
+        if key_index is not None:
+            other_id = key_index.get(key_values)
+            if other_id is not None and other_id != exclude_record_id:
                 errors.append((None, "The entity key values must be unique."))
-                break
+        else:
+            for other in existing_records:
+                if exclude_record_id is not None and other.id == exclude_record_id:
+                    continue
+                if _canonical_key_tuple(other.data, key_attrs) == key_values:
+                    errors.append((None, "The entity key values must be unique."))
+                    break
     return data, errors
 
 
@@ -213,6 +237,22 @@ def _values_equal(attr: Attribute, left: Any, right: Any) -> bool:
 
 
 attribute_values_equal = _values_equal  # public alias for MCP filters
+
+
+def unique_value_key(attr: Attribute, value: Any) -> Any | None:
+    """Hashable normalised form of a value for the duplicate-check index.
+
+    Must agree with :func:`_values_equal` (Decimal strings compare by value);
+    ``None`` marks values that cannot participate (many-reference lists).
+    """
+    if isinstance(value, list):
+        return None
+    if attr.data_type_enum == DataType.DECIMAL:
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            return None
+    return value
 
 
 def _duplicate_value(

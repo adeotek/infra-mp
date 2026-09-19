@@ -30,14 +30,23 @@ from starlette.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-# Endpoints authenticated by API token (MCP) or with no session yet.
-EXEMPT_PREFIXES = ("/mcp", "/static", "/login")
+# Endpoints authenticated by API token (MCP) or with no session yet. /login
+# is exempt EXACTLY (a /login2-style path must not inherit the exemption);
+# /mcp and /static stay prefix-exempt because they are mounted sub-apps
+# serving every path below them.
+EXEMPT_EXACT_PATHS = {"/login"}
+EXEMPT_PREFIXES = ("/mcp", "/static")
 
 # Reused when the operator left the documented default key in place: the
 # session cookie still provides the secrecy, the key only acts as a pepper.
 _DEFAULT_KEYS = {"", "change-me-in-production", "change-me-to-a-long-random-string"}
 
 _ephemeral_key: str | None = None
+
+# Slack above the largest legitimate request body (the backup-restore zip,
+# already capped at max_backup_upload_bytes by the route) so multipart framing
+# and the token field never push a real upload over the scan budget.
+CSRF_SCAN_OVERHEAD = 64 * 1024
 
 _MULTIPART_FIELD = re.compile(rb'name="csrf_token"\r\n\r\n([^\r\n]+)')
 
@@ -112,7 +121,11 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
         request = Request(scope, receive)
-        if request.method in SAFE_METHODS or request.url.path.startswith(EXEMPT_PREFIXES):
+        if request.method in SAFE_METHODS or request.url.path in EXEMPT_EXACT_PATHS:
+            await self.app(scope, receive, send)
+            return
+        path = request.url.path
+        if path.startswith(EXEMPT_PREFIXES):
             await self.app(scope, receive, send)
             return
 
@@ -124,12 +137,28 @@ class CSRFMiddleware:
 
         # No (valid) header: buffer the body, check the form field, and replay
         # the buffered body downstream so FastAPI can parse the form again.
+        # The buffer is bounded (see the class docstring): the scan only needs
+        # to cover the largest legitimate body — the backup-restore zip.
+        settings = _request_settings(request)
+        scan_budget = settings.max_backup_upload_bytes + CSRF_SCAN_OVERHEAD
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > scan_budget:
+                    return await _reject(scope, receive, send, 413, "Request body too large.")
+            except ValueError:
+                pass  # malformed header: fall through to the streaming check
         body = bytearray()
+        total = 0
         more = True
         while more:
             message = await receive()
             if message["type"] == "http.request":
-                body.extend(message.get("body", b""))
+                chunk = message.get("body", b"")
+                total += len(chunk)
+                if total > scan_budget:
+                    return await _reject(scope, receive, send, 413, "Request body too large.")
+                body.extend(chunk)
                 more = message.get("more_body", False)
             else:
                 more = False
@@ -153,3 +182,13 @@ class CSRFMiddleware:
             content={"detail": "CSRF validation failed. Reload the page and retry."},
         )
         await response(scope, receive, send)
+
+
+async def _reject(scope, receive, send, status_code: int, detail: str) -> None:
+    """Respond without touching the (possibly huge) unconsumed request body.
+
+    Returning early while the client is still uploading makes uvicorn drop the
+    connection instead of reusing it — acceptable for a rejected request.
+    """
+    response = JSONResponse(status_code=status_code, content={"detail": detail})
+    await response(scope, receive, send)

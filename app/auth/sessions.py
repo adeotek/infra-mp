@@ -62,6 +62,19 @@ def delete_session(db: Session, token: str) -> None:
     db.commit()
 
 
+def delete_user_sessions(db: Session, user_id: int, keep_token: str | None = None) -> None:
+    """Invalidate every session of a user, optionally keeping one raw token.
+
+    Used when the user's password changes (self-service or admin reset), so a
+    stolen session cookie cannot outlive the credential rotation.
+    """
+    query = delete(AuthSession).where(AuthSession.user_id == user_id)
+    if keep_token:
+        query = query.where(AuthSession.token_hash != _hash_token(keep_token))
+    db.execute(query)
+    db.commit()
+
+
 def delete_expired_sessions(db: Session) -> None:
     """Delete all expired sessions."""
     db.execute(delete(AuthSession).where(AuthSession.expires_at < utcnow()))

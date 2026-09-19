@@ -8,10 +8,11 @@
    display layer reports emptiness as the em dash placeholder (format_value /
    _display_cell) — the only signal every grid path (base, related and widget
    columns) carries. #}
-{% macro grid_cell(value, href=none, copy=false) -%}
+{%- macro grid_cell(value, href=none, copy=false) -%}
 {%- set has_value = value is not none and value != '' and value != '—' -%}
+{%- set safe_href = href | safe_url if href else none -%}
 <span class="cell-wrap">
-  <span class="cell-value">{% if href %}<a href="{{ href }}" target="_blank" rel="noopener">{{ value }}</a>{% else %}{{ value }}{% endif %}</span>
+  <span class="cell-value">{% if safe_href %}<a href="{{ safe_href }}" target="_blank" rel="noopener">{{ value }}</a>{% else %}{{ value }}{% endif %}</span>
   {% if copy and has_value %}
   <button type="button" class="copy-btn" data-copy title="Copy value" aria-label="Copy value"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
   {% endif %}

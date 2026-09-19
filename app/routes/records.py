@@ -142,7 +142,7 @@ async def import_records_post(
     target = f"/entities/{entity_id}/records"
     if file is None or not (file.filename or "").strip():
         return redirect_with_flash(target, "Import aborted: no file selected.", "error")
-    contents = await file.read()
+    contents = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(contents) > MAX_UPLOAD_BYTES:
         return redirect_with_flash(target, "Import aborted: the file is larger than 5 MB.", "error")
     try:

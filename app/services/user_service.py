@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.password import hash_password, verify_password
+from app.auth.sessions import delete_user_sessions
 from app.models.enums import Role
 from app.models.user import User
 
@@ -111,6 +112,10 @@ def update_user(
     user.is_active = is_active
     if password:
         user.password_hash = hash_password(password)
+        # A reset is a credential rotation: every existing session of the
+        # target user is invalidated (self-service changes keep the current
+        # session via the route-level delete_user_sessions call).
+        delete_user_sessions(db, user.id)
     db.commit()
     return user
 

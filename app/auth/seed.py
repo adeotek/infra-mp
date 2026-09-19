@@ -12,6 +12,12 @@ from app.auth.password import hash_password
 from app.config import Settings
 from app.models.enums import Role
 from app.models.user import User
+from app.services.user_service import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
+
+
+def _valid_seed_password(password: str) -> bool:
+    """The seeding path enforces the same floor as every other password."""
+    return MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH
 
 
 def seed_admin(db: Session, settings: Settings) -> None:
@@ -27,6 +33,11 @@ def seed_admin(db: Session, settings: Settings) -> None:
         return
 
     password = settings.admin_password or secrets.token_urlsafe(12)
+    if not _valid_seed_password(password):
+        raise RuntimeError(
+            "INFRAMP_ADMIN_PASSWORD must be between "
+            f"{MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters."
+        )
     db.add(
         User(
             username=settings.admin_username,

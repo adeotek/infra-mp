@@ -11,14 +11,16 @@ schema, views, dashboard and users.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import Context, MCPServer, authenticated_principal
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import __version__
@@ -53,6 +55,27 @@ from app.services.record_service import RecordError
 from app.services.schema_service import SchemaError
 
 MAX_PAGE_SIZE = 200
+
+logger = logging.getLogger(__name__)
+
+
+def _tool_error(exc: Exception) -> ToolError:
+    """A client-safe error for a failed tool call.
+
+    ``SchemaError``/``ValidationError`` carry operator-facing messages; a raw
+    ``SQLAlchemyError`` would leak table names and SQL through the SDK's
+    escaped-exception wrapper, so it is logged server-side and replaced with a
+    generic message.
+    """
+    from app.services.schema_service import SchemaError
+
+    if isinstance(exc, (SchemaError, ValidationError)):
+        return ToolError(str(exc))
+    if isinstance(exc, SQLAlchemyError):
+        logger.exception("MCP tool failed on a database error")
+        return ToolError("The operation failed — the database rejected the change.")
+    logger.exception("MCP tool failed unexpectedly")
+    return ToolError("The operation failed. Check the server logs for details.")
 
 
 class InfraMPTokenVerifier(TokenVerifier):
@@ -452,8 +475,8 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
             try:
                 data = EntityCreate(name=name, description=description, icon=icon)
                 entity = schema_service.create_entity(db, data)
-            except SchemaError as exc:
-                raise ToolError(str(exc)) from exc
+            except (SchemaError, ValidationError, SQLAlchemyError) as exc:
+                raise _tool_error(exc) from exc
             return {"id": entity.id, "name": entity.name, "slug": entity.slug}
 
     @server.tool(
@@ -479,8 +502,8 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         icon=entity.icon if icon is None else icon,
                     ),
                 )
-            except SchemaError as exc:
-                raise ToolError(str(exc)) from exc
+            except (SchemaError, ValidationError, SQLAlchemyError) as exc:
+                raise _tool_error(exc) from exc
             return {"id": entity.id, "name": entity.name, "slug": entity.slug}
 
     @server.tool(
@@ -490,7 +513,10 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
         with session_factory() as db:
             _require(db, ctx, MANAGE_SCHEMA)
             entity = _entity_or_raise(db, entity_id)
-            schema_service.delete_entity(db, entity)
+            try:
+                schema_service.delete_entity(db, entity)
+            except SQLAlchemyError as exc:
+                raise _tool_error(exc) from exc
             return {"deleted": True, "id": entity_id}
 
     @server.tool(
@@ -540,8 +566,8 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         cardinality=cardinality,  # type: ignore[arg-type]
                     ),
                 )
-            except (ValueError, SchemaError) as exc:
-                raise ToolError(str(exc)) from exc
+            except (ValueError, SchemaError, ValidationError, SQLAlchemyError) as exc:
+                raise _tool_error(exc) from exc
             return {"id": attribute.id, "name": attribute.name, "slug": attribute.slug}
 
     @server.tool(
@@ -592,8 +618,8 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
                         cardinality=attribute.config.get("cardinality", "one"),
                     ),
                 )
-            except SchemaError as exc:
-                raise ToolError(str(exc)) from exc
+            except (SchemaError, ValidationError, SQLAlchemyError) as exc:
+                raise _tool_error(exc) from exc
             return {"id": attribute.id, "name": attribute.name, "slug": attribute.slug}
 
     @server.tool(description="Delete an attribute (manage_schema — admin).")
@@ -603,7 +629,10 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
             attribute = db.get(Attribute, attribute_id)
             if attribute is None:
                 raise ToolError(f"Attribute {attribute_id} not found")
-            schema_service.delete_attribute(db, attribute)
+            try:
+                schema_service.delete_attribute(db, attribute)
+            except SQLAlchemyError as exc:
+                raise _tool_error(exc) from exc
             return {"deleted": True, "id": attribute_id}
 
     # --------------------------------------------------------- view management

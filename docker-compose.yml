@@ -9,6 +9,19 @@ services:
       - "8000:8000"
     volumes:
       - infra-mp-data:/data
+    # Hardening: no extra kernel capabilities, no privilege escalation, a
+    # read-only rootfs (writes only to /data and the /tmp tmpfs needed by the
+    # backup restore/export pipelines). Note: binds 0.0.0.0 by design — the
+    # app is reachable across the LAN; set INFRAMP_ALLOWED_HOSTS to the
+    # explicit hostnames/IPs clients use instead of the "*" default.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
     environment:
       INFRAMP_APP_NAME: ${INFRAMP_APP_NAME:-InfraMP}
       INFRAMP_DATA_DIR: /data
@@ -17,6 +30,7 @@ services:
       INFRAMP_SESSION_TTL_DAYS: ${INFRAMP_SESSION_TTL_DAYS:-7}
       INFRAMP_COOKIE_SECURE: ${INFRAMP_COOKIE_SECURE:-}
       INFRAMP_ALLOWED_HOSTS: ${INFRAMP_ALLOWED_HOSTS:-*}
+      INFRAMP_TRUSTED_PROXY_IPS: ${INFRAMP_TRUSTED_PROXY_IPS:-}
       INFRAMP_HSTS_ENABLED: ${INFRAMP_HSTS_ENABLED:-false}
       INFRAMP_LOGIN_MAX_ATTEMPTS: ${INFRAMP_LOGIN_MAX_ATTEMPTS:-5}
       INFRAMP_LOGIN_WINDOW_SECONDS: ${INFRAMP_LOGIN_WINDOW_SECONDS:-600}

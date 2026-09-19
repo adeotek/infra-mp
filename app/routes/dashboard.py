@@ -48,13 +48,29 @@ def _load_widgets(db: Session) -> list[DashboardWidget]:
     )
 
 
+def _widget_records(db: Session, entity_id: int, cache: dict) -> list:
+    """All live records of ``entity_id``, loaded once per request.
+
+    N widgets bound to the same entity used to issue N full record loads;
+    ``cache`` (also used by the view engine for related-entity loads) memoises
+    the top-level load with its own key so the per-entity list is fetched
+    exactly once per dashboard render.
+    """
+    key = ("widget-records", entity_id)
+    if key in cache:
+        return cache[key]
+    records = list_records(db, entity_id)
+    cache[key] = records
+    return records
+
+
 def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, cache: dict):
     if widget.entity_id is None:
         return None
     entity = get_entity_with_attributes(db, widget.entity_id)
     if entity is None:
         return None
-    records = list_records(db, widget.entity_id)
+    records = _widget_records(db, widget.entity_id, cache)
     view = widget.view
     if view is not None:
         records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
@@ -95,7 +111,12 @@ def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, c
         if entity is None:
             return 0
         records, _ = apply_config(
-            entity, list_records(db, widget.entity_id), view.config, entities, db=db, cache=cache
+            entity,
+            _widget_records(db, widget.entity_id, cache),
+            view.config,
+            entities,
+            db=db,
+            cache=cache,
         )
         return len(records)
     # A plain count is a single SQL COUNT(*), not a full record load.
@@ -122,7 +143,7 @@ def _render_sum_widget(
     attr = next((a for a in entity.attributes if a.slug == field), None)
     if attr is None or not is_numeric_attribute(attr):
         return None
-    records = list_records(db, widget.entity_id)
+    records = _widget_records(db, widget.entity_id, cache)
     view = widget.view
     if view is not None and view.entity_id == widget.entity_id:
         records, _ = apply_config(entity, records, view.config, entities, db=db, cache=cache)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -9,11 +11,12 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
 from app.auth.password import hash_password, verify_password
-from app.auth.sessions import create_session, delete_session
+from app.auth.sessions import create_session, delete_session, delete_user_sessions
 from app.config import get_settings
 from app.db import get_session
 from app.flash import redirect_with_flash, safe_next
 from app.models.user import User
+from app.security.ratelimit import effective_client_ip
 from app.services.user_service import UserError, change_password
 from app.templates import render
 
@@ -29,6 +32,30 @@ def _safe_next(value: str | None) -> str:
     return safe_next(value, "/")
 
 
+def _same_origin(request: Request) -> bool:
+    """True when the Origin/Referer host matches the request host.
+
+    Guards the (CSRF-exempt) login POST against login CSRF — a cross-site form
+    that logs the victim into the attacker's account. Browsers send Origin on
+    cross-site POSTs (and on same-site ones); clients without either header
+    (curl, tests) pass through — the check only rejects mismatches it can see.
+    """
+    host = (request.headers.get("host") or "").lower()
+    for header in ("origin", "referer"):
+        value = request.headers.get(header)
+        if not value:
+            continue
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            return False
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        if parsed.hostname.lower() != host.partition(":")[0]:
+            return False
+    return True
+
+
 @router.get("/login")
 def login_page(request: Request):
     return render(request, "login.html", {"next": request.query_params.get("next", "")})
@@ -42,7 +69,19 @@ def login(
     next: str = Form(""),
     db: Session = Depends(get_session),
 ):
-    client_ip = request.client.host if request.client else "unknown"
+    if not _same_origin(request):
+        return render(
+            request,
+            "login.html",
+            {
+                "error": "Invalid request origin — reload the login page and try again.",
+                "next": next,
+            },
+            status_code=403,
+        )
+    client_ip = effective_client_ip(
+        request, getattr(request.app.state, "settings", None) or get_settings()
+    )
     limiter = request.app.state.login_limiter
     if limiter.is_blocked(client_ip, username):
         return render(
@@ -129,4 +168,10 @@ def change_password_post(
         change_password(db, user, current_password, new_password)
     except UserError as exc:
         return render(request, "change_password.html", {"error": str(exc)}, status_code=400)
+    # Rotating the password invalidates every other session so a stolen
+    # cookie cannot outlive the credential change; the current session
+    # survives so the user lands back on the dashboard.
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    current_token = request.cookies.get(settings.session_cookie_name)
+    delete_user_sessions(db, user.id, keep_token=current_token)
     return redirect_with_flash("/dashboard", "Password changed.", request=request)

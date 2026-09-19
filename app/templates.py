@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
@@ -46,6 +47,28 @@ def _icon_class(value, fallback: str = "fa-cube") -> str:
 
 
 templates.env.filters["icon_class"] = _icon_class
+
+
+def _safe_url(value) -> str | None:
+    """Render-time http(s)-only guard for href attributes.
+
+    Server-side validation rejects non-http(s) ``link`` values, but anchors
+    must not depend on that single check holding for every write path (imports,
+    MCP, legacy rows): a ``javascript:``/``data:`` scheme would slip through
+    autoescaping, so non-http(s) values render as a plain-text cell instead.
+    """
+    if not value:
+        return None
+    try:
+        parsed = urlparse(str(value))
+    except ValueError:
+        return None
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return str(value)
+    return None
+
+
+templates.env.filters["safe_url"] = _safe_url
 
 # Fixed set of flash categories; never interpolate raw query params into
 # class attributes.
