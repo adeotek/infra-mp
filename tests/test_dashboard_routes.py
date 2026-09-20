@@ -832,7 +832,7 @@ WIDGET_FORM_ORDER = [
     '<label class="field-half">Type',
     '<label class="field-third">Entity',
     '<label class="field-third">Width (12-column grid)',
-    '<label class="field-third">Value color (count/sum)',
+    '<label class="field-third">Value color (Optional, Count/Sum only)',
     '<label class="field-half">View (optional)',
     '<label class="field-half">Numeric field (sum widgets)',
 ]
@@ -899,11 +899,13 @@ def test_widget_form_offers_entity_and_view_fields(client, login):
     # The view's numeric columns — computed ones included — are the view group's.
     assert '<option value="calc:0">Yearly</option>' in html
     assert '<option value="price">Price</option>' in html
-    # Labels/hints explain both sources and the colour field.
+    # Labels explain both field sources; the colour field is labelled, not hinted
+    # (its hint line was removed with the relabelling).
     assert "Numeric field (sum widgets)" in html
     assert "computed ones included" in html
-    assert "Value color (count/sum)" in html
-    assert "leave empty for the default" in html
+    assert "Value color (Optional, Count/Sum only)" in html
+    assert "leave empty for the default" not in html
+    assert 'id="widget-color-swatch"' in html
     options = json.loads(html.split('id="numeric-fields">', 1)[1].split("</script>", 1)[0])
     assert [v["fields"] for v in options["views"] if v["name"] == "Totals"] == [
         [

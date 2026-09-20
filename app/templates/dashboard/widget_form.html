@@ -31,12 +31,11 @@
         {% endfor %}
       </select>
     </label>
-    <label class="field-third">Value color (count/sum)
+    <label class="field-third">Value color (Optional, Count/Sum only)
       <span class="color-input-row">
         <input type="text" name="color" id="widget-color" value="{{ stored_color }}" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
         <span class="color-swatch{% if not stored_color %} is-empty{% endif %}" id="widget-color-swatch" aria-hidden="true"></span>
       </span>
-      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
     </label>
     <label class="field-half">View (optional)
       <select name="view_id" id="widget-view">

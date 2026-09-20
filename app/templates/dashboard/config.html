@@ -32,12 +32,11 @@
         {% for n in range(1, 13) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} / 12</option>{% endfor %}
       </select>
     </label>
-    <label class="field-third">Value color (count/sum)
+    <label class="field-third">Value color (Optional, Count/Sum only)
       <span class="color-input-row">
         <input type="text" name="color" id="widget-color" value="" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
         <span class="color-swatch is-empty" id="widget-color-swatch" aria-hidden="true"></span>
       </span>
-      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
     </label>
     <label class="field-half">View (optional)
       <select name="view_id" id="widget-view">
