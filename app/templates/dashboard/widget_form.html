@@ -31,41 +31,47 @@
         {% endfor %}
       </select>
     </label>
-    <label class="field-quarter">Value color (Optional, Count/Sum only)
+    <label class="field-quarter">Color (optional, Count/Sum only)
       <span class="color-input-row">
         <input type="text" name="color" id="widget-color" value="{{ stored_color }}" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
         <span class="color-swatch{% if not stored_color %} is-empty{% endif %}" id="widget-color-swatch" aria-hidden="true"></span>
       </span>
     </label>
     <label class="field-half">View (optional)
-      <select name="view_id" id="widget-view">
-        <option value="">— none —</option>
-        {% for v in views %}
-        <option value="{{ v.id }}" {% if widget.view_id == v.id %}selected{% endif %}>{{ v.name }}</option>
-        {% endfor %}
-      </select>
-      <span class="hint">Filters the widget's records; a sum widget then sums a column of the view.</span>
+      {# One wrapper child: the cell must own exactly two grid children (label
+         text + control block) for its subgrid row pair to map 1:1. #}
+      <span class="field-body">
+        <select name="view_id" id="widget-view">
+          <option value="">— none —</option>
+          {% for v in views %}
+          <option value="{{ v.id }}" {% if widget.view_id == v.id %}selected{% endif %}>{{ v.name }}</option>
+          {% endfor %}
+        </select>
+        <span class="hint">Filters the widget's records; a sum widget then sums a column of the view.</span>
+      </span>
     </label>
     <label class="field-half">Numeric field (sum widgets)
-      <select name="field" id="widget-field">
-        <option value="">— none —</option>
-        {% set stored_field = widget.config.get('field') if widget.config else '' %}
-        {% for e in field_options.entities %}
-        {% if e.fields %}
-        <optgroup label="Entity · {{ e.name }}">
-          {% for f in e.fields %}<option value="{{ f.value }}"{% if widget.view_id is none and widget.entity_id == e.id and stored_field == f.value %} selected{% endif %}>{{ f.label }}</option>{% endfor %}
-        </optgroup>
-        {% endif %}
-        {% endfor %}
-        {% for v in field_options.views %}
-        {% if v.fields %}
-        <optgroup label="View · {{ v.name }}">
-          {% for f in v.fields %}<option value="{{ f.value }}"{% if widget.view_id == v.id and stored_field == f.value %} selected{% endif %}>{{ f.label }}</option>{% endfor %}
-        </optgroup>
-        {% endif %}
-        {% endfor %}
-      </select>
-      <span class="hint">Sum widgets only: an entity's numeric attributes, or the numeric columns of a selected view (computed ones included).</span>
+      <span class="field-body">
+        <select name="field" id="widget-field">
+          <option value="">— none —</option>
+          {% set stored_field = widget.config.get('field') if widget.config else '' %}
+          {% for e in field_options.entities %}
+          {% if e.fields %}
+          <optgroup label="Entity · {{ e.name }}">
+            {% for f in e.fields %}<option value="{{ f.value }}"{% if widget.view_id is none and widget.entity_id == e.id and stored_field == f.value %} selected{% endif %}>{{ f.label }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+          {% endfor %}
+          {% for v in field_options.views %}
+          {% if v.fields %}
+          <optgroup label="View · {{ v.name }}">
+            {% for f in v.fields %}<option value="{{ f.value }}"{% if widget.view_id == v.id and stored_field == f.value %} selected{% endif %}>{{ f.label }}</option>{% endfor %}
+          </optgroup>
+          {% endif %}
+          {% endfor %}
+        </select>
+        <span class="hint">Sum widgets only: an entity's numeric attributes, or the numeric columns of a selected view (computed ones included).</span>
+      </span>
     </label>
   </div>
   <div class="form-actions">

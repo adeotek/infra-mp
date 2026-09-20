@@ -832,7 +832,7 @@ WIDGET_FORM_ORDER = [
     '<label class="field-half">Type',
     '<label class="field-half">Entity',
     '<label class="field-quarter">Width (12-column grid)',
-    '<label class="field-quarter">Value color (Optional, Count/Sum only)',
+    '<label class="field-quarter">Color (optional, Count/Sum only)',
     '<label class="field-half">View (optional)',
     '<label class="field-half">Numeric field (sum widgets)',
 ]
@@ -890,6 +890,37 @@ def test_colour_row_keeps_the_label_gap_on_the_row(client, login):
     assert ".color-input-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }" in css
 
 
+def test_widget_form_wraps_each_hint_in_its_control_block(client, login):
+    """A cell must own exactly two grid children: label text + control block.
+
+    The hint was a bare third child, so it landed on the subgrid's control row
+    and painted over the select (reported live). Each hint now rides inside the
+    `.field-body` wrapper together with its control.
+    """
+    _seed_cost_server(client, login)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    cases = (
+        ("View (optional)", "Filters the widget's records"),
+        ("Numeric field (sum widgets)", "Sum widgets only:"),
+    )
+    for url in ("/dashboard/config", "/dashboard/widgets/1/edit"):
+        html = client.get(url).text
+        grid = html[html.index('class="widget-form-grid"') : html.index('class="form-actions"')]
+        assert grid.count('<span class="field-body">') == 2, url
+        for label_text, hint in cases:
+            anchor = grid.index(f'<label class="field-half">{label_text}')
+            cell = grid[anchor : grid.index("</label>", anchor)]
+            # The wrapper opens before the hint...
+            assert cell.index('<span class="field-body">') < cell.index(hint), (url, hint)
+            # ...and closes after it (hint's own </span> + the wrapper's).
+            tail = cell[cell.index(hint) + len(hint) :]
+            assert tail.count("</span>") == 2, (url, hint)
+
+
 def test_widget_form_offers_entity_and_view_fields(client, login):
     import json
 
@@ -917,7 +948,7 @@ def test_widget_form_offers_entity_and_view_fields(client, login):
     # (its hint line was removed with the relabelling).
     assert "Numeric field (sum widgets)" in html
     assert "computed ones included" in html
-    assert "Value color (Optional, Count/Sum only)" in html
+    assert "Color (optional, Count/Sum only)" in html
     assert "leave empty for the default" not in html
     assert 'id="widget-color-swatch"' in html
     options = json.loads(html.split('id="numeric-fields">', 1)[1].split("</script>", 1)[0])
