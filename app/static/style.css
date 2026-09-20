@@ -586,6 +586,21 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 
 .req { color: var(--danger); }
 .hint { display: block; margin-top: 0.3rem; font-size: 0.85em; font-weight: 400; color: var(--muted); white-space: pre-line; }
+
+/* Optional hex-color input (widget forms): a swatch previews the value —
+   empty means the theme default, shown as the muted primary colour. The
+   label gap lives on the ROW, not the input: `form input` carries
+   margin-top so a margin-box-centred swatch would sit ~3px high. */
+.color-input-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+.color-input-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.color-swatch {
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.color-swatch.is-empty { background: var(--primary); opacity: 0.35; }
 .row-actions { white-space: nowrap; }
 .row-actions-inner { display: inline-flex; align-items: center; gap: 0.25rem; }
 .action-btn {
@@ -749,6 +764,35 @@ tr.dragging { opacity: 0.4; }
   letter-spacing: 0.04em;
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+/* Widget form: a 12-track grid where every visual row owns TWO rows — the label
+   row and the control row. Cells subgrid those pairs, so all controls in a row
+   start at the same y even when a label wraps (the colour label does at quarter
+   width) and sibling controls never staircase. Halves (span 6) and quarters
+   (span 3) fill a row exactly; a fourth visual row would just add implicit
+   auto rows. */
+.widget-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(6, auto);
+  gap: 1rem;
+}
+.widget-form-grid > * { min-width: 0; }
+.widget-form-grid > label {
+  grid-row: span 2;
+  display: grid;
+  grid-template-rows: subgrid;
+  /* Label-to-control gap; the controls' own margin-top must not double it. */
+  row-gap: 0.35rem;
+}
+.widget-form-grid > label input,
+.widget-form-grid > label select,
+.widget-form-grid > label .color-input-row { margin-top: 0; }
+/* Control block: the cell's second grid child, so a control + its hint move as
+   one unit into the subgrid's control row. Descendant selectors above keep the
+   wrapped select's own margin from re-adding the label gap. */
+.widget-form-grid > label > .field-body { display: block; min-width: 0; }
+.widget-form-grid > .field-half { grid-column: span 6; }
+.widget-form-grid > .field-quarter { grid-column: span 3; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; }
 .filter-row { margin-bottom: 0.5rem; }
 .filter-row select, .filter-row input { margin-top: 0; }
@@ -826,6 +870,9 @@ tr.dragging { opacity: 0.4; }
 .widget-title-link { color: inherit; text-decoration: none; }
 .widget-title-link:hover { color: var(--primary); text-decoration: underline; }
 .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
+/* Count/sum cards center their value (the card title stays left-aligned). */
+.widget-stat .stat-value,
+.widget-stat .stat-empty { text-align: center; }
 @media (max-width: 960px) {
   .widget-grid { grid-template-columns: 1fr; }
   .widget-span-1, .widget-span-2, .widget-span-3, .widget-span-4,
@@ -917,10 +964,13 @@ code {
   .form-actions { flex-wrap: wrap; }
 
   /* Stacked form grids. */
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .widget-form-grid { grid-template-columns: 1fr; }
   /* Wide form controls (long select options, values) must not force the
      grid — and any dialog containing it — wider than the viewport. */
   .grid-2 > *, .grid-3 > * { min-width: 0; }
+  /* Half/quarter spans are meaningless in one column: let every cell fill it. */
+  .widget-form-grid > .field-half,
+  .widget-form-grid > .field-quarter { grid-column: 1 / -1; }
   input, select, textarea { max-width: 100%; }
   /* Dashboard widgets must not propagate table min-content to the page. */
   .widget, .widget-grid > * { min-width: 0; }

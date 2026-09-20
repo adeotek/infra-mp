@@ -10,7 +10,8 @@
 {% if widgets %}
 <div class="widget-grid">
   {% for w in widgets %}
-  <section class="widget {{ w.width_class }}">
+  {% set is_stat = w.widget.widget_type in ('count', 'sum') %}
+  <section class="widget {{ w.width_class }}{% if is_stat %} widget-stat{% endif %}">
     {% set widget_title = w.widget.title or (w.widget.view.name if w.widget.view else (w.widget.entity.name if w.widget.entity else 'Widget')) %}
     <h2>
       {% if w.widget.view %}
@@ -23,12 +24,12 @@
       {% endif %}
     </h2>
     {% if w.widget.widget_type == 'count' %}
-    <div class="stat-value">{{ w.data }}</div>
+    <div class="stat-value"{% if w.color %} style="color: {{ w.color }}"{% endif %}>{{ w.data }}</div>
     {% elif w.widget.widget_type == 'sum' and w.data is not none %}
     {# Same markup as a count widget: the title describes the value. #}
-    <div class="stat-value">{{ w.data }}</div>
+    <div class="stat-value"{% if w.color %} style="color: {{ w.color }}"{% endif %}>{{ w.data }}</div>
     {% elif w.widget.widget_type == 'sum' %}
-    <p class="muted">No numeric field selected for this widget.</p>
+    <p class="muted stat-empty">No numeric field selected for this widget.</p>
     {% elif w.data %}
     {% if w.data.rows %}
     <div class="table-wrap">
