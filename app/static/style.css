@@ -762,6 +762,8 @@ tr.dragging { opacity: 0.4; }
   letter-spacing: 0.04em;
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+/* A cell spanning the whole 2-column form grid (the widget title field). */
+.grid-2 > .field-wide { grid-column: 1 / -1; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; }
 .filter-row { margin-bottom: 0.5rem; }
 .filter-row select, .filter-row input { margin-top: 0; }

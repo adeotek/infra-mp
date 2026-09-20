@@ -827,6 +827,42 @@ def test_widget_with_an_unknown_view_is_rejected(client, login):
     assert "Unknown view for this widget" in unquote(resp.headers["location"])
 
 
+WIDGET_FORM_ORDER = [
+    '<label class="field-wide">Title',
+    "<label>Entity",
+    "<label>View (optional)",
+    "<label>Type",
+    "<label>Numeric field (sum widgets)",
+    "<label>Width (12-column grid)",
+    "<label>Value color (count/sum)",
+]
+
+
+def _assert_widget_form_rows(html: str) -> None:
+    """The widget form reads row-major: Title, Entity+View, Type+Field, Width+Color."""
+    positions = [html.index(anchor) for anchor in WIDGET_FORM_ORDER]
+    assert positions == sorted(positions), [
+        anchor for _, anchor in sorted(zip(positions, WIDGET_FORM_ORDER, strict=True))
+    ]
+
+
+def test_widget_form_field_order_matches_the_requested_rows(client, login):
+    _seed_cost_server(client, login)
+    _assert_widget_form_rows(client.get("/dashboard/config").text)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "W", "widget_type": "count", "entity_id": "1", "view_id": ""},
+        follow_redirects=False,
+    )
+    _assert_widget_form_rows(client.get("/dashboard/widgets/1/edit").text)
+
+
+def test_widget_title_spans_both_form_columns(client, login):
+    login()
+    css = client.get("/static/style.css").text
+    assert ".grid-2 > .field-wide { grid-column: 1 / -1; }" in css
+
+
 def test_widget_form_offers_entity_and_view_fields(client, login):
     import json
 
