@@ -588,9 +588,11 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 .hint { display: block; margin-top: 0.3rem; font-size: 0.85em; font-weight: 400; color: var(--muted); white-space: pre-line; }
 
 /* Optional hex-color input (widget forms): a swatch previews the value —
-   empty means the theme default, shown as the muted primary colour. */
-.color-input-row { display: flex; align-items: center; gap: 0.5rem; }
-.color-input-row input { flex: 1 1 auto; min-width: 0; }
+   empty means the theme default, shown as the muted primary colour. The
+   label gap lives on the ROW, not the input: `form input` carries
+   margin-top so a margin-box-centred swatch would sit ~3px high. */
+.color-input-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; }
+.color-input-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 .color-swatch {
   width: 1.6rem;
   height: 1.6rem;

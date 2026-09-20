@@ -876,6 +876,17 @@ def test_widget_form_grid_mixes_halves_and_thirds(client, login):
     assert ".widget-form-grid > .field-third { grid-column: 1 / -1; }" in css
 
 
+def test_colour_row_keeps_the_label_gap_on_the_row(client, login):
+    """`form input` carries margin-top, so the swatch must not be margin-box centred."""
+    login()
+    css = client.get("/static/style.css").text
+    assert (
+        ".color-input-row { display: flex; align-items: center; gap: 0.5rem; "
+        "margin-top: 0.35rem; }" in css
+    )
+    assert ".color-input-row input { flex: 1 1 auto; min-width: 0; margin-top: 0; }" in css
+
+
 def test_widget_form_offers_entity_and_view_fields(client, login):
     import json
 
