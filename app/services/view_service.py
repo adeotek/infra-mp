@@ -61,6 +61,14 @@ FILTER_OPS = [
 # specs are skipped leniently, like every other unresolvable column.
 MAX_REL_HOPS = 6
 
+# Shared resolution context for related columns, built once per render:
+# ``(records_by_entity, reverse_index, terminal_titles)`` — see ``_related_context``.
+RelatedContext = tuple[
+    dict[int, dict[int, Record]],
+    dict[tuple[int, str], dict[int, list[int]]],
+    dict[int, dict[int, str]],
+]
+
 _FILTER_OP_LABELS = {
     "eq": "equals",
     "neq": "does not equal",
@@ -175,6 +183,19 @@ def apply_config(
     )
     filtered = _apply_sort(filtered, entity, config.get("sort"), entities, db, cache)
     return filtered, columns
+
+
+def view_columns(view: View, entities: list[Entity]) -> list[ViewColumn]:
+    """The view's resolved columns (base, related and calculated) in display order.
+
+    ``entities`` must carry their attributes (``list_entities``) — the same list
+    ``apply_config`` resolves related columns against. An unknown entity yields
+    no columns; invalid specs are skipped, exactly as at render time.
+    """
+    entity = next((e for e in entities if e.id == view.entity_id), None)
+    if entity is None:
+        return []
+    return _resolve_columns(entity, _column_specs(view.config or {}, entity), entities)
 
 
 def _filter_columns(
@@ -966,12 +987,7 @@ def _calculated_cell(
 def _raw_column_value(
     record: Record,
     column: ViewColumn,
-    context: tuple[
-        dict[int, dict[int, Record]],
-        dict[tuple[int, str], dict[int, list[int]]],
-        dict[int, dict[int, str]],
-    ]
-    | None,
+    context: RelatedContext | None,
 ) -> Any:
     """The raw stored value a column reads for one record.
 
@@ -1027,28 +1043,94 @@ def build_totals(
     totals: dict[str, dict[str, str]] = {}
     for column in wanted:
         op = totals_spec[column.key]
-        values = []
-        for record in records:
-            value = _column_numeric_value(record, column, context)
-            if value is not None:
-                values.append(value)
+        values = column_values(records, column, context)
         if not values:
             continue
         totals[column.key] = {"op": op, "value": format_total(aggregate(values, op))}
     return totals
 
 
-def _column_numeric_value(
+def view_column_total(
+    db: Session,
+    entity: Entity,
+    records: list[Record],
+    columns: list[ViewColumn],
+    key: str,
+    op: str = "sum",
+    cache: dict | None = None,
+) -> dict[str, str] | None:
+    """Aggregate one of the view's columns over ``records``.
+
+    Unlike :func:`build_totals` — the view page's footer totals stored numeric
+    values only — this accepts *any* numeric key a view resolves to: a base
+    attribute, a related-entity attribute or a computed formula column.
+    Returns ``{"op": …, "value": <formatted>}`` (``"0"`` for an empty value
+    set), or ``None`` when the key matches no column or that column is not
+    numeric — the caller (a dashboard sum widget) explains that instead of
+    showing a number.
+    """
+    column = next((c for c in columns if c.key == key), None)
+    if column is None or not column.is_numeric or op not in TOTAL_OPS:
+        return None
+    columns_by_key = {c.key: c for c in columns}
+    needed = [column]
+    if column.calc is not None:
+        node = column.calc.get("node")
+        if node is not None:
+            # A formula reads other columns' raw values: their hops belong in
+            # the resolution context too, or every related input resolves None.
+            needed += [other for other in columns if other.key in formula_references(node)]
+    context = (
+        _related_context(db, entity, needed, records, cache)
+        if any(other.path is not None for other in needed)
+        else None
+    )
+    values = column_values(records, column, context, columns_by_key)
+    return {"op": op, "value": format_total(aggregate(values, op))}
+
+
+def column_values(
+    records: list[Record],
+    column: ViewColumn,
+    context: RelatedContext | None = None,
+    columns_by_key: dict[str, ViewColumn] | None = None,
+) -> list[Decimal]:
+    """The column's numeric values over ``records`` (rows without one are dropped).
+
+    ``context``/``columns_by_key`` are needed for related and computed columns:
+    the former carries the hop-resolution maps, the latter lets a formula
+    resolve the column keys it references.
+    """
+    values: list[Decimal] = []
+    for record in records:
+        value = column_numeric_value(record, column, context, columns_by_key)
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def column_numeric_value(
     record: Record,
     column: ViewColumn,
-    context: tuple[
-        dict[int, dict[int, Record]],
-        dict[tuple[int, str], dict[int, list[int]]],
-        dict[int, dict[int, str]],
-    ]
-    | None,
-) -> Any:
-    """The column's numeric value for one record (None when not numeric)."""
+    context: RelatedContext | None = None,
+    columns_by_key: dict[str, ViewColumn] | None = None,
+) -> Decimal | None:
+    """One record's numeric value for a column (``None`` when not numeric).
+
+    Base columns read the record's own value, related columns their first
+    terminal value (the same value they sort by), computed formula columns
+    their evaluated expression — i.e. exactly what the grid cell shows.
+    """
+    if column.calc is not None:
+        node = column.calc.get("node")
+        if node is None or not columns_by_key:
+            return None
+        values = {
+            key: _raw_column_value(record, columns_by_key[key], context)
+            for key in formula_references(node)
+            if key in columns_by_key
+        }
+        return to_decimal(evaluate_formula(node, values))
     return to_decimal(_raw_column_value(record, column, context))
 
 
@@ -1058,11 +1140,7 @@ def _related_context(
     columns: list[ViewColumn],
     records: list[Record],
     cache: dict | None = None,
-) -> tuple[
-    dict[int, dict[int, Record]],
-    dict[tuple[int, str], dict[int, list[int]]],
-    dict[int, dict[int, str]],
-]:
+) -> RelatedContext:
     """Load the shared resolution context for related columns.
 
     Returns ``(records_by_entity, reverse_index, terminal_titles)`` — the

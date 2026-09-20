@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
@@ -13,6 +15,7 @@ from app.db import get_session
 from app.flash import redirect_with_flash
 from app.models.dashboard import DashboardWidget
 from app.models.user import User
+from app.models.view import View
 from app.services.aggregates import aggregate, format_total, is_numeric_attribute, to_decimal
 from app.services.record_service import (
     build_rows,
@@ -21,7 +24,13 @@ from app.services.record_service import (
     resolve_reference_titles,
 )
 from app.services.schema_service import get_entity_with_attributes, list_entities
-from app.services.view_service import apply_config, build_view_rows, list_views
+from app.services.view_service import (
+    apply_config,
+    build_view_rows,
+    list_views,
+    view_column_total,
+    view_columns,
+)
 from app.templates import render
 
 router = APIRouter()
@@ -33,6 +42,11 @@ DEFAULT_WIDGET_SPAN = "6"
 LEGACY_WIDGET_WIDTHS = {"1/4": "3", "1/2": "6", "3/4": "9", "full": "12"}
 WIDGET_WIDTH_CLASSES = {str(n): f"widget-span-{n}" for n in range(1, 13)}
 WIDGET_TYPES = {"table", "count", "sum"}
+# Count/sum widgets render a single value: they are the ones a colour applies to.
+STAT_WIDGET_TYPES = {"count", "sum"}
+# Custom content colours are hex only — the value ends up in an inline style, so
+# named colours/CSS functions are rejected rather than escaped (#rgb/#rrggbb/#rrggbbaa).
+HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 
 
 def _load_widgets(db: Session) -> list[DashboardWidget]:
@@ -129,24 +143,35 @@ def _render_sum_widget(
     entities: list,
     cache: dict,
 ) -> str | None:
-    """Sum one numeric attribute over the (optionally view-filtered) records.
+    """Sum one numeric field over the (optionally view-filtered) records.
 
     Returns the formatted total, or ``None`` when the widget's field is missing
     or no longer numeric (the card explains that instead of showing a number).
+    A view-bound widget sums one of the view's **columns** — base attributes,
+    related-entity attributes and computed formula columns alike — over the
+    rows the view keeps.
     """
+    field = str((widget.config or {}).get("field") or "")
+    if not field:
+        return None
+    view = widget.view
+    if view is not None:
+        entity = get_entity_with_attributes(db, view.entity_id)
+        if entity is None:
+            return None
+        records = _widget_records(db, view.entity_id, cache)
+        records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
+        total = view_column_total(db, entity, records, columns, field, cache=cache)
+        return None if total is None else total["value"]
     if widget.entity_id is None:
         return None
     entity = get_entity_with_attributes(db, widget.entity_id)
     if entity is None:
         return None
-    field = str((widget.config or {}).get("field") or "")
     attr = next((a for a in entity.attributes if a.slug == field), None)
     if attr is None or not is_numeric_attribute(attr):
         return None
     records = _widget_records(db, widget.entity_id, cache)
-    view = widget.view
-    if view is not None and view.entity_id == widget.entity_id:
-        records, _ = apply_config(entity, records, view.config, entities, db=db, cache=cache)
     values = [
         value
         for value in (to_decimal(record.data.get(attr.slug)) for record in records)
@@ -155,24 +180,61 @@ def _render_sum_widget(
     return format_total(aggregate(values, "sum"))
 
 
-def _numeric_fields(entities: list) -> list[dict]:
-    """Numeric attributes per entity — the sum widget's field options.
+def _field_options(entities: list, views: list) -> dict[str, list[dict]]:
+    """Numeric field options for the sum widget's field select.
 
-    Embedded in the widget forms as JSON so the field select follows the
-    chosen entity without a round-trip.
+    Two sources, embedded as JSON in the widget forms so the select follows the
+    entity/view choice without a round-trip:
+
+    - an entity's numeric attributes (value = attribute slug);
+    - a view's numeric columns (value = the view column key the renderer uses:
+      the base slug, a ``rel:…`` key, or ``calc:<ordinal>`` for a computed
+      formula column) — the server-rendered options are the no-JS fallback.
     """
-    return [
-        {
-            "id": entity.id,
-            "name": entity.name,
-            "fields": [
-                {"slug": attr.slug, "name": attr.name}
-                for attr in entity.attributes
-                if is_numeric_attribute(attr)
-            ],
-        }
-        for entity in entities
-    ]
+    return {
+        "entities": [
+            {
+                "id": entity.id,
+                "name": entity.name,
+                "fields": [
+                    {"value": attr.slug, "label": attr.name}
+                    for attr in entity.attributes
+                    if is_numeric_attribute(attr)
+                ],
+            }
+            for entity in entities
+        ],
+        "views": [
+            {
+                "id": view.id,
+                "name": view.name,
+                "entity_id": view.entity_id,
+                "fields": [
+                    {"value": column.key, "label": column.label}
+                    for column in view_columns(view, entities)
+                    if column.is_numeric
+                ],
+            }
+            for view in views
+        ],
+    }
+
+
+def _normalize_color(value: str) -> str | None:
+    """Hex colour -> lower-cased hex; ``""`` when empty; ``None`` when invalid."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    return value.lower() if HEX_COLOR_RE.match(value) else None
+
+
+def _stored_color(config: dict | None) -> str:
+    """The widget's stored content colour, or ``""`` for the default.
+
+    Read-tolerant like every other widget config key: a hand-edited or legacy
+    value that is not a hex colour is dropped rather than rendered.
+    """
+    return _normalize_color(str((config or {}).get("color") or "")) or ""
 
 
 def _next_sort_order(db: Session) -> int:
@@ -215,13 +277,29 @@ def _validate_widget_type(widget_type: str) -> str | None:
 
 
 def _validate_sum_field(
-    db: Session, widget_type: str, entity_id: int | None, field: str
+    db: Session,
+    widget_type: str,
+    entity_id: int | None,
+    field: str,
+    view: View | None,
 ) -> str | None:
-    """A sum widget must name a numeric attribute of its entity."""
+    """A sum widget must name a numeric field.
+
+    With a view bound the field is one of that view's columns — computed
+    (formula) columns included — because the view decides the rows it sums;
+    otherwise it is a numeric attribute of the widget's entity.
+    """
     if widget_type != "sum":
         return None
+    if view is not None:
+        column = next((c for c in view_columns(view, list_entities(db)) if c.key == field), None)
+        if column is None:
+            return "Choose a numeric column of the selected view."
+        if not column.is_numeric:
+            return f"'{column.label}' is not a numeric column."
+        return None
     if entity_id is None:
-        return "A sum widget needs an entity."
+        return "A sum widget needs an entity or a view."
     entity = get_entity_with_attributes(db, entity_id)
     if entity is None:
         return "Unknown entity for this widget."
@@ -231,6 +309,21 @@ def _validate_sum_field(
     if not is_numeric_attribute(attr):
         return f"'{attr.name}' is not a numeric field."
     return None
+
+
+def _widget_config(widget_type: str, field: str, color: str) -> dict[str, str]:
+    """Stored widget config: only the keys the widget type actually uses.
+
+    A key the type does not use is dropped (switching a widget's type clears
+    the previous type's settings), and the colour only applies to the
+    single-value cards.
+    """
+    config: dict[str, str] = {}
+    if widget_type == "sum":
+        config["field"] = field
+    if color and widget_type in STAT_WIDGET_TYPES:
+        config["color"] = color
+    return config
 
 
 @router.get("/")
@@ -263,6 +356,8 @@ def dashboard(
                 "widget": widget,
                 "data": data,
                 "width_class": _width_class(widget.width),
+                # Validated hex or "" — the template inlines it as a style.
+                "color": _stored_color(widget.config),
             }
         )
 
@@ -283,14 +378,15 @@ def dashboard_config(
     db: Session = Depends(get_session),
 ):
     entities = list_entities(db)
+    views = list_views(db)
     return render(
         request,
         "dashboard/config.html",
         {
             "widgets": _load_widgets(db),
             "entities": entities,
-            "views": list_views(db),
-            "numeric_fields": _numeric_fields(entities),
+            "views": views,
+            "field_options": _field_options(entities, views),
         },
     )
 
@@ -305,6 +401,7 @@ def create_widget(
     entity_id: str = Form(""),
     view_id: str = Form(""),
     field: str = Form(""),
+    color: str = Form(""),
     width: str = Form(DEFAULT_WIDGET_SPAN),
 ):
     type_error = _validate_widget_type(widget_type)
@@ -313,11 +410,28 @@ def create_widget(
             "/dashboard/config", type_error, category="error", request=request
         )
     eid, vid = _parse_ids(entity_id, view_id)
+    view = db.get(View, vid) if vid is not None else None
+    if vid is not None and view is None:
+        return redirect_with_flash(
+            "/dashboard/config", "Unknown view for this widget.", category="error", request=request
+        )
+    if view is not None:
+        # A view-bound widget reads the view's entity, so the stored entity
+        # follows the view (the form keeps the select in step too).
+        eid = view.entity_id
     field = field.strip()
-    field_error = _validate_sum_field(db, widget_type, eid, field)
+    field_error = _validate_sum_field(db, widget_type, eid, field, view)
     if field_error is not None:
         return redirect_with_flash(
             "/dashboard/config", field_error, category="error", request=request
+        )
+    normalized_color = _normalize_color(color)
+    if normalized_color is None:
+        return redirect_with_flash(
+            "/dashboard/config",
+            "Color must be a hex value like #14b8a6.",
+            category="error",
+            request=request,
         )
     db.add(
         DashboardWidget(
@@ -327,7 +441,7 @@ def create_widget(
             view_id=vid,
             sort_order=_next_sort_order(db),
             width=_parse_width(width),
-            config={"field": field} if widget_type == "sum" else {},
+            config=_widget_config(widget_type, field, normalized_color),
         )
     )
     db.commit()
@@ -345,14 +459,17 @@ def edit_widget_page(
     if widget is None:
         raise HTTPException(status_code=404)
     entities = list_entities(db)
+    views = list_views(db)
     return render(
         request,
         "dashboard/widget_form.html",
         {
             "widget": widget,
             "entities": entities,
-            "views": list_views(db),
-            "numeric_fields": _numeric_fields(entities),
+            "views": views,
+            "field_options": _field_options(entities, views),
+            # Normalised here so a stale/unknown stored colour shows as empty.
+            "stored_color": _stored_color(widget.config),
         },
     )
 
@@ -368,6 +485,7 @@ def update_widget(
     entity_id: str = Form(""),
     view_id: str = Form(""),
     field: str = Form(""),
+    color: str = Form(""),
     width: str = Form(DEFAULT_WIDGET_SPAN),
 ):
     widget = db.get(DashboardWidget, widget_id)
@@ -379,18 +497,35 @@ def update_widget(
             "/dashboard/config", type_error, category="error", request=request
         )
     eid, vid = _parse_ids(entity_id, view_id)
+    view = db.get(View, vid) if vid is not None else None
+    if vid is not None and view is None:
+        return redirect_with_flash(
+            "/dashboard/config", "Unknown view for this widget.", category="error", request=request
+        )
+    if view is not None:
+        # A view-bound widget reads the view's entity, so the stored entity
+        # follows the view (the form keeps the select in step too).
+        eid = view.entity_id
     field = field.strip()
-    field_error = _validate_sum_field(db, widget_type, eid, field)
+    field_error = _validate_sum_field(db, widget_type, eid, field, view)
     if field_error is not None:
         return redirect_with_flash(
             "/dashboard/config", field_error, category="error", request=request
+        )
+    normalized_color = _normalize_color(color)
+    if normalized_color is None:
+        return redirect_with_flash(
+            "/dashboard/config",
+            "Color must be a hex value like #14b8a6.",
+            category="error",
+            request=request,
         )
     widget.title = title.strip()
     widget.widget_type = widget_type
     widget.entity_id = eid
     widget.view_id = vid
     widget.width = _parse_width(width)
-    widget.config = {"field": field} if widget_type == "sum" else {}
+    widget.config = _widget_config(widget_type, field, normalized_color)
     db.commit()
     return redirect_with_flash("/dashboard/config", "Widget updated.")
 

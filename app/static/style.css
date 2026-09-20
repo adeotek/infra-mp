@@ -586,6 +586,19 @@ th.sorted-desc .sort-indicator { opacity: 1; color: var(--primary); }
 
 .req { color: var(--danger); }
 .hint { display: block; margin-top: 0.3rem; font-size: 0.85em; font-weight: 400; color: var(--muted); white-space: pre-line; }
+
+/* Optional hex-color input (widget forms): a swatch previews the value —
+   empty means the theme default, shown as the muted primary colour. */
+.color-input-row { display: flex; align-items: center; gap: 0.5rem; }
+.color-input-row input { flex: 1 1 auto; min-width: 0; }
+.color-swatch {
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.color-swatch.is-empty { background: var(--primary); opacity: 0.35; }
 .row-actions { white-space: nowrap; }
 .row-actions-inner { display: inline-flex; align-items: center; gap: 0.25rem; }
 .action-btn {
@@ -826,6 +839,9 @@ tr.dragging { opacity: 0.4; }
 .widget-title-link { color: inherit; text-decoration: none; }
 .widget-title-link:hover { color: var(--primary); text-decoration: underline; }
 .stat-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
+/* Count/sum cards center their value (the card title stays left-aligned). */
+.widget-stat .stat-value,
+.widget-stat .stat-empty { text-align: center; }
 @media (max-width: 960px) {
   .widget-grid { grid-template-columns: 1fr; }
   .widget-span-1, .widget-span-2, .widget-span-3, .widget-span-4,

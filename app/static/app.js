@@ -826,39 +826,83 @@
   initAdvancedFilter(document);
 
   // Dashboard widget form: the sum-field select lists the numeric attributes
-  // of the selected entity (the entity -> numeric fields map is embedded in
-  // the page as JSON, so switching entities needs no round-trip).
+  // of the selected entity — or, when a view is selected, that view's numeric
+  // columns (computed formula columns included). Both maps are embedded in the
+  // page as JSON, so switching entity/view needs no round-trip. Picking a view
+  // also moves the entity select to the view's entity: a view decides its own
+  // records, so a mismatched entity would render nothing useful.
   function initWidgetForm() {
     var entitySel = document.getElementById('widget-entity');
+    var viewSel = document.getElementById('widget-view');
     var fieldSel = document.getElementById('widget-field');
     var dataEl = document.getElementById('numeric-fields');
-    if (!entitySel || !fieldSel || !dataEl) return;
-    var entities = [];
-    try { entities = JSON.parse(dataEl.textContent || '[]') || []; } catch (e) { return; }
+    if (!fieldSel || !dataEl) return;
+    var data = { entities: [], views: [] };
+    try { data = JSON.parse(dataEl.textContent || '{}') || data; } catch (e) { return; }
+    var entities = data.entities || [];
+    var views = data.views || [];
+
+    function findById(list, id) {
+      var match = null;
+      list.forEach(function (entry) {
+        if (String(entry.id) === String(id) && id !== '') match = entry;
+      });
+      return match;
+    }
 
     function rebuild() {
       var current = fieldSel.value;
-      var match = null;
-      entities.forEach(function (entity) {
-        if (String(entity.id) === entitySel.value) match = entity;
-      });
-      var fields = (match && match.fields) || [];
+      var view = viewSel ? findById(views, viewSel.value) : null;
+      var entity = view || (entitySel ? findById(entities, entitySel.value) : null);
+      var fields = (entity && entity.fields) || [];
       fieldSel.innerHTML = '';
       var placeholder = document.createElement('option');
       placeholder.value = '';
-      placeholder.textContent = fields.length ? '— field —' : '— no numeric fields —';
+      placeholder.textContent = fields.length ? (view ? '— column —' : '— field —') : '— no numeric fields —';
       fieldSel.appendChild(placeholder);
       fields.forEach(function (f) {
         var option = document.createElement('option');
-        option.value = f.slug;
-        option.textContent = f.name;
-        if (f.slug === current) option.selected = true;
+        option.value = f.value;
+        option.textContent = f.label;
+        if (f.value === current) option.selected = true;
         fieldSel.appendChild(option);
       });
     }
 
-    entitySel.addEventListener('change', rebuild);
-    if (entitySel.value) rebuild();
+    function syncEntityToView() {
+      if (!entitySel || !viewSel) return;
+      var view = findById(views, viewSel.value);
+      if (view && view.entity_id) entitySel.value = String(view.entity_id);
+    }
+
+    if (entitySel) entitySel.addEventListener('change', rebuild);
+    if (viewSel) {
+      viewSel.addEventListener('change', function () {
+        syncEntityToView();
+        rebuild();
+      });
+    }
+    if ((entitySel && entitySel.value) || (viewSel && viewSel.value)) rebuild();
+
+    // Colour field: the swatch previews a valid hex value and shows the theme
+    // default (muted primary) while the field is empty.
+    var colorInput = document.getElementById('widget-color');
+    var swatch = document.getElementById('widget-color-swatch');
+    if (colorInput && swatch) {
+      var HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+      var syncSwatch = function () {
+        var value = (colorInput.value || '').trim();
+        if (HEX_COLOR.test(value)) {
+          swatch.style.background = value;
+          swatch.classList.remove('is-empty');
+        } else {
+          swatch.style.background = '';
+          swatch.classList.add('is-empty');
+        }
+      };
+      colorInput.addEventListener('input', syncSwatch);
+      syncSwatch();
+    }
   }
   initWidgetForm();
 
