@@ -865,13 +865,15 @@ def test_widget_form_field_order_matches_the_requested_rows(client, login):
 def test_widget_form_grid_mixes_halves_and_quarters(client, login):
     login()
     css = client.get("/static/style.css").text
-    assert (
-        ".widget-form-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }"
-        in css
-    )
+    assert "grid-template-columns: repeat(12, 1fr);" in css
+    assert "grid-template-rows: repeat(6, auto);" in css
     assert ".widget-form-grid > .field-half { grid-column: span 6; }" in css
     assert ".widget-form-grid > .field-quarter { grid-column: span 3; }" in css
     assert ".field-third" not in css
+    # Cells subgrid their label/control row pair so wrapped labels cannot push a
+    # control out of line with its row-mates.
+    assert "grid-template-rows: subgrid;" in css
+    assert "grid-row: span 2;" in css
     # Mobile: one column, and the spans must not create implicit tracks.
     assert ".grid-2, .grid-3, .widget-form-grid { grid-template-columns: 1fr; }" in css
     assert ".widget-form-grid > .field-quarter { grid-column: 1 / -1; }" in css

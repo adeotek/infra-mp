@@ -764,10 +764,29 @@ tr.dragging { opacity: 0.4; }
   letter-spacing: 0.04em;
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-/* Widget form: 12 tracks so rows can mix halves (span 6) and quarters (span 3)
-   — halves and four quarters both fill the row exactly (12 tracks + 11 gaps). */
-.widget-form-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
+/* Widget form: a 12-track grid where every visual row owns TWO rows — the label
+   row and the control row. Cells subgrid those pairs, so all controls in a row
+   start at the same y even when a label wraps (the colour label does at quarter
+   width) and sibling controls never staircase. Halves (span 6) and quarters
+   (span 3) fill a row exactly; a fourth visual row would just add implicit
+   auto rows. */
+.widget-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(6, auto);
+  gap: 1rem;
+}
 .widget-form-grid > * { min-width: 0; }
+.widget-form-grid > label {
+  grid-row: span 2;
+  display: grid;
+  grid-template-rows: subgrid;
+  /* Label-to-control gap; the controls' own margin-top must not double it. */
+  row-gap: 0.35rem;
+}
+.widget-form-grid > label > input,
+.widget-form-grid > label > select,
+.widget-form-grid > label > .color-input-row { margin-top: 0; }
 .widget-form-grid > .field-half { grid-column: span 6; }
 .widget-form-grid > .field-quarter { grid-column: span 3; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; }
