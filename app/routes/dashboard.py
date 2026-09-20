@@ -78,13 +78,27 @@ def _widget_records(db: Session, entity_id: int, cache: dict) -> list:
     return records
 
 
+def _widget_entity_id(widget: DashboardWidget) -> int | None:
+    """The entity a widget reads: its bound view's, else its own.
+
+    A bound view decides its own records — that is what the write path enforces
+    (``entity_id`` follows the view) and what sum widgets already assumed. Rows
+    written before that could disagree; they follow the view here too, so table,
+    count and sum widgets all read the same rows.
+    """
+    if widget.view is not None:
+        return widget.view.entity_id
+    return widget.entity_id
+
+
 def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, cache: dict):
-    if widget.entity_id is None:
+    entity_id = _widget_entity_id(widget)
+    if entity_id is None:
         return None
-    entity = get_entity_with_attributes(db, widget.entity_id)
+    entity = get_entity_with_attributes(db, entity_id)
     if entity is None:
         return None
-    records = _widget_records(db, widget.entity_id, cache)
+    records = _widget_records(db, entity_id, cache)
     view = widget.view
     if view is not None:
         records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
@@ -116,17 +130,18 @@ def _render_table_widget(db: Session, widget: DashboardWidget, entities: list, c
 
 
 def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, cache: dict) -> int:
-    if widget.entity_id is None:
+    entity_id = _widget_entity_id(widget)
+    if entity_id is None:
         return 0
     view = widget.view
     if view is not None:
         # A view-bound count must honour the view's filters — materialise.
-        entity = get_entity_with_attributes(db, widget.entity_id)
+        entity = get_entity_with_attributes(db, entity_id)
         if entity is None:
             return 0
         records, _ = apply_config(
             entity,
-            _widget_records(db, widget.entity_id, cache),
+            _widget_records(db, entity_id, cache),
             view.config,
             entities,
             db=db,
@@ -134,7 +149,7 @@ def _render_count_widget(db: Session, widget: DashboardWidget, entities: list, c
         )
         return len(records)
     # A plain count is a single SQL COUNT(*), not a full record load.
-    return count_records(db, widget.entity_id)
+    return count_records(db, entity_id)
 
 
 def _render_sum_widget(
@@ -154,24 +169,25 @@ def _render_sum_widget(
     field = str((widget.config or {}).get("field") or "")
     if not field:
         return None
+    entity_id = _widget_entity_id(widget)
+    if entity_id is None:
+        return None
     view = widget.view
     if view is not None:
-        entity = get_entity_with_attributes(db, view.entity_id)
+        entity = get_entity_with_attributes(db, entity_id)
         if entity is None:
             return None
-        records = _widget_records(db, view.entity_id, cache)
+        records = _widget_records(db, entity_id, cache)
         records, columns = apply_config(entity, records, view.config, entities, db=db, cache=cache)
         total = view_column_total(db, entity, records, columns, field, cache=cache)
         return None if total is None else total["value"]
-    if widget.entity_id is None:
-        return None
-    entity = get_entity_with_attributes(db, widget.entity_id)
+    entity = get_entity_with_attributes(db, entity_id)
     if entity is None:
         return None
     attr = next((a for a in entity.attributes if a.slug == field), None)
     if attr is None or not is_numeric_attribute(attr):
         return None
-    records = _widget_records(db, widget.entity_id, cache)
+    records = _widget_records(db, entity_id, cache)
     values = [
         value
         for value in (to_decimal(record.data.get(attr.slug)) for record in records)

@@ -25,8 +25,9 @@ and custom views. No schema migrations, no code changes — the schema is data.
 - **Role-based access control** — three roles (Admin, Maintainer, Viewer) with a
   single enforcement point. No public registration; the admin account is seeded on
   first startup.
-- **Configurable dashboard** — compose the homepage from widgets (counts, stats,
-  tables) that can be resized, reordered, and linked to entities.
+- **Configurable dashboard** — compose the homepage from widgets (counts, sums of
+  any numeric field or view column — computed ones included — and record tables)
+  that can be resized, reordered, coloured, and bound to an entity or saved view.
 - **Saved views** — filter, sort (by any column, including related entities), and
   save custom views over any entity.
 - **Comfortable data grids** — quick search, client-side sorting, full-width

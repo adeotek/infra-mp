@@ -921,6 +921,36 @@ def test_widget_form_wraps_each_hint_in_its_control_block(client, login):
             assert tail.count("</span>") == 2, (url, hint)
 
 
+def test_a_widget_with_a_stale_mismatched_entity_follows_its_view(client, login, db_session):
+    """A bound view decides the records for table/count/sum alike.
+
+    The write path keeps ``entity_id`` in step with the view; rows written before
+    it could disagree. Such a row must render the VIEW's entity, not the stale
+    one (Server has 2 records, Site 1 — the count proves which list was read).
+    """
+    from app.models.dashboard import DashboardWidget
+
+    _seed_cost_server(client, login)  # entity 1 Server: records a, b
+    client.post("/entities", data={"name": "Site"}, follow_redirects=False)
+    client.post(
+        "/entities/2/attributes", data={"name": "Name", "data_type": "text"}, follow_redirects=False
+    )
+    client.post("/entities/2/records", data={"name": "s1"}, follow_redirects=False)
+    client.post("/views", data={"name": "Sites", "entity_id": "2"}, follow_redirects=False)
+    client.post(
+        "/dashboard/widgets",
+        data={"title": "Sites", "widget_type": "count", "entity_id": "2", "view_id": "1"},
+        follow_redirects=False,
+    )
+    assert '<div class="stat-value">1</div>' in client.get("/dashboard").text
+
+    widget = db_session.get(DashboardWidget, 1)
+    assert widget is not None
+    widget.entity_id = 1  # legacy mismatch: Server while the view is on Site
+    db_session.commit()
+    assert '<div class="stat-value">1</div>' in client.get("/dashboard").text
+
+
 def test_widget_form_offers_entity_and_view_fields(client, login):
     import json
 
