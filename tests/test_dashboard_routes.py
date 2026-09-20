@@ -830,9 +830,9 @@ def test_widget_with_an_unknown_view_is_rejected(client, login):
 WIDGET_FORM_ORDER = [
     '<label class="field-half">Title',
     '<label class="field-half">Type',
-    '<label class="field-third">Entity',
-    '<label class="field-third">Width (12-column grid)',
-    '<label class="field-third">Value color (Optional, Count/Sum only)',
+    '<label class="field-half">Entity',
+    '<label class="field-quarter">Width (12-column grid)',
+    '<label class="field-quarter">Value color (Optional, Count/Sum only)',
     '<label class="field-half">View (optional)',
     '<label class="field-half">Numeric field (sum widgets)',
 ]
@@ -841,7 +841,7 @@ WIDGET_FORM_ORDER = [
 def _assert_widget_form_rows(html: str) -> None:
     """The widget form reads row-major: Title+Type, Entity+Width+Color, View+Field.
 
-    Spans do the row grouping: halves (span 6) and thirds (span 4) each fill the
+    Spans do the row grouping: halves (span 6) and quarters (span 3) each fill the
     12-track grid exactly, so the DOM order above *is* the row layout.
     """
     assert 'class="widget-form-grid"' in html
@@ -862,7 +862,7 @@ def test_widget_form_field_order_matches_the_requested_rows(client, login):
     _assert_widget_form_rows(client.get("/dashboard/widgets/1/edit").text)
 
 
-def test_widget_form_grid_mixes_halves_and_thirds(client, login):
+def test_widget_form_grid_mixes_halves_and_quarters(client, login):
     login()
     css = client.get("/static/style.css").text
     assert (
@@ -870,10 +870,11 @@ def test_widget_form_grid_mixes_halves_and_thirds(client, login):
         in css
     )
     assert ".widget-form-grid > .field-half { grid-column: span 6; }" in css
-    assert ".widget-form-grid > .field-third { grid-column: span 4; }" in css
+    assert ".widget-form-grid > .field-quarter { grid-column: span 3; }" in css
+    assert ".field-third" not in css
     # Mobile: one column, and the spans must not create implicit tracks.
     assert ".grid-2, .grid-3, .widget-form-grid { grid-template-columns: 1fr; }" in css
-    assert ".widget-form-grid > .field-third { grid-column: 1 / -1; }" in css
+    assert ".widget-form-grid > .field-quarter { grid-column: 1 / -1; }" in css
 
 
 def test_colour_row_keeps_the_label_gap_on_the_row(client, login):

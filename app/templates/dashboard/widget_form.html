@@ -15,7 +15,7 @@
         <option value="sum" {% if widget.widget_type == 'sum' %}selected{% endif %}>Sum (numeric field)</option>
       </select>
     </label>
-    <label class="field-third">Entity
+    <label class="field-half">Entity
       <select name="entity_id" id="widget-entity">
         <option value="">— none —</option>
         {% for e in entities %}
@@ -23,7 +23,7 @@
         {% endfor %}
       </select>
     </label>
-    <label class="field-third">Width (12-column grid)
+    <label class="field-quarter">Width (12-column grid)
       <select name="width">
         {% set span = widget.width if widget.width.isdigit() else {'1/4': '3', '1/2': '6', '3/4': '9', 'full': '12'}.get(widget.width, '6') %}
         {% for n in range(1, 13) %}
@@ -31,7 +31,7 @@
         {% endfor %}
       </select>
     </label>
-    <label class="field-third">Value color (Optional, Count/Sum only)
+    <label class="field-quarter">Value color (Optional, Count/Sum only)
       <span class="color-input-row">
         <input type="text" name="color" id="widget-color" value="{{ stored_color }}" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
         <span class="color-swatch{% if not stored_color %} is-empty{% endif %}" id="widget-color-swatch" aria-hidden="true"></span>

@@ -21,18 +21,18 @@
         <option value="sum">Sum (numeric field)</option>
       </select>
     </label>
-    <label class="field-third">Entity
+    <label class="field-half">Entity
       <select name="entity_id" id="widget-entity">
         <option value="">— none —</option>
         {% for e in entities %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
       </select>
     </label>
-    <label class="field-third">Width (12-column grid)
+    <label class="field-quarter">Width (12-column grid)
       <select name="width">
         {% for n in range(1, 13) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} / 12</option>{% endfor %}
       </select>
     </label>
-    <label class="field-third">Value color (Optional, Count/Sum only)
+    <label class="field-quarter">Value color (Optional, Count/Sum only)
       <span class="color-input-row">
         <input type="text" name="color" id="widget-color" value="" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
         <span class="color-swatch is-empty" id="widget-color-swatch" aria-hidden="true"></span>

@@ -764,12 +764,12 @@ tr.dragging { opacity: 0.4; }
   letter-spacing: 0.04em;
 }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-/* Widget form: 12 tracks so a row can mix halves (span 6) and thirds (span 4)
-   — halves and three thirds both fill the row exactly (12 tracks + 11 gaps). */
+/* Widget form: 12 tracks so rows can mix halves (span 6) and quarters (span 3)
+   — halves and four quarters both fill the row exactly (12 tracks + 11 gaps). */
 .widget-form-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
 .widget-form-grid > * { min-width: 0; }
 .widget-form-grid > .field-half { grid-column: span 6; }
-.widget-form-grid > .field-third { grid-column: span 4; }
+.widget-form-grid > .field-quarter { grid-column: span 3; }
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 0.5rem; align-items: end; }
 .filter-row { margin-bottom: 0.5rem; }
 .filter-row select, .filter-row input { margin-top: 0; }
@@ -945,9 +945,9 @@ code {
   /* Wide form controls (long select options, values) must not force the
      grid — and any dialog containing it — wider than the viewport. */
   .grid-2 > *, .grid-3 > * { min-width: 0; }
-  /* Half/third spans are meaningless in one column: let every cell fill it. */
+  /* Half/quarter spans are meaningless in one column: let every cell fill it. */
   .widget-form-grid > .field-half,
-  .widget-form-grid > .field-third { grid-column: 1 / -1; }
+  .widget-form-grid > .field-quarter { grid-column: 1 / -1; }
   input, select, textarea { max-width: 100%; }
   /* Dashboard widgets must not propagate table min-content to the page. */
   .widget, .widget-grid > * { min-width: 0; }
