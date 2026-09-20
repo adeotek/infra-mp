@@ -4,11 +4,18 @@
 <h1>Edit widget</h1>
 <form method="post" action="/dashboard/widgets/{{ widget.id }}/edit">
   {% include "_csrf.html" %}
-  <div class="grid-2">
-    <label class="field-wide">Title
+  <div class="widget-form-grid">
+    <label class="field-half">Title
       <input type="text" name="title" value="{{ widget.title }}">
     </label>
-    <label>Entity
+    <label class="field-half">Type
+      <select name="widget_type" id="widget-type">
+        <option value="table" {% if widget.widget_type == 'table' %}selected{% endif %}>Table</option>
+        <option value="count" {% if widget.widget_type == 'count' %}selected{% endif %}>Count</option>
+        <option value="sum" {% if widget.widget_type == 'sum' %}selected{% endif %}>Sum (numeric field)</option>
+      </select>
+    </label>
+    <label class="field-third">Entity
       <select name="entity_id" id="widget-entity">
         <option value="">— none —</option>
         {% for e in entities %}
@@ -16,7 +23,22 @@
         {% endfor %}
       </select>
     </label>
-    <label>View (optional)
+    <label class="field-third">Width (12-column grid)
+      <select name="width">
+        {% set span = widget.width if widget.width.isdigit() else {'1/4': '3', '1/2': '6', '3/4': '9', 'full': '12'}.get(widget.width, '6') %}
+        {% for n in range(1, 13) %}
+        <option value="{{ n }}" {% if span == n|string %}selected{% endif %}>{{ n }} / 12</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field-third">Value color (count/sum)
+      <span class="color-input-row">
+        <input type="text" name="color" id="widget-color" value="{{ stored_color }}" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
+        <span class="color-swatch{% if not stored_color %} is-empty{% endif %}" id="widget-color-swatch" aria-hidden="true"></span>
+      </span>
+      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
+    </label>
+    <label class="field-half">View (optional)
       <select name="view_id" id="widget-view">
         <option value="">— none —</option>
         {% for v in views %}
@@ -25,14 +47,7 @@
       </select>
       <span class="hint">Filters the widget's records; a sum widget then sums a column of the view.</span>
     </label>
-    <label>Type
-      <select name="widget_type" id="widget-type">
-        <option value="table" {% if widget.widget_type == 'table' %}selected{% endif %}>Table</option>
-        <option value="count" {% if widget.widget_type == 'count' %}selected{% endif %}>Count</option>
-        <option value="sum" {% if widget.widget_type == 'sum' %}selected{% endif %}>Sum (numeric field)</option>
-      </select>
-    </label>
-    <label>Numeric field (sum widgets)
+    <label class="field-half">Numeric field (sum widgets)
       <select name="field" id="widget-field">
         <option value="">— none —</option>
         {% set stored_field = widget.config.get('field') if widget.config else '' %}
@@ -52,21 +67,6 @@
         {% endfor %}
       </select>
       <span class="hint">Sum widgets only: an entity's numeric attributes, or the numeric columns of a selected view (computed ones included).</span>
-    </label>
-    <label>Width (12-column grid)
-      <select name="width">
-        {% set span = widget.width if widget.width.isdigit() else {'1/4': '3', '1/2': '6', '3/4': '9', 'full': '12'}.get(widget.width, '6') %}
-        {% for n in range(1, 13) %}
-        <option value="{{ n }}" {% if span == n|string %}selected{% endif %}>{{ n }} / 12</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Value color (count/sum)
-      <span class="color-input-row">
-        <input type="text" name="color" id="widget-color" value="{{ stored_color }}" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
-        <span class="color-swatch{% if not stored_color %} is-empty{% endif %}" id="widget-color-swatch" aria-hidden="true"></span>
-      </span>
-      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
     </label>
   </div>
   <div class="form-actions">

@@ -10,31 +10,43 @@
 <h2>Add widget</h2>
 <form method="post" action="/dashboard/widgets" class="form-section">
   {% include "_csrf.html" %}
-  <div class="grid-2">
-    <label class="field-wide">Title
+  <div class="widget-form-grid">
+    <label class="field-half">Title
       <input type="text" name="title" placeholder="e.g. Active servers">
     </label>
-    <label>Entity
-      <select name="entity_id" id="widget-entity">
-        <option value="">— none —</option>
-        {% for e in entities %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
-      </select>
-    </label>
-    <label>View (optional)
-      <select name="view_id" id="widget-view">
-        <option value="">— none —</option>
-        {% for v in views %}<option value="{{ v.id }}">{{ v.name }} ({{ v.entity.name if v.entity else '—' }})</option>{% endfor %}
-      </select>
-      <span class="hint">Filters the widget's records; a sum widget then sums a column of the view.</span>
-    </label>
-    <label>Type
+    <label class="field-half">Type
       <select name="widget_type" id="widget-type">
         <option value="table">Table</option>
         <option value="count">Count</option>
         <option value="sum">Sum (numeric field)</option>
       </select>
     </label>
-    <label>Numeric field (sum widgets)
+    <label class="field-third">Entity
+      <select name="entity_id" id="widget-entity">
+        <option value="">— none —</option>
+        {% for e in entities %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field-third">Width (12-column grid)
+      <select name="width">
+        {% for n in range(1, 13) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} / 12</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field-third">Value color (count/sum)
+      <span class="color-input-row">
+        <input type="text" name="color" id="widget-color" value="" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
+        <span class="color-swatch is-empty" id="widget-color-swatch" aria-hidden="true"></span>
+      </span>
+      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
+    </label>
+    <label class="field-half">View (optional)
+      <select name="view_id" id="widget-view">
+        <option value="">— none —</option>
+        {% for v in views %}<option value="{{ v.id }}">{{ v.name }} ({{ v.entity.name if v.entity else '—' }})</option>{% endfor %}
+      </select>
+      <span class="hint">Filters the widget's records; a sum widget then sums a column of the view.</span>
+    </label>
+    <label class="field-half">Numeric field (sum widgets)
       <select name="field" id="widget-field">
         <option value="">— none —</option>
         {% for e in field_options.entities %}
@@ -53,18 +65,6 @@
         {% endfor %}
       </select>
       <span class="hint">Sum widgets only: an entity's numeric attributes, or the numeric columns of a selected view (computed ones included).</span>
-    </label>
-    <label>Width (12-column grid)
-      <select name="width">
-        {% for n in range(1, 13) %}<option value="{{ n }}" {% if n == 6 %}selected{% endif %}>{{ n }} / 12</option>{% endfor %}
-      </select>
-    </label>
-    <label>Value color (count/sum)
-      <span class="color-input-row">
-        <input type="text" name="color" id="widget-color" value="" placeholder="e.g. #14b8a6" autocomplete="off" spellcheck="false">
-        <span class="color-swatch is-empty" id="widget-color-swatch" aria-hidden="true"></span>
-      </span>
-      <span class="hint">Hex color for the widget's value; leave empty for the default.</span>
     </label>
   </div>
   <div class="form-actions">

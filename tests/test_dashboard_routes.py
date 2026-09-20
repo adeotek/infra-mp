@@ -828,18 +828,23 @@ def test_widget_with_an_unknown_view_is_rejected(client, login):
 
 
 WIDGET_FORM_ORDER = [
-    '<label class="field-wide">Title',
-    "<label>Entity",
-    "<label>View (optional)",
-    "<label>Type",
-    "<label>Numeric field (sum widgets)",
-    "<label>Width (12-column grid)",
-    "<label>Value color (count/sum)",
+    '<label class="field-half">Title',
+    '<label class="field-half">Type',
+    '<label class="field-third">Entity',
+    '<label class="field-third">Width (12-column grid)',
+    '<label class="field-third">Value color (count/sum)',
+    '<label class="field-half">View (optional)',
+    '<label class="field-half">Numeric field (sum widgets)',
 ]
 
 
 def _assert_widget_form_rows(html: str) -> None:
-    """The widget form reads row-major: Title, Entity+View, Type+Field, Width+Color."""
+    """The widget form reads row-major: Title+Type, Entity+Width+Color, View+Field.
+
+    Spans do the row grouping: halves (span 6) and thirds (span 4) each fill the
+    12-track grid exactly, so the DOM order above *is* the row layout.
+    """
+    assert 'class="widget-form-grid"' in html
     positions = [html.index(anchor) for anchor in WIDGET_FORM_ORDER]
     assert positions == sorted(positions), [
         anchor for _, anchor in sorted(zip(positions, WIDGET_FORM_ORDER, strict=True))
@@ -857,10 +862,18 @@ def test_widget_form_field_order_matches_the_requested_rows(client, login):
     _assert_widget_form_rows(client.get("/dashboard/widgets/1/edit").text)
 
 
-def test_widget_title_spans_both_form_columns(client, login):
+def test_widget_form_grid_mixes_halves_and_thirds(client, login):
     login()
     css = client.get("/static/style.css").text
-    assert ".grid-2 > .field-wide { grid-column: 1 / -1; }" in css
+    assert (
+        ".widget-form-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }"
+        in css
+    )
+    assert ".widget-form-grid > .field-half { grid-column: span 6; }" in css
+    assert ".widget-form-grid > .field-third { grid-column: span 4; }" in css
+    # Mobile: one column, and the spans must not create implicit tracks.
+    assert ".grid-2, .grid-3, .widget-form-grid { grid-template-columns: 1fr; }" in css
+    assert ".widget-form-grid > .field-third { grid-column: 1 / -1; }" in css
 
 
 def test_widget_form_offers_entity_and_view_fields(client, login):
