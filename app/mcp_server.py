@@ -227,6 +227,11 @@ def build_mcp_server(session_factory: Any, settings: Settings) -> MCPServer:
     auth = AuthSettings(
         issuer_url=AnyHttpUrl(settings.base_url),
         resource_server_url=AnyHttpUrl(f"{settings.base_url}/mcp"),
+        # InfraMP tokens are opaque DB-validated API tokens, not RFC 8707
+        # resource indicators, so there is no audience for the middleware to
+        # check — the verifier owns validation. Pinned explicitly because the
+        # SDK defaults this to True in 3.0, which would reject every token.
+        validate_token_resource=False,
     )
     server = MCPServer(
         name="InfraMP",
