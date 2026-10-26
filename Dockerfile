@@ -1,5 +1,5 @@
 # InfraMP — single-container deployment
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install uv (the project's locked package manager) from its published image.
-COPY --from=ghcr.io/astral-sh/uv:0.7.1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 
 # Install the application and its dependencies from uv.lock (frozen: the
 # exact locked versions tested by CI, regardless of newer releases) — the

@@ -4,7 +4,7 @@ Self-hosted infrastructure/hardware/config manager. FastAPI + SQLAlchemy 2.0 + S
 
 ## Commands
 
-- Install: `uv sync` (uv is the only package manager; Python 3.12+, CI uses 3.14)
+- Install: `uv sync` (uv is the only package manager; Python 3.12+, CI uses 3.15)
 - Dev server: `make dev` (`uv run uvicorn app.main:app --reload`)
 - Verify before done: `make check` → ruff check + ruff format --check + pytest (also the CI order)
 - Single test: `uv run pytest tests/test_records.py -v`
